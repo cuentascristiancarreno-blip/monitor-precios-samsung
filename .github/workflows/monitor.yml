@@ -1,5 +1,8 @@
 name: Monitor de precios Samsung
 
+permissions:
+  contents: write
+
 on:
   schedule:
     # Chile continental esta en UTC-4 (verano) / UTC-3 (invierno).
