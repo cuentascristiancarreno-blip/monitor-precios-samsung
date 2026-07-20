@@ -1,0 +1,13 @@
+{
+  "name": "monitor-precios-samsung",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Monitorea precios, stock y catalogo de samsung.com/cl y avisa por Discord cuando algo cambia.",
+  "scripts": {
+    "run": "node src/run.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}

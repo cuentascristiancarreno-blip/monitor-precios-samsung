@@ -1,0 +1,41 @@
+name: Monitor de precios Samsung
+
+on:
+  schedule:
+    # Chile continental esta en UTC-4 (verano) / UTC-3 (invierno).
+    # Estos horarios en UTC caen ~09:00, ~15:00 y ~21:00 hora Chile la mayor parte del ano.
+    - cron: "0 13 * * *"
+    - cron: "0 19 * * *"
+    - cron: "0 1 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    concurrency:
+      group: monitor-samsung
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+
+      - name: Revisar precios
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: npm run run
+
+      - name: Guardar historial y ultimo estado
+        run: |
+          git config user.name "monitor-samsung-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/latest.json data/history.jsonl
+          git diff --cached --quiet && echo "sin cambios que commitear" && exit 0
+          git commit -m "chore: actualiza datos $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push
