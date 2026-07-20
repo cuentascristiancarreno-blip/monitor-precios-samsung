@@ -89,7 +89,7 @@ async function main() {
   for (const [modelo, record] of Object.entries(current)) {
     const prev = previous[modelo];
     if (!prev) {
-      changes.push({ tipo: "nuevo", modelo, nombre: record.nombre, precio: record.precio });
+      changes.push({ tipo: "nuevo", modelo, nombre: record.nombre, precio: record.precio, categoria: record.categoria });
       continue;
     }
     if (prev.precio !== record.precio) {
@@ -99,6 +99,7 @@ async function main() {
         nombre: record.nombre,
         precio: record.precio,
         precioAnterior: prev.precio,
+        categoria: record.categoria,
       });
     }
     if (prev.disponible !== record.disponible && record.disponible !== null && prev.disponible !== null) {
@@ -108,14 +109,18 @@ async function main() {
         nombre: record.nombre,
         disponible: record.disponible,
         disponibleAnterior: prev.disponible,
+        categoria: record.categoria,
       });
     }
   }
   for (const [modelo, prev] of Object.entries(previous)) {
     if (!current[modelo]) {
-      changes.push({ tipo: "eliminado", modelo, nombre: prev.nombre, precioAnterior: prev.precio });
+      changes.push({ tipo: "eliminado", modelo, nombre: prev.nombre, precioAnterior: prev.precio, categoria: prev.categoria });
     }
   }
+
+  const esAccesorio = (categoria) => (categoria || "").toLowerCase().startsWith("accesorio");
+  const changesParaDiscord = changes.filter((c) => !esAccesorio(c.categoria));
 
   await writeFile(LATEST_PATH, JSON.stringify(current, null, 1));
 
@@ -127,7 +132,7 @@ async function main() {
   console.log(`Listo. ${Object.keys(current).length} productos con precio, ${changes.length} cambios, ${errores} errores.`);
 
   await notifyDiscord(process.env.DISCORD_WEBHOOK_URL, {
-    changes,
+    changes: changesParaDiscord,
     errores,
     totalRevisado: entries.length,
   });
