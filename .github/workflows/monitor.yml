@@ -41,4 +41,5 @@ jobs:
           git add data/latest.json data/history.jsonl
           git diff --cached --quiet && echo "sin cambios que commitear" && exit 0
           git commit -m "chore: actualiza datos $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git pull --rebase origin main
           git push
