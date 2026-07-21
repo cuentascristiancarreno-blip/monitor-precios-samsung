@@ -1,7 +1,7 @@
 const CLP = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 
 function fmt(n) {
-  return typeof n === "number" ? CLP.format(n) : "sin precio";
+  return Number.isFinite(n) ? CLP.format(n) : "sin precio";
 }
 
 function pct(anterior, nuevo) {

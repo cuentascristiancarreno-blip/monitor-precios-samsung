@@ -23,18 +23,6 @@
   "paginaOrigen": "https://www.samsung.com/cl/home-appliance-accessories/air-purifier-filter-cfxb100-cfx-b100-na/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
- "CFX-D100/SG": {
-  "modelo": "CFX-D100/SG",
-  "nombre": "Filtro para purificador de aire AX60K5050WD/ZS",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/home-appliance-accessories/air-purifier-filter-cfxd100-cfx-d100-sg/",
-  "categoria": "Accesorios línea blanca",
-  "subcategoria": "air-purifier-filter-cfxd100-cfx-d100-sg",
-  "paginaOrigen": "https://www.samsung.com/cl/home-appliance-accessories/air-purifier-filter-cfxd100-cfx-d100-sg/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
  "VCA-SBT90EB/VT": {
   "modelo": "VCA-SBT90EB/VT",
   "nombre": "Batería VCA-SBT90EB para Aspiradora Jet 75 Pet duración 60 min",
@@ -165,18 +153,6 @@
   "categoria": "Accesorios línea blanca",
   "subcategoria": "pet-tool-brush-vca-pta95-vt",
   "paginaOrigen": "https://www.samsung.com/cl/home-appliance-accessories/pet-tool-brush-vca-pta95-vt/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "MRK-A10N": {
-  "modelo": "MRK-A10N",
-  "nombre": "Receiver Kit",
-  "precio": 0,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/home-appliance-accessories/receiver-kit-mrk-a10n/",
-  "categoria": "Accesorios línea blanca",
-  "subcategoria": "receiver-kit-mrk-a10n",
-  "paginaOrigen": "https://www.samsung.com/cl/home-appliance-accessories/receiver-kit-mrk-a10n/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
  "DC97-00121N": {
@@ -513,18 +489,6 @@
   "categoria": "Accesorios móviles",
   "subcategoria": "50w-power-adapter-duo-black-ep-t5020xbegch",
   "paginaOrigen": "https://www.samsung.com/cl/mobile-accessories/50w-power-adapter-duo-black-ep-t5020xbegch/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "EP-T6010NBEGCH": {
-  "modelo": "EP-T6010NBEGCH",
-  "nombre": "Adaptador de corriente de 60W",
-  "precio": 0,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/mobile-accessories/60w-power-adapter-black-ep-t6010nbegch/",
-  "categoria": "Accesorios móviles",
-  "subcategoria": "60w-power-adapter-black-ep-t6010nbegch",
-  "paginaOrigen": "https://www.samsung.com/cl/mobile-accessories/60w-power-adapter-black-ep-t6010nbegch/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
  "EP-T6530NBEGCH": {
@@ -2085,78 +2049,6 @@
   "categoria": "Accesorios móviles",
   "subcategoria": "galaxy-s26-ultra-clear-magnet-case-transparent-ef-cs948ctegww",
   "paginaOrigen": "https://www.samsung.com/cl/mobile-accessories/galaxy-s26-ultra-clear-magnet-case-transparent-ef-cs948ctegww/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "EJ-PS948BBEGWW": {
-  "modelo": "EJ-PS948BBEGWW",
-  "nombre": "S Pen Galaxy S26 Ultra",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/mobile-accessories/galaxy-s26-ultra-s-pen-black-ej-ps948bbegww/",
-  "categoria": "Accesorios móviles",
-  "subcategoria": "galaxy-s26-ultra-s-pen-black-ej-ps948bbegww",
-  "paginaOrigen": "https://www.samsung.com/cl/mobile-accessories/galaxy-s26-ultra-s-pen-black-ej-ps948bbegww/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "EJ-PS948BLEGWW": {
-  "modelo": "EJ-PS948BLEGWW",
-  "nombre": "S Pen Galaxy S26 Ultra",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/mobile-accessories/galaxy-s26-ultra-s-pen-light-blue-ej-ps948blegww/",
-  "categoria": "Accesorios móviles",
-  "subcategoria": "galaxy-s26-ultra-s-pen-light-blue-ej-ps948blegww",
-  "paginaOrigen": "https://www.samsung.com/cl/mobile-accessories/galaxy-s26-ultra-s-pen-light-blue-ej-ps948blegww/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "EJ-PS948BZEGWW": {
-  "modelo": "EJ-PS948BZEGWW",
-  "nombre": "S Pen Galaxy S26 Ultra",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/mobile-accessories/galaxy-s26-ultra-s-pen-pink-gold-ej-ps948bzegww/",
-  "categoria": "Accesorios móviles",
-  "subcategoria": "galaxy-s26-ultra-s-pen-pink-gold-ej-ps948bzegww",
-  "paginaOrigen": "https://www.samsung.com/cl/mobile-accessories/galaxy-s26-ultra-s-pen-pink-gold-ej-ps948bzegww/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "EJ-PS948BSEGWW": {
-  "modelo": "EJ-PS948BSEGWW",
-  "nombre": "S Pen Galaxy S26 Ultra",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/mobile-accessories/galaxy-s26-ultra-s-pen-silver-ej-ps948bsegww/",
-  "categoria": "Accesorios móviles",
-  "subcategoria": "galaxy-s26-ultra-s-pen-silver-ej-ps948bsegww",
-  "paginaOrigen": "https://www.samsung.com/cl/mobile-accessories/galaxy-s26-ultra-s-pen-silver-ej-ps948bsegww/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "EJ-PS948BVEGWW": {
-  "modelo": "EJ-PS948BVEGWW",
-  "nombre": "S Pen Galaxy S26 Ultra",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/mobile-accessories/galaxy-s26-ultra-s-pen-violet-ej-ps948bvegww/",
-  "categoria": "Accesorios móviles",
-  "subcategoria": "galaxy-s26-ultra-s-pen-violet-ej-ps948bvegww",
-  "paginaOrigen": "https://www.samsung.com/cl/mobile-accessories/galaxy-s26-ultra-s-pen-violet-ej-ps948bvegww/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "EJ-PS948BWEGWW": {
-  "modelo": "EJ-PS948BWEGWW",
-  "nombre": "S Pen Galaxy S26 Ultra",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/mobile-accessories/galaxy-s26-ultra-s-pen-white-ej-ps948bwegww/",
-  "categoria": "Accesorios móviles",
-  "subcategoria": "galaxy-s26-ultra-s-pen-white-ej-ps948bwegww",
-  "paginaOrigen": "https://www.samsung.com/cl/mobile-accessories/galaxy-s26-ultra-s-pen-white-ej-ps948bwegww/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
  "EF-ES948CBEGWW": {
@@ -4391,18 +4283,6 @@
   "paginaOrigen": "https://www.samsung.com/cl/tv-accessories/customizable-frame-vg-scfh-vg-scfh65bwbzx/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
- "VG-SCFN55BM/RU": {
-  "modelo": "VG-SCFN55BM/RU",
-  "nombre": "55\" Marco The Frame - Negro",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/tv-accessories/customizable-frame-vg-scfm55-vg-scfn55bm-ru/",
-  "categoria": "Accesorios TV",
-  "subcategoria": "customizable-frame-vg-scfm55-vg-scfn55bm-ru",
-  "paginaOrigen": "https://www.samsung.com/cl/tv-accessories/customizable-frame-vg-scfm55-vg-scfn55bm-ru/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
  "VG-SCFN55DP/RU": {
   "modelo": "VG-SCFN55DP/RU",
   "nombre": "55\" Marco The Frame - Nogal",
@@ -4437,18 +4317,6 @@
   "categoria": "Accesorios TV",
   "subcategoria": "customizable-frame-vg-scfm55-vg-scfr55br-ru",
   "paginaOrigen": "https://www.samsung.com/cl/tv-accessories/customizable-frame-vg-scfm55-vg-scfr55br-ru/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "VG-SCFR55CB/RU": {
-  "modelo": "VG-SCFR55CB/RU",
-  "nombre": "55\" Marco The Frame - Arena",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/tv-accessories/customizable-frame-vg-scfm55-vg-scfr55cb-ru/",
-  "categoria": "Accesorios TV",
-  "subcategoria": "customizable-frame-vg-scfm55-vg-scfr55cb-ru",
-  "paginaOrigen": "https://www.samsung.com/cl/tv-accessories/customizable-frame-vg-scfm55-vg-scfr55cb-ru/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
  "VG-SCFT55BW/RU": {
@@ -4535,18 +4403,6 @@
   "paginaOrigen": "https://www.samsung.com/cl/system-air-conditioners/ceiling-air-conditioner/cac-odu-ac140mxadkh-eu/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
- "AJ035TN1DKH/EA": {
-  "modelo": "AJ035TN1DKH/EA",
-  "nombre": "Unidad Interior Cassette Wind-Free 1-Way 12.000 BTU",
-  "precio": 0,
-  "moneda": "CLP",
-  "disponible": false,
-  "url": "https://www.samsung.com/cl/system-air-conditioners/ceiling-air-conditioner/wind-free-slim-1-way-aj035tn1dkh-ea/",
-  "categoria": "Aire acondicionado (sistemas)",
-  "subcategoria": "ceiling-air-conditioner",
-  "paginaOrigen": "https://www.samsung.com/cl/system-air-conditioners/ceiling-air-conditioner/wind-free-slim-1-way-aj035tn1dkh-ea/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
  "AE140BXYDEG/EU": {
   "modelo": "AE140BXYDEG/EU",
   "nombre": "Bomba de Calor Calefaccion 14KW Monobloc Black",
@@ -4605,30 +4461,6 @@
   "categoria": "Aire acondicionado (sistemas)",
   "subcategoria": "free-joint-multi",
   "paginaOrigen": "https://www.samsung.com/cl/system-air-conditioners/free-joint-multi/fjm-with-r32-refrigerant-aj100txj5kh-ea/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "F-AJ050AJ020MI": {
-  "modelo": "F-AJ050AJ020MI",
-  "nombre": "Multi Split Wind-Free, Inverter, Wi-Fi, Frío and Calor 1 x 7000 + 1 x 9000",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/system-air-conditioners/free-joint-multi/multi-split-wind-free-inverter-wi-fi-heat-and-cold-1x7000-1x9000-fjm-bundle-f-aj050aj020mi/",
-  "categoria": "Aire acondicionado (sistemas)",
-  "subcategoria": "free-joint-multi",
-  "paginaOrigen": "https://www.samsung.com/cl/system-air-conditioners/free-joint-multi/multi-split-wind-free-inverter-wi-fi-heat-and-cold-1x7000-1x9000-fjm-bundle-f-aj050aj020mi/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "F-AJ060AJ020MI": {
-  "modelo": "F-AJ060AJ020MI",
-  "nombre": "Multi Split Wind-Free, Inverter, Wi-Fi, Frío and Calor 2 x 7000 + 1 x 9000",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/system-air-conditioners/free-joint-multi/multi-split-wind-free-inverter-wi-fi-heat-and-cold-1x7000-2x9000-fjm-bundle-f-aj060aj020mi/",
-  "categoria": "Aire acondicionado (sistemas)",
-  "subcategoria": "free-joint-multi",
-  "paginaOrigen": "https://www.samsung.com/cl/system-air-conditioners/free-joint-multi/multi-split-wind-free-inverter-wi-fi-heat-and-cold-1x7000-2x9000-fjm-bundle-f-aj060aj020mi/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
  "AJ035TNLPKH/EA": {
@@ -5507,18 +5339,6 @@
   "paginaOrigen": "https://www.samsung.com/cl/cooking-appliances/hobs/ctr432nb02zs-ctr432nb02-zs/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
- "F-CTR26KNK24M": {
-  "modelo": "F-CTR26KNK24M",
-  "nombre": "Encimera Vitrocerámica de 4 Quemadores + Campana telescópica de pared",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/cooking-appliances/hobs/da-bundle-encimera-with-campana-f-ctr26knk24m/",
-  "categoria": "Cocina",
-  "subcategoria": "hobs",
-  "paginaOrigen": "https://www.samsung.com/cl/cooking-appliances/hobs/da-bundle-encimera-with-campana-f-ctr26knk24m/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
  "F-NK24M10NX24": {
   "modelo": "F-NK24M10NX24",
   "nombre": "Campana Telescópica 60 cm + Cocina a Gas 4Q Negra",
@@ -5963,18 +5783,6 @@
   "paginaOrigen": "https://www.samsung.com/cl/washers-and-dryers/washer-dryer-combo/wm-top-loader-wa80h4200sw1zs-with-vc-stick-handy-vs6000kl-f-wa80hvs6038/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
- "F-UN55DWA1512": {
-  "modelo": "F-UN55DWA1512",
-  "nombre": "Lavadora de carga superior 15Kg con Eco Bubble + 50'' Crystal UHD 4K DU8000 Smart TV (2024)",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/bundle-uhd-4k-tv-un50du8000gxzs-with-top-load-ecobubble-digital-inverter-wa15cg5441bwzs-15kg-white-f-un55dwa1512/",
-  "categoria": "Lavado y secado",
-  "subcategoria": "washing-machines",
-  "paginaOrigen": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/bundle-uhd-4k-tv-un50du8000gxzs-with-top-load-ecobubble-digital-inverter-wa15cg5441bwzs-15kg-white-f-un55dwa1512/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
  "F-RT25FWA4015": {
   "modelo": "F-RT25FWA4015",
   "nombre": "Lavadora Carga Superior 15 Kg con Eco Bubble™ 2026 Grafito + Top Mount Freezer de 255 L con All Around Cooling",
@@ -6167,18 +5975,6 @@
   "paginaOrigen": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa6000c-top-load-washer-with-rb7300t-bottom-freezer-f-wa17crb3448/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
- "F-WA17CVS6036": {
-  "modelo": "F-WA17CVS6036",
-  "nombre": "Aspiradora PowerStick 2 en 1 + Lavadora de carga superior 17Kg",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa6000c-top-load-with-stick-handy-vs6000kl-f-wa17cvs6036/",
-  "categoria": "Lavado y secado",
-  "subcategoria": "washing-machines",
-  "paginaOrigen": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa6000c-top-load-with-stick-handy-vs6000kl-f-wa17cvs6036/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
  "WA40F15E4CZS": {
   "modelo": "WA40F15E4CZS",
   "nombre": "Lavadora Carga Superior 15 Kg con Eco Bubble™ 2026 Grafito",
@@ -6273,18 +6069,6 @@
   "categoria": "Lavado y secado",
   "subcategoria": "washing-machines",
   "paginaOrigen": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wf90f27-front-loading-ai-home-ai-optiwash-plus-ultra-capacity-25kg-gray-wf90f25adszs/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "F-WA90CVS6039": {
-  "modelo": "F-WA90CVS6039",
-  "nombre": "Aspiradora PowerStick 2 en 1 + Lavadora de carga superior 9Kg",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wm-wa4000c-top-load-washer-with-vc-stick-handy-vs6000kl-f-wa90cvs6039/",
-  "categoria": "Lavado y secado",
-  "subcategoria": "washing-machines",
-  "paginaOrigen": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wm-wa4000c-top-load-washer-with-vc-stick-handy-vs6000kl-f-wa90cvs6039/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
  "WW12CGC04DAEZS": {
@@ -6477,18 +6261,6 @@
   "categoria": "Microondas",
   "subcategoria": "solo",
   "paginaOrigen": "https://www.samsung.com/cl/microwave-ovens/solo/mw3000am-solo-full-glass-door-metallic-edge-dual-dial-led-lighting-ms20a3010al-zs/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "LF24T400FHLXZS": {
-  "modelo": "LF24T400FHLXZS",
-  "nombre": "24\" Professional Montior with PS panel and adjustable design",
-  "precio": 0,
-  "moneda": "CLP",
-  "disponible": false,
-  "url": "https://www.samsung.com/cl/monitors/business/t40f-24-inch-ips-fhd-1080p-freesync-lf24t400fhlxzs/",
-  "categoria": "Monitores",
-  "subcategoria": "business",
-  "paginaOrigen": "https://www.samsung.com/cl/monitors/business/t40f-24-inch-ips-fhd-1080p-freesync-lf24t400fhlxzs/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
  "LC32R500FHLXZS": {
@@ -7199,18 +6971,6 @@
   "paginaOrigen": "https://www.samsung.com/cl/monitors/high-resolution/viewfinity-s8-s80ud-37-inch-uhd-usbc-easysetupstand-ls37d800ualxzs/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
- "LS40H850TALXZS": {
-  "modelo": "LS40H850TALXZS",
-  "nombre": "40\" ViewFinity S8 S85TH 5K2K WUHD 144Hz Monitor",
-  "precio": 0,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/monitors/high-resolution/viewfinity-s8-s85th-40-inch-5k2k-curved-wuhd-ls40h850talxzs/",
-  "categoria": "Monitores",
-  "subcategoria": "high-resolution",
-  "paginaOrigen": "https://www.samsung.com/cl/monitors/high-resolution/viewfinity-s8-s85th-40-inch-5k2k-curved-wuhd-ls40h850talxzs/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
  "LS27C900PANXZA": {
   "modelo": "LS27C900PANXZA",
   "nombre": "27\" ViewFinity S9 S90PC 5K 60Hz Monitor High Resolution Plano",
@@ -7233,18 +6993,6 @@
   "categoria": "Monitores",
   "subcategoria": "smart",
   "paginaOrigen": "https://www.samsung.com/cl/monitors/smart/combo-mon-32-inch-buds-f-smr540nls32/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "LS27AM500NLXZS": {
-  "modelo": "LS27AM500NLXZS",
-  "nombre": "27\" Smart Monitor With Mobile Connectivity",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/monitors/smart/smart-m5-27-inch-ls27am500nlxzs/",
-  "categoria": "Monitores",
-  "subcategoria": "smart",
-  "paginaOrigen": "https://www.samsung.com/cl/monitors/smart/smart-m5-27-inch-ls27am500nlxzs/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
  "LS32BM500ELXZS": {
@@ -7799,18 +7547,6 @@
   "paginaOrigen": "https://www.samsung.com/cl/watches/galaxy-watch/galaxy-watch8-classic-46mm-white-bluetooth-sm-l500nzwalta/buy/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
- "BD-F5100/ZS": {
-  "modelo": "BD-F5100/ZS",
-  "nombre": "BD-F5100, Native Apps (Netflix, Youtube, etc) Blu-ray player",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/video-players/blu-ray-player/blu-ray-player-f5100-bd-f5100-zs/",
-  "categoria": "Reproductores",
-  "subcategoria": "blu-ray-player",
-  "paginaOrigen": "https://www.samsung.com/cl/video-players/blu-ray-player/blu-ray-player-f5100-bd-f5100-zs/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
  "LH85WMBWLGCXZA": {
   "modelo": "LH85WMBWLGCXZA",
   "nombre": "Pantalla interactiva Flip Pro WM85B",
@@ -7821,42 +7557,6 @@
   "categoria": "Signage",
   "subcategoria": "interactive-display",
   "paginaOrigen": "https://www.samsung.com/cl/smart-signage/interactive-display/flip-pro-wm85b-interactive-display-85-inch-lh85wmbwlgcxza/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "LH65WAFWLGCXZX": {
-  "modelo": "LH65WAFWLGCXZX",
-  "nombre": "65\" WAF Android Pizarra Interactiva Android 14 OS 250 nits 12/7",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/smart-signage/interactive-display/65-interactive-display-waf-65-inch-lh65wafwlgcxzx/",
-  "categoria": "Signage",
-  "subcategoria": "interactive-display",
-  "paginaOrigen": "https://www.samsung.com/cl/smart-signage/interactive-display/65-interactive-display-waf-65-inch-lh65wafwlgcxzx/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "LH75WAFWLGCXZX": {
-  "modelo": "LH75WAFWLGCXZX",
-  "nombre": "75\" WAF Android Pizarra Interactiva Android 14 OS 250 nits 12/7",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/smart-signage/interactive-display/75-interactive-display-waf-75-inch-lh75wafwlgcxzx/",
-  "categoria": "Signage",
-  "subcategoria": "interactive-display",
-  "paginaOrigen": "https://www.samsung.com/cl/smart-signage/interactive-display/75-interactive-display-waf-75-inch-lh75wafwlgcxzx/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "LH86WAFWLGCXZX": {
-  "modelo": "LH86WAFWLGCXZX",
-  "nombre": "86\" WAF Android Pizarra Interactiva Android 14 OS 250 nits 12/7",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/smart-signage/interactive-display/86-interactive-display-waf-86-inch-lh86wafwlgcxzx/",
-  "categoria": "Signage",
-  "subcategoria": "interactive-display",
-  "paginaOrigen": "https://www.samsung.com/cl/smart-signage/interactive-display/86-interactive-display-waf-86-inch-lh86wafwlgcxzx/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
  "LH65WAFWLGCXZA": {
@@ -8661,18 +8361,6 @@
   "categoria": "SmartThings",
   "subcategoria": "hub",
   "paginaOrigen": "https://www.samsung.com/cl/smartthings/hub/connect-home-et-wv521bwegch/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "ET-WV531BWEGCH": {
-  "modelo": "ET-WV531BWEGCH",
-  "nombre": "Connect Home Pro",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/smartthings/hub/connect-home-pro-et-wv531bwegch/",
-  "categoria": "SmartThings",
-  "subcategoria": "hub",
-  "paginaOrigen": "https://www.samsung.com/cl/smartthings/hub/connect-home-pro-et-wv531bwegch/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
  "SM-X133NZAAL07": {
@@ -10139,18 +9827,6 @@
   "paginaOrigen": "https://www.samsung.com/cl/tvs/uhd-4k-tv/bu8000-65-inch-crystal-uhd-4k-smart-tv-un65bu8000gxzs/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
- "F-UN58WHS700D": {
-  "modelo": "F-UN58WHS700D",
-  "nombre": "58\" Crystal UHD U8000F 4K Smart TV (2025) + Ultra Slim Soundbar HW-S700D 3.1 ch Sub Woofer",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/combo-tv-sb-58-inch-f-un58whs700d/",
-  "categoria": "Televisores",
-  "subcategoria": "uhd-4k-tv",
-  "paginaOrigen": "https://www.samsung.com/cl/tvs/uhd-4k-tv/combo-tv-sb-58-inch-f-un58whs700d/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
  "F-UN55DUHWB65": {
   "modelo": "F-UN55DUHWB65",
   "nombre": "55'' Crystal UHD 4K DU8000 Smart TV + HW-B650D",
@@ -10257,18 +9933,6 @@
   "categoria": "Televisores",
   "subcategoria": "uhd-4k-tv",
   "paginaOrigen": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000f-55-inch-crystal-uhd-4k-smart-tv-un55u8000fgxzs/",
-  "ultimaRevision": "2026-07-21T17:56:26.241Z"
- },
- "UN58U8000FGXZS": {
-  "modelo": "UN58U8000FGXZS",
-  "nombre": "58\" Crystal UHD U8000F 4K Smart TV (2025)",
-  "precio": null,
-  "moneda": "CLP",
-  "disponible": true,
-  "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000f-58-inch-crystal-uhd-4k-smart-tv-un58u8000fgxzs/",
-  "categoria": "Televisores",
-  "subcategoria": "uhd-4k-tv",
-  "paginaOrigen": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000f-58-inch-crystal-uhd-4k-smart-tv-un58u8000fgxzs/",
   "ultimaRevision": "2026-07-21T17:56:26.241Z"
  },
  "UN65U8000FGXZS": {

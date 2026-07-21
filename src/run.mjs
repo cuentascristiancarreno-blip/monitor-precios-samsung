@@ -92,7 +92,11 @@ async function main() {
       changes.push({ tipo: "nuevo", modelo, nombre: record.nombre, precio: record.precio, categoria: record.categoria });
       continue;
     }
-    if (prev.precio !== record.precio) {
+    if (!Number.isFinite(prev.precio)) {
+      // el precio anterior quedo corrupto (dato viejo previo a este fix) --
+      // se trata como si recien se conociera el precio, no como sube/baja.
+      changes.push({ tipo: "nuevo", modelo, nombre: record.nombre, precio: record.precio, categoria: record.categoria });
+    } else if (prev.precio !== record.precio) {
       changes.push({
         tipo: record.precio < prev.precio ? "baja" : "sube",
         modelo,

@@ -42,11 +42,12 @@ export function extractFamilyVariants(html) {
       if (item["@type"] !== "Product" || !item.offers) continue;
       const offer = item.offers;
       const modelCode = modelCodeFromOfferUrl(offer.url) || item.sku;
-      if (!modelCode || !offer.price) continue;
+      const precio = Number(offer.price);
+      if (!modelCode || !offer.price || !Number.isFinite(precio) || precio <= 0) continue;
       variants.push({
         modelo: modelCode,
         nombre: item.name || null,
-        precio: Number(offer.price),
+        precio,
         moneda: offer.priceCurrency || "CLP",
         disponible: offer.availability
           ? offer.availability.includes("InStock")
@@ -73,8 +74,12 @@ export async function extractSingleProduct(page, url) {
     }
   });
 
-  if (!digitalData || !digitalData.model_price) {
-    return null; // pagina sin precio (ej. pagina de categoria, o descontinuada)
+  const precio = digitalData ? Number(digitalData.model_price) : NaN;
+  if (!digitalData || !Number.isFinite(precio) || precio <= 0) {
+    // pagina sin precio (categoria/descontinuada), o el propio Samsung trae
+    // "NaN" como model_price (visto en productos "combo"/bundle) -- en
+    // ambos casos se trata como "sin precio", nunca se guarda un numero invalido.
+    return null;
   }
 
   const bodyText = await page.evaluate(() => document.body.innerText).catch(() => "");
@@ -83,7 +88,7 @@ export async function extractSingleProduct(page, url) {
   return {
     modelo: digitalData.model_code || null,
     nombre: digitalData.displayName || null,
-    precio: Number(digitalData.model_price),
+    precio,
     moneda: "CLP",
     disponible,
     url,
