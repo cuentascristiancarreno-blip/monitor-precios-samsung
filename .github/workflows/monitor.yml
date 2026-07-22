@@ -8,16 +8,16 @@ on:
     # Chile continental esta en UTC-4 (verano) / UTC-3 (invierno) -- estos
     # horarios en UTC estan calculados para invierno (UTC-3, vigente en julio).
     # Van a correr 1 hora antes/despues de lo pedido durante el horario de
-    # verano hasta que se reajuste (pedido operador 2026-07-21: 01, 03, 09,
-    # 12, 15, 18, 21, 23 hora Chile).
+    # verano hasta que se reajuste (pedido operador 2026-07-21: 01, 04, 10,
+    # 13, 16, 19, 22 hora Chile -- todas separadas por >=3h para no toparse
+    # con corridas de ~130-170 min).
     - cron: "0 4 * * *"  # 01:00 Chile
-    - cron: "0 6 * * *"  # 03:00 Chile
-    - cron: "0 12 * * *" # 09:00 Chile
-    - cron: "0 15 * * *" # 12:00 Chile
-    - cron: "0 18 * * *" # 15:00 Chile
-    - cron: "0 21 * * *" # 18:00 Chile
-    - cron: "0 0 * * *"  # 21:00 Chile
-    - cron: "0 2 * * *"  # 23:00 Chile
+    - cron: "0 7 * * *"  # 04:00 Chile
+    - cron: "0 13 * * *" # 10:00 Chile
+    - cron: "0 16 * * *" # 13:00 Chile
+    - cron: "0 19 * * *" # 16:00 Chile
+    - cron: "0 22 * * *" # 19:00 Chile
+    - cron: "0 1 * * *"  # 22:00 Chile
   workflow_dispatch: {}
 
 jobs:
