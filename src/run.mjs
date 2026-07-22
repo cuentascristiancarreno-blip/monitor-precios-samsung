@@ -89,13 +89,13 @@ async function main() {
   for (const [modelo, record] of Object.entries(current)) {
     const prev = previous[modelo];
     if (!prev) {
-      changes.push({ tipo: "nuevo", modelo, nombre: record.nombre, precio: record.precio, categoria: record.categoria });
+      changes.push({ tipo: "nuevo", modelo, nombre: record.nombre, precio: record.precio, categoria: record.categoria, url: record.url });
       continue;
     }
     if (!Number.isFinite(prev.precio)) {
       // el precio anterior quedo corrupto (dato viejo previo a este fix) --
       // se trata como si recien se conociera el precio, no como sube/baja.
-      changes.push({ tipo: "nuevo", modelo, nombre: record.nombre, precio: record.precio, categoria: record.categoria });
+      changes.push({ tipo: "nuevo", modelo, nombre: record.nombre, precio: record.precio, categoria: record.categoria, url: record.url });
     } else if (prev.precio !== record.precio) {
       changes.push({
         tipo: record.precio < prev.precio ? "baja" : "sube",
@@ -104,6 +104,7 @@ async function main() {
         precio: record.precio,
         precioAnterior: prev.precio,
         categoria: record.categoria,
+        url: record.url,
       });
     }
     if (prev.disponible !== record.disponible && record.disponible !== null && prev.disponible !== null) {
@@ -114,12 +115,13 @@ async function main() {
         disponible: record.disponible,
         disponibleAnterior: prev.disponible,
         categoria: record.categoria,
+        url: record.url,
       });
     }
   }
   for (const [modelo, prev] of Object.entries(previous)) {
     if (!current[modelo]) {
-      changes.push({ tipo: "eliminado", modelo, nombre: prev.nombre, precioAnterior: prev.precio, categoria: prev.categoria });
+      changes.push({ tipo: "eliminado", modelo, nombre: prev.nombre, precioAnterior: prev.precio, categoria: prev.categoria, url: prev.url });
     }
   }
 

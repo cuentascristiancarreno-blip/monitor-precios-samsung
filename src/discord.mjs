@@ -11,22 +11,58 @@ function pct(anterior, nuevo) {
   return ` (${signo}${cambio.toFixed(1)}%)`;
 }
 
+// Icono por categoria real de src/seed.json (nunca se usa para "Accesorios *"
+// porque esas categorias se filtran antes de llegar aca -- ver esAccesorio en run.mjs).
+const ICONO_CATEGORIA = {
+  Smartphones: "📱",
+  Tablets: "📱",
+  Computadores: "💻",
+  "Relojes (Galaxy Watch)": "⌚",
+  "Audio y Galaxy Buds": "🎧",
+  "Audio (Soundbars/Torres)": "🔊",
+  Televisores: "📺",
+  "TV Lifestyle": "🖼️",
+  Monitores: "🖥️",
+  Proyectores: "📽️",
+  Signage: "📟",
+  "LED Signage": "📟",
+  Refrigeradores: "🧊",
+  "Línea blanca": "🧊",
+  Lavavajillas: "🍽️",
+  Cocina: "🍳",
+  Microondas: "♨️",
+  "Lavado y secado": "🧺",
+  "Aire acondicionado": "❄️",
+  "Aire acondicionado (sistemas)": "❄️",
+  Aspiradoras: "🧹",
+  "Purificadores de aire": "🌬️",
+  SmartThings: "🏠",
+  Reproductores: "📀",
+};
+const ICONO_DEFAULT = "🔹";
+
+function iconoPara(categoria) {
+  return ICONO_CATEGORIA[categoria] || ICONO_DEFAULT;
+}
+
 function lineFor(change) {
   const nombre = change.nombre || change.modelo;
-  const titulo = `${nombre} (${change.modelo})`;
+  const icono = iconoPara(change.categoria);
+  const titulo = `${icono} **${nombre}** (${change.modelo})`;
+  const link = change.url ? `\n　🔗 ${change.url}` : "";
   switch (change.tipo) {
     case "nuevo":
-      return `🆕 **${titulo}**\n　Precio: **${fmt(change.precio)}** (no estaba antes en el catálogo)`;
+      return `${titulo}\n　🆕 Precio: **${fmt(change.precio)}** (no estaba antes en el catálogo)${link}`;
     case "eliminado":
-      return `❌ **${titulo}**\n　Ya no aparece en el sitio. Antes: **${fmt(change.precioAnterior)}**`;
+      return `${titulo}\n　❌ Ya no aparece en el sitio. Antes: **${fmt(change.precioAnterior)}**${link}`;
     case "baja":
-      return `🟢 **${titulo}**\n　Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${pct(change.precioAnterior, change.precio)}`;
+      return `${titulo}\n　🟢 Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${pct(change.precioAnterior, change.precio)}${link}`;
     case "sube":
-      return `🔴 **${titulo}**\n　Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${pct(change.precioAnterior, change.precio)}`;
+      return `${titulo}\n　🔴 Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${pct(change.precioAnterior, change.precio)}${link}`;
     case "stock":
-      return `📦 **${titulo}**\n　Stock antes: **${change.disponibleAnterior ? "disponible" : "agotado"}** → ahora: **${change.disponible ? "disponible" : "agotado"}**`;
+      return `${titulo}\n　📦 Stock antes: **${change.disponibleAnterior ? "disponible" : "agotado"}** → ahora: **${change.disponible ? "disponible" : "agotado"}**${link}`;
     default:
-      return titulo;
+      return titulo + link;
   }
 }
 
