@@ -46,10 +46,16 @@ async function main() {
   try {
     for (const entry of entries) {
       try {
-        let variants;
+        let variants = [];
         if (entry.url.endsWith("/buy/")) {
           variants = await fetchFamilyPage(entry.url);
-        } else {
+        }
+        if (variants.length === 0) {
+          // no es pagina "familia" (celulares), o lo es pero no trae el
+          // patron ProductGroup/hasVariant en JSON-LD (ej. Galaxy Book: el
+          // precio ahi solo aparece via digitalData tras render real) --
+          // en ese caso se cae al mismo camino que una pagina de producto
+          // individual, tomando la variante que la pagina muestra por defecto.
           const page = await context.newPage();
           try {
             await page.goto(entry.url, { waitUntil: "load", timeout: 30000 });
