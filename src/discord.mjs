@@ -60,7 +60,7 @@ function lineFor(change) {
     case "sube":
       return `${titulo}\n　🔴 Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${pct(change.precioAnterior, change.precio)}${link}`;
     case "stock":
-      return `${titulo}\n　📦 Stock antes: **${change.disponibleAnterior ? "disponible" : "agotado"}** → ahora: **${change.disponible ? "disponible" : "agotado"}**${link}`;
+      return `${titulo}\n　📦 Stock antes: **${change.disponibleAnterior ? "disponible" : "agotado"}** → ahora: **${change.disponible ? "disponible" : "agotado"}**\n　Precio actual: **${fmt(change.precio)}**${link}`;
     default:
       return titulo + link;
   }

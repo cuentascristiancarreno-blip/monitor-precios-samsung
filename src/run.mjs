@@ -114,6 +114,7 @@ async function main() {
         nombre: record.nombre,
         disponible: record.disponible,
         disponibleAnterior: prev.disponible,
+        precio: record.precio,
         categoria: record.categoria,
         url: record.url,
       });
