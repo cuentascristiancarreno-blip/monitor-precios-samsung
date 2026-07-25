@@ -50,6 +50,18 @@ eliminar falsas alertas, agregar pruebas, validar con corrida real.
 6. [x] Workflow: `git add data/` completo, rebase `-X theirs`, npm test previo.
 7. [x] Smoke test local con carpeta de datos temporal (sin tocar producción).
 8. [x] Documentación: README + docs/auditoria-2026-07-24.md.
-9. [ ] Corrida real de validación disparada y verificada end-to-end.
+9. [x] Corrida real de validación disparada y verificada end-to-end.
 
-## Estado: pasos 1-8 completos, corrida de validación en curso (ver Actions).
+## Estado: AUDITORÍA COMPLETA — los 9 pasos terminados (2026-07-25 05:20 UTC)
+
+Resultado de la corrida real de validación (run 30141264929, commit 2841a05):
+- success de punta a punta, 130 min, 1168 páginas, solo 13 errores finales
+  (el reintento recuperó el resto — antes eran 10-30 por corrida).
+- 944 productos capturados; catálogo final 951 con `presencia`/`estadoStock`
+  en todos y 0 precios inválidos.
+- 6 productos ausentes quedaron en observación SIN alerta falsa (con el
+  sistema anterior habrían sido 12 avisos falsos: 6 "eliminado" + 6 "nuevo").
+- 1 página fallida conservó su último dato bueno (presencia error_verificacion).
+- Cambios reales detectados y notificados: 17 bajas de precio legítimas
+  (ej. Galaxy Tab S10 con ~10% de descuento) + 1 producto nuevo.
+- Corrida marcada confiable:true; pruebas 26/26 también en CI.
