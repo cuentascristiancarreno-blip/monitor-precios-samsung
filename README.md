@@ -6,10 +6,28 @@ Revisa el precio, stock y catálogo de los productos de samsung.com/cl y avisa p
 
 - `src/seed.json`: el listado base de ~1023 productos/variantes (viene del Excel que armaste).
 - `src/discover.mjs`: antes de cada revisión, además busca automáticamente páginas "familia" (como el Galaxy S25, donde una sola página agrupa todos los colores y capacidades) que no estaban en el listado.
-- `src/run.mjs`: revisa cada página, compara contra la última revisión guardada, arma la lista de cambios y avisa por Discord.
-- `data/latest.json`: foto del último precio/stock conocido de cada producto (se sobrescribe cada revisión).
-- `data/history.jsonl`: historial completo, una línea por producto por revisión — para poder armar gráficos de tendencia más adelante.
-- `.github/workflows/monitor.yml`: la tarea programada. Corre 3 veces al día, sube los datos actualizados al repo y dispara el aviso de Discord.
+- `src/run.mjs`: revisa cada página (con un reintento para las que fallan), detecta si la corrida completa es confiable, y delega la comparación.
+- `src/comparar.mjs`: la lógica que decide qué cambió y qué se notifica (ver reglas abajo). Es un módulo puro con pruebas automatizadas.
+- `src/discord.mjs`: arma y envía los avisos (íconos por categoría, link por producto, antes/después con diferencia en pesos y %).
+- `data/latest.json`: catálogo con el último estado conocido de cada producto (precio, stock confirmado, presencia). El historial git de este archivo es el snapshot completo de cada revisión.
+- `data/history.jsonl`: eventos de cambio (una línea por cambio detectado, con campo `tipo`).
+- `data/ejecuciones.jsonl`: registro de cada corrida — duración, páginas, errores, conteos por tipo de cambio, y si fue confiable.
+- `.github/workflows/monitor.yml`: la tarea programada (7 veces al día, hora Chile: 01, 04, 10, 13, 16, 19, 22). Corre las pruebas antes de cada revisión, sube los datos actualizados y dispara los avisos.
+
+## Reglas anti-falsas-alertas (auditoría 2026-07-24)
+
+- Un producto se declara **desaparecido** solo tras 2 revisiones confiables seguidas sin encontrarlo, con su página cargando bien — y se avisa una sola vez. Si reaparece después, se avisa "recuperado".
+- Si la **página de un producto falló** (timeout, error de red), se conserva su último dato bueno y no se cuenta como ausencia.
+- Si la **corrida completa es sospechosa** (muchos errores, o aparecen >20% menos productos que la vez anterior), no se declara nada desaparecido y llega una alerta técnica a Discord en vez de avisos falsos.
+- Un **cambio de stock** se avisa solo tras verse igual en 2 revisiones seguidas (el detector puede parpadear).
+- Los productos de categorías de **accesorios nunca notifican** a Discord (pedido del operador), aunque su historial sí se guarda.
+- Detalle completo: `docs/auditoria-2026-07-24.md`.
+
+## Diagnóstico rápido
+
+- ¿Dudas de una corrida? Mirar la última línea de `data/ejecuciones.jsonl` (confiable sí/no, motivos, URLs con error).
+- ¿Probar sin tocar los datos reales? `CARPETA_DATOS=<carpeta-temporal> SIN_DESCUBRIMIENTO=1 LIMITE_PAGINAS=6 node src/run.mjs`
+- Pruebas: `npm test` (también corren solas antes de cada revisión programada).
 
 Las páginas de producto individuales necesitan un navegador real (Playwright/Chromium) porque Samsung arma el precio con JavaScript en el momento de la navegación — confirmado con pruebas directas, no es un bloqueo anti-bot, así que no estamos evadiendo ningún control técnico.
 

@@ -35,6 +35,10 @@ jobs:
           node-version: 20
 
       - run: npm install
+
+      - name: Pruebas automatizadas (bloquean la corrida si fallan)
+        run: npm test
+
       - run: npx playwright install --with-deps chromium
 
       - name: Revisar precios
@@ -46,8 +50,11 @@ jobs:
         run: |
           git config user.name "monitor-samsung-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/latest.json data/history.jsonl
+          git add data/
           git diff --cached --quiet && echo "sin cambios que commitear" && exit 0
           git commit -m "chore: actualiza datos $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          git pull --rebase origin main
+          # -X theirs: si un push de codigo llego durante la corrida y choca en
+          # los archivos de datos, gana la version recien generada (en rebase,
+          # "theirs" es el commit propio que se esta reaplicando)
+          git pull --rebase -X theirs origin main
           git push

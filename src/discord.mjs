@@ -4,11 +4,13 @@ function fmt(n) {
   return Number.isFinite(n) ? CLP.format(n) : "sin precio";
 }
 
-function pct(anterior, nuevo) {
-  if (!anterior) return "";
-  const cambio = ((nuevo - anterior) / anterior) * 100;
-  const signo = cambio > 0 ? "+" : "";
-  return ` (${signo}${cambio.toFixed(1)}%)`;
+// diferencia en pesos y porcentaje, ej: " (−$170.000 · −15,9%)"
+function variacion(anterior, nuevo) {
+  if (!Number.isFinite(anterior) || !Number.isFinite(nuevo) || anterior === 0) return "";
+  const diff = nuevo - anterior;
+  const signo = diff > 0 ? "+" : "−";
+  const pctAbs = Math.abs((diff / anterior) * 100).toFixed(1);
+  return ` (${signo}${CLP.format(Math.abs(diff))} · ${signo}${pctAbs}%)`;
 }
 
 // Icono por categoria real de src/seed.json (nunca se usa para "Accesorios *"
@@ -52,13 +54,15 @@ function lineFor(change) {
   const link = change.url ? `\n　🔗 ${change.url}` : "";
   switch (change.tipo) {
     case "nuevo":
-      return `${titulo}\n　🆕 Precio: **${fmt(change.precio)}** (no estaba antes en el catálogo)${link}`;
-    case "eliminado":
-      return `${titulo}\n　❌ Ya no aparece en el sitio. Antes: **${fmt(change.precioAnterior)}**${link}`;
+      return `${titulo}\n　🆕 Precio: **${fmt(change.precio)}** (primera vez visto en el catálogo)${link}`;
+    case "desaparecido":
+      return `${titulo}\n　❌ Ya no aparece en el sitio (confirmado en 2 revisiones seguidas). Último precio: **${fmt(change.precioAnterior)}**${link}`;
+    case "recuperado":
+      return `${titulo}\n　✅ Volvió a aparecer en el sitio. Precio actual: **${fmt(change.precio)}**${link}`;
     case "baja":
-      return `${titulo}\n　🟢 Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${pct(change.precioAnterior, change.precio)}${link}`;
+      return `${titulo}\n　🟢 Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${variacion(change.precioAnterior, change.precio)}${link}`;
     case "sube":
-      return `${titulo}\n　🔴 Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${pct(change.precioAnterior, change.precio)}${link}`;
+      return `${titulo}\n　🔴 Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${variacion(change.precioAnterior, change.precio)}${link}`;
     case "stock":
       return `${titulo}\n　📦 Stock antes: **${change.disponibleAnterior ? "disponible" : "agotado"}** → ahora: **${change.disponible ? "disponible" : "agotado"}**\n　Precio actual: **${fmt(change.precio)}**${link}`;
     default:
@@ -71,7 +75,8 @@ const TITULOS = {
   baja: "🟢 Bajas de precio",
   sube: "🔴 Subas de precio",
   stock: "📦 Cambios de stock",
-  eliminado: "❌ Ya no aparecen",
+  recuperado: "✅ De vuelta en el sitio",
+  desaparecido: "❌ Ya no aparecen (confirmado)",
 };
 
 async function enviarMensaje(webhookUrl, content) {
@@ -88,7 +93,7 @@ async function enviarMensaje(webhookUrl, content) {
 
 // Discord corta cada mensaje en 2000 caracteres. En vez de truncar y perder
 // cambios, se arman varios mensajes seguidos -- ninguna novedad se pierde.
-function armarMensajes(encabezado, secciones) {
+export function armarMensajes(encabezado, secciones) {
   const LIMITE = 1900;
   const mensajes = [];
   let actual = encabezado;
@@ -119,7 +124,7 @@ export async function notifyDiscord(webhookUrl, { changes, errores, totalRevisad
   }
   if (changes.length === 0) return; // sin novedades, no molestar
 
-  const porTipo = { nuevo: [], baja: [], sube: [], stock: [], eliminado: [] };
+  const porTipo = { nuevo: [], baja: [], sube: [], stock: [], recuperado: [], desaparecido: [] };
   for (const c of changes) (porTipo[c.tipo] ?? porTipo.nuevo).push(lineFor(c));
 
   const resumen = `Revisados ${totalRevisado} productos · ${changes.length} cambios${errores > 0 ? ` · ${errores} paginas con error` : ""}`;
@@ -129,12 +134,22 @@ export async function notifyDiscord(webhookUrl, { changes, errores, totalRevisad
     ["baja", porTipo.baja],
     ["sube", porTipo.sube],
     ["stock", porTipo.stock],
+    ["recuperado", porTipo.recuperado],
     ["nuevo", porTipo.nuevo],
-    ["eliminado", porTipo.eliminado],
+    ["desaparecido", porTipo.desaparecido],
   ];
 
   const mensajes = armarMensajes(encabezado, secciones);
   for (const mensaje of mensajes) {
     await enviarMensaje(webhookUrl, mensaje);
   }
+}
+
+// alerta tecnica (corrida sospechosa, error critico): un solo mensaje simple
+export async function notifyTecnico(webhookUrl, texto) {
+  if (!webhookUrl) {
+    console.log("DISCORD_WEBHOOK_URL no configurado, no se envia alerta tecnica.");
+    return;
+  }
+  await enviarMensaje(webhookUrl, texto.slice(0, 1900));
 }

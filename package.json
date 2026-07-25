@@ -5,7 +5,8 @@
   "version": "1.0.0",
   "description": "Monitorea precios, stock y catalogo de samsung.com/cl y avisa por Discord cuando algo cambia.",
   "scripts": {
-    "run": "node src/run.mjs"
+    "run": "node src/run.mjs",
+    "test": "node --test"
   },
   "dependencies": {
     "playwright": "^1.48.0"
