@@ -1,3 +1,5 @@
+import { componerTitulo } from "./titulo.mjs";
+
 const CLP = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 
 function fmt(n) {
@@ -14,7 +16,8 @@ function variacion(anterior, nuevo) {
 }
 
 // Icono por categoria real de src/seed.json (nunca se usa para "Accesorios *"
-// porque esas categorias se filtran antes de llegar aca -- ver esAccesorio en run.mjs).
+// porque esas categorias se filtran antes de llegar aca -- ver esAccesorio en
+// src/catalogo.mjs, aplicado en run.mjs justo antes de llamar a notifyDiscord).
 const ICONO_CATEGORIA = {
   Smartphones: "📱",
   Tablets: "📱",
@@ -47,10 +50,25 @@ function iconoPara(categoria) {
   return ICONO_CATEGORIA[categoria] || ICONO_DEFAULT;
 }
 
+// El titulo va en negrita: un "*" o "_" que venga del sitio rompe el formato del
+// resto del mensaje (precios y links incluidos). Hoy ningun nombre del catalogo
+// los trae, pero el texto es de Samsung y puede cambiar en cualquier corrida.
+// La barra invertida va PRIMERO en la clase y en la misma pasada: es el propio
+// caracter de escape, y un nombre terminado en "\" convertia el ** de cierre en
+// un asterisco literal -- la negrita no cerraba y se arrastraba el precio, el
+// link y los productos siguientes del mismo mensaje. El pipe tambien se escapa
+// porque "||texto||" es un spoiler en Discord (oculta el resto de la linea).
+function escaparMarkdown(texto) {
+  return texto.replace(/([\\*_`~|])/g, "\\$1");
+}
+
 function lineFor(change) {
-  const nombre = change.nombre || change.modelo;
   const icono = iconoPara(change.categoria);
-  const titulo = `${icono} **${nombre}** (${change.modelo})`;
+  // el titulo ahora incluye las caracteristicas de la variante (capacidad, RAM,
+  // color...) y el SKU sigue visible al final: es el unico identificador estable
+  const nombre = escaparMarkdown(componerTitulo(change));
+  const sku = change.modelo || "sin SKU";
+  const titulo = `${icono} **${nombre}** (${sku})`;
   const link = change.url ? `\n　🔗 ${change.url}` : "";
   switch (change.tipo) {
     case "nuevo":

@@ -18,6 +18,7 @@
 //  - un cambio de stock solo se notifica tras verse igual 2 corridas seguidas
 //    (el detector de stock lee texto de la pagina y puede parpadear).
 //  - un producto que reaparece tras ausencia corta NO se re-anuncia como nuevo.
+import { normalizar } from "./titulo.mjs";
 
 export const UMBRAL_AUSENCIAS = 2;
 
@@ -25,6 +26,48 @@ function stockObservado(disponible) {
   if (disponible === true) return "disponible";
   if (disponible === false) return "agotado";
   return null; // desconocido (ej. variante de familia sin dato de stock)
+}
+
+// Datos que el mensaje de Discord necesita para armar el titulo legible del
+// producto (ver src/titulo.mjs). Van juntos en una sola funcion para que ningun
+// tipo de cambio se quede sin ellos y termine imprimiendo "undefined": los seis
+// tipos de cambio se arman en seis lugares distintos de este archivo.
+// NADA de esto participa en decidir que cambio: la identidad es el SKU.
+//
+// CADA cambio se escribe tambien como una linea de data/history.jsonl, que esta
+// en git y en un repo publico, asi que se manda lo minimo que cambia un titulo:
+//  - los campos vacios se omiten (componerTitulo trata igual null y ausente);
+//  - "paginaOrigen" solo cuando difiere de "url": en 966 de 969 registros reales
+//    son el mismo string y componerTitulo ya cae a url cuando falta;
+//  - "subcategoria" no se manda: probado sobre los 969 registros, quitarla no
+//    cambia NINGUN titulo (CATEGORIAS_CON_TAMANO ya calza con la categoria sola).
+// Medido sobre los 971 eventos que genera el catalogo real: mandar los 5 campos
+// siempre costaba +202 bytes por evento (x1,66 el archivo) y en un dia malo
+// (4.483 eventos) eran ~900 KB en un solo commit; asi son +15 bytes (x1,05),
+// y se verifico que los 971 titulos salen identicos con el payload liviano.
+function paraTitulo(rec) {
+  const datos = {};
+  for (const campo of ["nombre", "variante", "nombreFamilia", "especificaciones"]) {
+    const valor = rec?.[campo];
+    if (valor !== null && valor !== undefined) datos[campo] = valor;
+  }
+  if (rec?.paginaOrigen && rec.paginaOrigen !== rec.url) datos.paginaOrigen = rec.paginaOrigen;
+  return datos;
+}
+
+// Samsung expone dos nombres para el MISMO SKU segun por donde se lo vea: el del
+// JSON-LD de la pagina familia trae la variante ("Galaxy Z Fold7 256 GB｜12 GB
+// Azul Intenso") y el digitalData de la pagina individual no ("Galaxy Z Fold7").
+// Si el nombre nuevo es el anterior recortado, se conserva el anterior: sin esto
+// el mismo producto se anunciaba con color una corrida y sin color la siguiente,
+// segun por que camino se lo vio (17 SKU medidos haciendolo de verdad).
+// No toca la identidad: quien decide que es "el mismo producto" sigue siendo el SKU.
+function nombreMasInformativo(nuevo, anterior) {
+  if (!nuevo) return anterior ?? null;
+  if (!anterior) return nuevo;
+  const n = normalizar(nuevo);
+  const a = normalizar(anterior);
+  return n !== a && a.startsWith(`${n} `) ? anterior : nuevo;
 }
 
 export function comparar({ previo, observado, paginasFallidas, corridaConfiable, timestamp }) {
@@ -45,7 +88,7 @@ export function comparar({ previo, observado, paginasFallidas, corridaConfiable,
         notificadoDesaparecido: false,
         ultimaVezVisto: timestamp,
       };
-      cambios.push({ tipo: "nuevo", modelo, nombre: obs.nombre, precio: obs.precio, categoria: obs.categoria, url: obs.url });
+      cambios.push({ tipo: "nuevo", modelo, ...paraTitulo(obs), precio: obs.precio, categoria: obs.categoria, url: obs.url });
       continue;
     }
 
@@ -56,9 +99,19 @@ export function comparar({ previo, observado, paginasFallidas, corridaConfiable,
         ? ant.categoria
         : obs.categoria;
 
+    // el spread de obs sobre ant pisa TODO lo que obs traiga, incluidos los
+    // nulos: si esta corrida el SKU se observo desde una pagina familia (sin
+    // fila en el listado) se perderia la variante y el titulo cambiaria de una
+    // corrida a otra. 39 SKU estan expuestos a ese vaiven y 17 lo hicieron de
+    // verdad, asi que los datos de presentacion se conservan si el nuevo es vacio
+    // (y el nombre, ademas, cuando el nuevo es el mismo nombre pero recortado).
     const rec = {
       ...ant,
       ...obs,
+      nombre: nombreMasInformativo(obs.nombre, ant.nombre),
+      variante: obs.variante ?? ant.variante ?? null,
+      nombreFamilia: obs.nombreFamilia ?? ant.nombreFamilia ?? null,
+      especificaciones: obs.especificaciones ?? ant.especificaciones ?? null,
       categoria,
       presencia: "activo",
       ausencias: 0,
@@ -68,7 +121,7 @@ export function comparar({ previo, observado, paginasFallidas, corridaConfiable,
 
     let yaAnunciado = false;
     if (ant.notificadoDesaparecido) {
-      cambios.push({ tipo: "recuperado", modelo, nombre: rec.nombre, precio: rec.precio, categoria, url: rec.url });
+      cambios.push({ tipo: "recuperado", modelo, ...paraTitulo(rec), precio: rec.precio, categoria, url: rec.url });
       yaAnunciado = true;
     }
 
@@ -77,13 +130,13 @@ export function comparar({ previo, observado, paginasFallidas, corridaConfiable,
     const precioAnt = ant.precio;
     if (!Number.isFinite(precioAnt) && Number.isFinite(obs.precio)) {
       if (!yaAnunciado) {
-        cambios.push({ tipo: "nuevo", modelo, nombre: rec.nombre, precio: obs.precio, categoria, url: rec.url });
+        cambios.push({ tipo: "nuevo", modelo, ...paraTitulo(rec), precio: obs.precio, categoria, url: rec.url });
       }
     } else if (Number.isFinite(precioAnt) && Number.isFinite(obs.precio) && precioAnt !== obs.precio) {
       cambios.push({
         tipo: obs.precio < precioAnt ? "baja" : "sube",
         modelo,
-        nombre: rec.nombre,
+        ...paraTitulo(rec),
         precio: obs.precio,
         precioAnterior: precioAnt,
         categoria,
@@ -102,7 +155,7 @@ export function comparar({ previo, observado, paginasFallidas, corridaConfiable,
         cambios.push({
           tipo: "stock",
           modelo,
-          nombre: rec.nombre,
+          ...paraTitulo(rec),
           disponible: stockObs === "disponible",
           disponibleAnterior: comprometido === "disponible",
           precio: rec.precio,
@@ -135,7 +188,7 @@ export function comparar({ previo, observado, paginasFallidas, corridaConfiable,
     const ausencias = (ant.ausencias ?? 0) + 1;
     if (ausencias >= UMBRAL_AUSENCIAS && !ant.notificadoDesaparecido) {
       catalogo[modelo] = { ...ant, presencia: "desaparecido", ausencias, notificadoDesaparecido: true };
-      cambios.push({ tipo: "desaparecido", modelo, nombre: ant.nombre, precioAnterior: ant.precio, categoria: ant.categoria, url: ant.url });
+      cambios.push({ tipo: "desaparecido", modelo, ...paraTitulo(ant), precioAnterior: ant.precio, categoria: ant.categoria, url: ant.url });
     } else {
       catalogo[modelo] = {
         ...ant,

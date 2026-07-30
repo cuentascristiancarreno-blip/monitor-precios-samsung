@@ -7,7 +7,9 @@ Revisa el precio, stock y catálogo de los productos de samsung.com/cl y avisa p
 - `src/seed.json`: el listado base de ~1023 productos/variantes (viene del Excel que armaste).
 - `src/discover.mjs`: antes de cada revisión, además busca automáticamente páginas "familia" (como el Galaxy S25, donde una sola página agrupa todos los colores y capacidades) que no estaban en el listado.
 - `src/run.mjs`: revisa cada página (con un reintento para las que fallan), detecta si la corrida completa es confiable, y delega la comparación.
+- `src/catalogo.mjs`: arma el catálogo de la corrida (un producto por SKU) y decide qué categorías no se notifican. La identidad de un producto es **siempre su SKU**: el nombre nunca influye en si algo se considera nuevo, desaparecido o cambiado.
 - `src/comparar.mjs`: la lógica que decide qué cambió y qué se notifica (ver reglas abajo). Es un módulo puro con pruebas automatizadas.
+- `src/titulo.mjs`: arma el título legible de cada producto agregándole las características que lo distinguen (capacidad, RAM, color, pulgadas), porque el nombre que publica Samsung es igual para todas las variantes ("Galaxy S26 Ultra (Exclusivo en Samsung.com)" son 4 productos distintos). No hace **ninguna consulta extra** al sitio: las características salen de la misma página que ya se carga para leer el precio (Samsung las publica por código de modelo), más el listado y la dirección de la página como respaldo. Ejemplo real: `Galaxy S26 Ultra (Exclusivo en Samsung.com) · 256GB · 12GB RAM · Oro rosa`.
 - `src/discord.mjs`: arma y envía los avisos (íconos por categoría, link por producto, antes/después con diferencia en pesos y %).
 - `data/latest.json`: catálogo con el último estado conocido de cada producto (precio, stock confirmado, presencia). El historial git de este archivo es el snapshot completo de cada revisión.
 - `data/history.jsonl`: eventos de cambio (una línea por cambio detectado, con campo `tipo`).

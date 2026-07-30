@@ -65,3 +65,158 @@ Resultado de la corrida real de validación (run 30141264929, commit 2841a05):
 - Cambios reales detectados y notificados: 17 bajas de precio legítimas
   (ej. Galaxy Tab S10 con ~10% de descuento) + 1 producto nuevo.
 - Corrida marcada confiable:true; pruebas 26/26 también en CI.
+
+---
+
+# Títulos con variante — 2026-07-29
+
+**Pedido del operador:** una notificación decía
+`Galaxy S26 Ultra (Exclusivo en Samsung.com) (SM-S948BZDJLTL)` y no permitía
+saber qué variante era (ese SKU es 256GB Pink Gold). Cada título debe incluir
+producto, modelo y características clave.
+
+**Causa:** `digitalData.displayName`, el nombre de las páginas individuales, no
+trae variante. Medido: 144 de 592 productos notificables (24,3%) compartían
+título con otro; 4 SKU distintos se llamaban igual. El campo `variante` del
+listado (`src/seed.json`) existía pero `run.mjs` no lo copiaba al registro.
+
+**Cambio:**
+- `src/titulo.mjs` (nuevo, puro): compone `nombre · tamaño · almacenamiento ·
+  RAM · color · CPU`. Fuentes en orden: diccionario por SKU (`especificaciones`,
+  slot listo y sin conectar) → slug de `paginaOrigen` → nombre del JSON-LD de la
+  página familia (solo capacidades) → `seed.variante`. Nunca repite lo que el
+  nombre ya dice (comparación sin acentos, con límite de palabra y con los
+  equivalentes en castellano), limpia el ruido (`<br>`, `｜`, tabuladores,
+  paréntesis vacíos, placeholders `—`) y es idempotente.
+- `src/catalogo.mjs` (nuevo): `integrarVariantes` + `esAccesorio`, salidos de
+  `run.mjs` para poder probarlos. La unión con el listado es por URL (el campo
+  `modelo` del seed está derivado del slug y no es el SKU real).
+- `src/comparar.mjs`: los seis tipos de cambio llevan los datos del título, y el
+  merge conserva variante/nombre si la corrida los observa vacíos.
+- `src/discord.mjs`: usa el título compuesto, escapa markdown y mantiene el SKU
+  entre paréntesis.
+
+**Resultado medido sobre `data/latest.json` (969 productos):** títulos
+compartidos entre notificables 144 → 22 (los 22 restantes no son distinguibles
+con los datos disponibles: pares LTE/Bluetooth con el mismo slug, 4 pares de
+línea blanca con nombre idéntico y The Wall). 0 contradicciones de color, 0
+títulos que repiten información que el nombre ya traía. Título promedio
+43,8 → 48,8 caracteres, sin cambio en la cantidad de mensajes. Pruebas
+26 → 82, todas verdes.
+
+**Costo en disco (medido, no estimado):**
+- `data/latest.json`: 699 KB → 746 KB, **+46,5 KB por snapshot (+6,7%)** — no el
+  +4% que decía la primera versión de este informe. `variante` y `nombreFamilia`
+  se escriben siempre, incluso en null, para que el esquema quede uniforme;
+  `nombreFamilia` son 24 KB de esos 46,5.
+- `data/history.jsonl` (append-only, ya pesa 9 MB, va en git): cada evento lleva
+  solo los campos que de verdad cambian un título, así que el sobrecosto es
+  **+15 bytes por evento (x1,05)**. La primera versión mandaba 5 campos siempre y
+  costaba +202 bytes por evento (x1,66): en un día malo como el 23/07 (4.483
+  eventos) eso eran ~900 KB en un solo commit. Verificado que el payload liviano
+  no cambia ningún título: 0 de 971.
+
+**Lo que se descartó con medición:** los kg del slug (contradicen al nombre:
+`DV90TA040BE/ZS` se llama "Secadora 9Kg" y su slug dice `8kg`); las pulgadas
+fuera de pantallas (el slug del refrigerador Family Hub aportaba 32"); el color
+del slug en bundles con dos colores; y las líneas de especificación de las
+reseñas, que están agregadas por modelo y no por SKU.
+
+## Arreglos de la auditoría adversarial del mismo día
+
+Tres revisiones independientes encontraron 14 defectos sobre la versión anterior
+de este cambio (ninguno crítico ni alto). Arreglados, con una prueba nueva cada
+uno:
+
+- **Información repetida en el título (3 + 1 + 3 productos notificables).** El
+  nombre abrevia lo que el título agregaba: "i5" no calzaba con el patrón
+  "core i5" y "16G" no calzaba con "16GB", así que se repetían CPU y memoria
+  (`Galaxy Book3 Pro (16", i7, 16G) · 512GB · 16GB RAM · Core i7`). Y Samsung
+  Chile traduce "Glam Deep Charcoal" como "Grafito", así que 3 lavadoras decían
+  el mismo color en dos idiomas. Ahora los patrones aceptan la forma corta y
+  "grafito" cuenta como charcoal. Medido: 0 títulos redundantes en los 969.
+- **Separador sobrecargado.** El pipe del JSON-LD (`｜`) se traducía al mismo
+  ` · ` que separa las características, así que no se distinguía el nombre de la
+  variante: `Galaxy Z Fold7 256 GB · 12 GB Azul Intenso` parecía traer dos
+  capacidades. Ahora el pipe va a ` / ` y ` · ` queda reservado para lo que
+  agrega `titulo.mjs`.
+- **Color inventado desde el listado.** `seed.variante` tiene filas con el color
+  mal extraído ("Red" sacado de "Wired", "Blue" de "Bluetooth"): eran los 3
+  únicos casos en que el listado cambiaba un título y los 3 estaban mal. Se
+  descartan cuando la palabra aparece dentro de otra palabra del nombre.
+- **Negrita sin cerrar en Discord.** `escaparMarkdown` no escapaba la barra
+  invertida, que es su propio carácter de escape: un nombre terminado en `\`
+  dejaba el `**` de cierre como asterisco literal y se arrastraba el precio, el
+  link y los productos siguientes del mismo mensaje. Hoy ningún nombre trae
+  barras, pero el texto es de Samsung. También se escapa el pipe (spoilers).
+- **Dos fallas en el diccionario de especificaciones por SKU** (la fuente nº1,
+  todavía sin conectar): un color llamado `constructor`/`toString` hacía reventar
+  `notifyDiscord` y se perdían TODOS los avisos de la corrida; y un valor sin
+  nada alfanumérico (`★★`) no se podía deduplicar y se repetía en cada pasada.
+  Corregidas antes de conectar la fuente, no después.
+- **Título inestable entre corridas.** El mismo SKU visto por su página
+  individual traía el nombre pobre y pisaba el nombre con variante de la página
+  familia, así que se anunciaba con color una corrida y sin color la siguiente.
+  Ahora, si el nombre nuevo es el anterior recortado, se conserva el anterior
+  (17 SKU lo hacían de verdad). La identidad sigue siendo el SKU: hay 2 pruebas
+  dedicadas a que esto no cree ni duplique productos.
+- **Peso de `history.jsonl`** (arriba): de +202 a +15 bytes por evento.
+- Comentario obsoleto en `discord.mjs`: `esAccesorio` se mudó a `catalogo.mjs`.
+
+**No se arreglaron, con motivo:** la ambigüedad que queda en 12 productos (no hay
+dato que los distinga sin requests extra: los pares de Galaxy Watch8 se
+diferencian por la AUSENCIA del token `bluetooth` en un slug, y ausencia no es
+evidencia — verificado que ningún par ambiguo tiene token `lte`); y la
+repetición de `nombreFamilia` con `nombre`, que es a propósito (es el respaldo
+para la corrida siguiente, cuando el mismo SKU se ve por su página individual y
+trae el nombre pobre — hay una prueba que lo demuestra).
+
+## Conexión de la fuente nº1: especificaciones por SKU (RAM incluida)
+
+El pedido del operador incluía la **RAM** y la versión anterior de este cambio la
+dejó pendiente: `titulo.mjs` aceptaba el diccionario `especificaciones` pero nadie
+lo llenaba, porque hacerlo exige tocar el mismo `page.evaluate` del que sale el
+PRECIO y el agente que implementó no podía verificarlo en vivo.
+
+**Verificado en vivo el 2026-07-29** (Playwright, ≥2 s entre requests, 8 páginas
+reales: smartphone flagship y gama media, tablet, reloj, notebook, TV, monitor,
+refrigerador y secadora) y conectado:
+
+- `src/extract.mjs` lee las especificaciones por SKU de **dos lugares del HTML que
+  ya está cargado para obtener el precio**, o sea **cero requests extra**:
+  el input oculto `#BV-buyingOptionData` (diccionario SKU → {Color, Almacenamiento,
+  RAM, …}) y el acordeón `.pdd32-product-spec` (única fuente de la RAM de celulares
+  y tablets: `Memoria_(GB)`). Medido: 1 a 34 ms por página (~0,3% de la corrida).
+  No se usa `page.content()` a propósito: medido 290 ms, 12 veces más caro.
+- En las páginas familia, que se resuelven con `fetch` plano sin navegador, el
+  mismo diccionario se lee del HTML descargado (`especificacionesDesdeHtml`), y
+  como incluye a **todos los SKU hermanos**, cada variante toma las suyas.
+- El precio nunca queda expuesto: la lectura va DESPUÉS de tener el precio y
+  envuelta en `.catch(() => null)`. Si Samsung cambia un selector, se pierde el
+  adorno del título, nunca el aviso de precio.
+- `filtrarEspecificacionesUtiles` (en `titulo.mjs`, única autoridad de la lista
+  blanca) guarda **solo 4 llaves canónicas** — `color`, `almacenamiento`, `ram`,
+  `tamano` — de las ~60 que publica cada página. Descarta el ruido que probé que
+  llega: `Velocidad CPU`, `Tamaño Pantalla Principal` (el largo en mm), `Color
+  delantero`, `Tamaño de la caja`. Guardar la llave canónica y no la de Samsung
+  evita el dato duplicado que medí en el TV (`tamaño` y `Tamaño de pantalla`).
+- **Memorias en MB descartadas:** el Galaxy Fit3 publica `Memory (MB): 16 MB` y
+  "16MB RAM" al lado de una pulsera de $49.990 confunde más de lo que informa.
+
+**Resultado en vivo, por el flujo completo (navegador → catálogo → mensaje):**
+
+| SKU | antes | ahora |
+|---|---|---|
+| SM-S948BZDJLTL | Galaxy S26 Ultra (Exclusivo en Samsung.com) | … · **256GB · 12GB RAM · Oro rosa** |
+| SM-S948BZSKLTL | Galaxy S26 Ultra (Exclusivo en Samsung.com) | … · **512GB · 12GB RAM · Sombra plateada** |
+| SM-A176BZKQLTL | Galaxy A17 5G | … · **256GB · 8GB RAM · Negro** |
+| SM-X133NZAAL07 | Galaxy Tab A11 | … · **64GB · 4GB RAM · Gris** |
+
+Los dos S26 Ultra tenían el título IDÉNTICO y ahora se distinguen solos. Además el
+color pasa a ser el oficial que Samsung muestra en su propia caja de compra ("Oro
+rosa", "Sombra plateada") en vez del que se deducía del slug.
+
+**Costo medido:** `data/latest.json` 683 KB → 786 KB, **+103 KB por snapshot
+(+15,1%, +109 bytes por producto)**. Se guarda a propósito: sin eso, los avisos de
+"ya no aparece" (donde el producto justamente no se puede volver a consultar)
+perderían las características. Pruebas 82 → 97, todas verdes.

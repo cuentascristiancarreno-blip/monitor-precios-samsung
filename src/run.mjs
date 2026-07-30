@@ -6,6 +6,7 @@ import { DELAY_MS, USER_AGENT } from "./config.mjs";
 import { discoverFamilyUrls } from "./discover.mjs";
 import { extractFamilyVariants, extractSingleProduct } from "./extract.mjs";
 import { comparar } from "./comparar.mjs";
+import { integrarVariantes, esAccesorio } from "./catalogo.mjs";
 import { notifyDiscord, notifyTecnico } from "./discord.mjs";
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -30,6 +31,9 @@ async function readJsonSafe(p, fallback) {
 //     del HTML plano -- barato, sin navegador.
 //  2) el resto (y las /buy/ que no traen ese JSON-LD, ej. Galaxy Book): el
 //     precio solo existe tras render real -> Playwright + digitalData.
+// Devuelve tambien POR CUAL camino se resolvio: los nombres del JSON-LD de la
+// pagina familia traen capacidad/RAM/color y sirven para el titulo, los de
+// digitalData no (ver src/titulo.mjs).
 async function procesarEntrada(entry, context, timeoutMs) {
   let variants = [];
   if (entry.url.endsWith("/buy/")) {
@@ -40,17 +44,17 @@ async function procesarEntrada(entry, context, timeoutMs) {
       // cae al camino del navegador
     }
   }
-  if (variants.length === 0) {
-    const page = await context.newPage();
-    try {
-      await page.goto(entry.url, { waitUntil: "load", timeout: timeoutMs });
-      const single = await extractSingleProduct(page, entry.url);
-      variants = single ? [single] : [];
-    } finally {
-      await page.close();
-    }
+  if (variants.length > 0) return { variants, via: "familia" };
+
+  const page = await context.newPage();
+  try {
+    await page.goto(entry.url, { waitUntil: "load", timeout: timeoutMs });
+    const single = await extractSingleProduct(page, entry.url);
+    variants = single ? [single] : [];
+  } finally {
+    await page.close();
   }
-  return variants;
+  return { variants, via: "individual" };
 }
 
 async function main() {
@@ -80,32 +84,16 @@ async function main() {
   const observado = {};
   let fallidas = [];
 
-  const integrar = (entry, variants) => {
-    for (const v of variants) {
-      if (!v.modelo) continue;
-      const existente = observado[v.modelo];
-      // si el modelo ya se capturo desde su pagina especifica, una pagina
-      // familia generica no le pisa la categoria/subcategoria
-      if (existente && !(existente.categoria || "").startsWith("Familia") && (entry.categoria || "").startsWith("Familia")) {
-        continue;
-      }
-      observado[v.modelo] = {
-        ...v,
-        categoria: entry.categoria,
-        subcategoria: entry.subcategoria,
-        paginaOrigen: entry.url,
-        ultimaRevision: timestamp,
-      };
-    }
-  };
+  const integrar = (entry, variants, via) =>
+    integrarVariantes(observado, entry, variants, { via, timestamp });
 
   const browser = await chromium.launch();
   const context = await browser.newContext({ userAgent: USER_AGENT });
   try {
     for (const entry of entries) {
       try {
-        const variants = await procesarEntrada(entry, context, 30000);
-        integrar(entry, variants);
+        const { variants, via } = await procesarEntrada(entry, context, 30000);
+        integrar(entry, variants, via);
         if (variants.length === 0) console.log(`INFO sin_precio ${entry.url}`);
       } catch (err) {
         console.error(`ERROR intento=1 ${entry.url}: ${err.message}`);
@@ -119,8 +107,8 @@ async function main() {
     const fallidasFinal = [];
     for (const entry of fallidas) {
       try {
-        const variants = await procesarEntrada(entry, context, 45000);
-        integrar(entry, variants);
+        const { variants, via } = await procesarEntrada(entry, context, 45000);
+        integrar(entry, variants, via);
         console.log(`INFO reintento_ok ${entry.url}`);
       } catch (err) {
         console.error(`ERROR intento=2 ${entry.url}: ${err.message}`);
@@ -186,7 +174,6 @@ async function main() {
   await appendFile(EJECUCIONES_PATH, JSON.stringify(resumen) + "\n");
   console.log(`INFO resumen ${JSON.stringify(resumen)}`);
 
-  const esAccesorio = (categoria) => (categoria || "").toLowerCase().startsWith("accesorio");
   const cambiosParaDiscord = cambios.filter((c) => !esAccesorio(c.categoria));
 
   const webhook = process.env.DISCORD_WEBHOOK_URL;
