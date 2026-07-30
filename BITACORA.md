@@ -220,3 +220,29 @@ rosa", "Sombra plateada") en vez del que se deducía del slug.
 (+15,1%, +109 bytes por producto)**. Se guarda a propósito: sin eso, los avisos de
 "ya no aparece" (donde el producto justamente no se puede volver a consultar)
 perderían las características. Pruebas 82 → 97, todas verdes.
+
+### Resultado medido de la corrida real de validación (run 30507200349, commit dfce212)
+
+Corrida completa el 2026-07-30, 132 min, 1168 páginas, 12 errores, 953 productos
+capturados, `confiable: true`.
+
+- **Cero cambios detectados de cualquier tipo.** Es el control de regresión más
+  importante: agregar campos nuevos a cada registro NO generó ni un aviso falso
+  de "nuevo" ni de "desaparecido". La identidad sigue siendo el SKU.
+- **867 de 969 productos (89,5%)** quedaron con especificaciones leídas del sitio;
+  **773 con el color oficial** y **108 con RAM** (los 108 son celulares, tablets y
+  notebooks: el resto de las categorías no tiene RAM que informar).
+- **Títulos compartidos entre notificables: 144 → 8** (se habían proyectado 22; la
+  fuente por SKU resolvió 14 casos más de los previstos). 0 títulos con basura
+  (`undefined`/`NaN`/`null`) sobre los 969.
+- Los 8 que quedan son 4 pares que Samsung publica con nombre y datos idénticos:
+  dos combos aspiradora+lavadora `Midnight Blue`, dos `The Wall All-in-One`, dos
+  `Galaxy Z Flip7` (entran por página familia, sin especificaciones propias) y dos
+  `Galaxy Watch8 (Bluetooth, 44 mm) · Plata` (se diferencian por LTE, dato que el
+  sitio no expone por SKU). En todos, el código de modelo entre paréntesis sigue
+  siendo el diferenciador.
+- **Costo real en disco:** `data/latest.json` 683,3 KB → 808,1 KB, **+124,8 KB
+  (+18,3%)** por snapshot. Es más que el +15,1% que estimé simulando, porque la
+  estimación asumía 3 llaves para todos y hay productos con 4.
+- Caso del operador verificado sobre el dato real de producción:
+  `Galaxy S26 Ultra (Exclusivo en Samsung.com) · 256GB · 12GB RAM · Oro rosa`.
