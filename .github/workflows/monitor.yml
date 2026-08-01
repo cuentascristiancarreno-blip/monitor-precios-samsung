@@ -20,13 +20,19 @@ on:
     - cron: "0 1 * * *"  # 22:00 Chile
   workflow_dispatch: {}
 
+# La concurrencia va a nivel de WORKFLOW, no de job: a nivel de job no impidio
+# que dos corridas se solaparan (medido: la corrida del 01-08 09:40 arranco 43 s
+# despues del commit de la anterior, o sea su checkout era mas viejo que ese
+# push). Dos corridas solapadas comparan contra un catalogo viejo y reenvian
+# avisos ya mandados.
+concurrency:
+  group: monitor-samsung
+  cancel-in-progress: false
+
 jobs:
   revisar:
     runs-on: ubuntu-latest
     timeout-minutes: 240
-    concurrency:
-      group: monitor-samsung
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -41,6 +47,13 @@ jobs:
 
       - run: npx playwright install --with-deps chromium
 
+      # El checkout puede ser mas viejo que el ultimo push de datos (el job queda
+      # encolado, o corre justo detras de otra corrida). Comparar contra un
+      # catalogo viejo hace que el monitor reenvie avisos ya mandados y que
+      # productos ya conocidos se anuncien como "nuevo".
+      - name: Traer el ultimo catalogo antes de comparar
+        run: git pull --ff-only origin main
+
       - name: Revisar precios
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -53,8 +66,10 @@ jobs:
           git add data/
           git diff --cached --quiet && echo "sin cambios que commitear" && exit 0
           git commit -m "chore: actualiza datos $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          # -X theirs: si un push de codigo llego durante la corrida y choca en
-          # los archivos de datos, gana la version recien generada (en rebase,
-          # "theirs" es el commit propio que se esta reaplicando)
-          git pull --rebase -X theirs origin main
+          # Antes esto usaba "-X theirs", que en archivos append-only
+          # (history.jsonl, ejecuciones.jsonl) resolvia el conflicto BORRANDO las
+          # lineas de la otra corrida: medido en el historial de git, hubo
+          # commits donde el archivo perdio lineas. Ahora los .jsonl se fusionan
+          # por union (ver .gitattributes) y el resto se rebasa normal.
+          git pull --rebase origin main
           git push

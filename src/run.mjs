@@ -4,9 +4,10 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { DELAY_MS, USER_AGENT } from "./config.mjs";
 import { discoverFamilyUrls } from "./discover.mjs";
-import { extractFamilyVariants, extractSingleProduct } from "./extract.mjs";
+import { extractFamilyVariants, extractSingleProduct, RE_API_PRODUCTOS } from "./extract.mjs";
 import { comparar } from "./comparar.mjs";
 import { integrarVariantes, esAccesorio } from "./catalogo.mjs";
+import { estaSilenciado, resumirSilenciados } from "./silenciados.mjs";
 import { notifyDiscord, notifyTecnico } from "./discord.mjs";
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -47,10 +48,21 @@ async function procesarEntrada(entry, context, timeoutMs) {
   if (variants.length > 0) return { variants, via: "familia" };
 
   const page = await context.newPage();
+  // Se escucha (sin pedir nada) la respuesta que la propia pagina le hace a la
+  // API de Samsung: es la unica fuente con el precio de CADA producto cuando una
+  // pagina expone varios. Cero requests extra.
+  const respuestasApi = [];
+  page.on("response", (res) => {
+    if (!RE_API_PRODUCTOS.test(res.url())) return;
+    res
+      .json()
+      .then((cuerpo) => respuestasApi.push(cuerpo))
+      .catch(() => {});
+  });
   try {
     await page.goto(entry.url, { waitUntil: "load", timeout: timeoutMs });
-    const single = await extractSingleProduct(page, entry.url);
-    variants = single ? [single] : [];
+    const salida = await extractSingleProduct(page, entry.url, respuestasApi);
+    variants = Array.isArray(salida) ? salida : salida ? [salida] : [];
   } finally {
     await page.close();
   }
@@ -174,7 +186,12 @@ async function main() {
   await appendFile(EJECUCIONES_PATH, JSON.stringify(resumen) + "\n");
   console.log(`INFO resumen ${JSON.stringify(resumen)}`);
 
-  const cambiosParaDiscord = cambios.filter((c) => !esAccesorio(c.categoria));
+  // El filtro de notificacion va DESPUES de escribir catalogo e historial: los
+  // productos filtrados siguen vigilados y con su historial de precios completo,
+  // solo se omite el mensaje de Discord (ver silenciados.mjs).
+  const silenciados = resumirSilenciados(cambios);
+  for (const [regla, n] of silenciados) console.log(`INFO silenciados regla=${regla} avisos=${n}`);
+  const cambiosParaDiscord = cambios.filter((c) => !esAccesorio(c.categoria) && !estaSilenciado(c));
 
   const webhook = process.env.DISCORD_WEBHOOK_URL;
   if (!corridaConfiable) {

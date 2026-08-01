@@ -246,3 +246,89 @@ capturados, `confiable: true`.
   estimación asumía 3 llaves para todos y hay productos con 4.
 - Caso del operador verificado sobre el dato real de producción:
   `Galaxy S26 Ultra (Exclusivo en Samsung.com) · 256GB · 12GB RAM · Oro rosa`.
+
+---
+
+# Ruido de avisos repetidos y lista de silencio — 2026-08-01
+
+**Pedido del operador:** "Hay productos como Book3 y sus variantes que siempre
+envían notificaciones, pero nunca tendrán stock o están obsoletos. ¿Qué otros
+están así? Ayúdame a decidir si mandarlos a una lista de no notificar."
+
+**La premisa era incorrecta, y se comprobó cargando las páginas.** El Book3 no
+está obsoleto: el 2026-08-01 su página responde 200 en su propia URL con precio
+$1.399.990 (Book3 Pro $1.999.990, S23 FE $679.990, Tab A9 $159.990, Watch Ultra
+$699.990). Los avisos repetidos eran **tres errores del monitor**:
+
+1. **Carrera con el precio (48 avisos).** Samsung no trae el precio en el HTML:
+   la página se lo pide a `api.shop.samsung.com`. Medido: el evento `load` ocurre
+   a los 739 ms y el precio llega a los 827 ms. El monitor leía en el medio y
+   encontraba el relleno `"0,0"` → `NaN` → "producto sin precio" → el SKU no
+   entraba al observado → 2 ausencias → "desapareció", y a la corrida siguiente
+   "reapareció".
+2. **Fichas fusionadas.** En páginas con varios productos,
+   `digitalData.product.model_code` viene con los códigos pegados
+   (`NP750QFG-KB2CL,NP750XFG-KB4CL`). 4 fichas así escondían **10 productos
+   reales**, 9 de ellos sin vigilancia individual, todos compartiendo UN precio.
+   Medido en vivo: la página del Book3 360 publica 4 precios distintos
+   ($1.399.990, $849.990, $749.990, $1.299.991) y el monitor guardaba uno.
+3. **Corridas que se pisan y borran historial.** El workflow usaba
+   `git pull --rebase -X theirs`, que en archivos append-only resuelve el
+   conflicto BORRANDO las líneas de la otra corrida. Verificado recorriendo el
+   historial de git: hay commits donde `history.jsonl` pierde líneas (22 en la
+   ventana medida). Además, una corrida que arranca con catálogo viejo reenvía
+   avisos ya mandados.
+
+**Los productos que SÍ están obsoletos son otros: 27** (24 monitores
+descontinuados + 3 páginas familia). Su firma es distinta y verificada: la página
+**redirige** fuera de su ficha (ej. a `/cl/tvs/all-tvs/`) y el precio nunca llega
+ni esperando 12 s. Y ya están en silencio: avisaron "desapareció" una vez y no
+volvieron a hacer ruido (43 avisos en total, ninguno nuevo). O sea: **lo obsoleto
+ya está callado y lo que hacía ruido estaba vivo.**
+
+**Decisiones del operador (2026-08-01):** aplicar los 3 arreglos en orden;
+limpiar antes de separar las fichas para no emitir avisos falsos; dejar los 24
+monitores descontinuados como están; y **silenciar Book3 y todas sus variantes
+hasta nuevo aviso**.
+
+## Cambios aplicados
+
+- `src/silenciados.mjs` (nuevo): reglas de silencio por nombre y por código de
+  modelo. Book3 queda silenciado por `/\bbook\s*3\b/i` más los prefijos
+  `NP730QFG|NP750QFG|NP750XFG|NP960XFG|NP960QFG|NP940XFG` (estos últimos cubren
+  los SKU que aparecen al separar las fichas, cuyo nombre puede no decir
+  "Book3"). Probado que NO alcanza a Book2, Book4, Book5 ni Book 6.
+  El filtro se aplica en `run.mjs` DESPUÉS de escribir catálogo e historial: el
+  producto se sigue vigilando y su historial de precios se sigue guardando, solo
+  se omite el mensaje. Para reactivarlo basta borrar la regla.
+- `src/extract.mjs`: espera hasta 8 s a que el precio llegue (acepta coma
+  decimal); y si la página identifica un producto pero el precio nunca llega,
+  **lanza** en vez de dar el producto por inexistente, para que la página cuente
+  como fallida y `comparar()` conserve el último dato bueno. Un producto dado de
+  baja de verdad no llega ahí: su página redirige y ya no trae `model_code`.
+- `src/extract.mjs` + `src/run.mjs`: las páginas con varios productos emiten un
+  registro por SKU, con su propio precio, tomado de la respuesta que **la propia
+  página ya le pide** a la API de Samsung (se escucha con `page.on("response")`:
+  cero requests extra, no cambia la carga sobre el sitio). Si esa respuesta no
+  llega, la página se trata como fallida en vez de volver a guardar una ficha
+  fusionada.
+- `.github/workflows/monitor.yml`: `concurrency` pasa a nivel de workflow (a
+  nivel de job no impidió el solape), `git pull --ff-only` antes de comparar, y
+  se quita `-X theirs`.
+- `.gitattributes` (nuevo): `merge=union` para los `.jsonl`, que es lo correcto
+  en archivos que solo crecen.
+- `data/latest.json`: se borraron a mano las 4 fichas fusionadas en este mismo
+  commit, para que su desaparición no genere avisos falsos.
+
+**Verificación en vivo (página real del Book3 360 + una de control):** la ficha
+fusionada se separó en `NP750QFG-KB2CL` ($1.399.990) y `NP750XFG-KB4CL`
+($849.990), y el log confirma `INFO silenciados regla=book3 avisos=2` — o sea los
+dos avisos existieron, quedaron en el historial y NO se enviaron a Discord.
+Pruebas 97 → 115, todas verdes.
+
+**Lo que el operador va a ver una vez:** al separarse las fichas aparecen 9
+productos que antes estaban escondidos. 3 son Book3 (silenciados) y **6 son
+tablets reales** (Tab A9, Tab A9 Plus, Tab S9 FE en sus 4 variantes) que van a
+anunciarse como "producto nuevo" en la primera corrida. No son avisos falsos: son
+productos que hasta hoy nadie vigilaba individualmente y ahora tienen su propio
+precio bajo seguimiento.

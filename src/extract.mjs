@@ -141,7 +141,73 @@ export function especificacionesDesdeHtml(html, sku) {
   }
 }
 
-export async function extractSingleProduct(page, url) {
+// Samsung NO trae el precio en el HTML: la pagina se lo pide a
+// api.shop.samsung.com y hasta que responde, digitalData.model_price vale el
+// relleno "0,0" (un cero por cada producto que la pagina agrupa). Medido: el
+// evento "load" ocurre a los 739 ms y el precio llega a los 827 ms -- 88 ms
+// tarde. Leer sin esperar hacia que el producto se diera por inexistente, y a
+// las 2 corridas se anunciaba "desaparecido" (el ciclo del Book3: 48 avisos
+// falsos). El numero tambien puede venir con coma decimal.
+const PRECIO_TIMEOUT_MS = 8000;
+
+function aNumero(valor) {
+  return Number(String(valor ?? "").replace(",", "."));
+}
+
+// Hay paginas que exponen VARIOS productos a la vez. En esas,
+// digitalData.product.model_code viene con los codigos pegados
+// ("NP750QFG-KB2CL,NP750XFG-KB4CL") y displayName con los nombres separados por
+// ";". Guardar eso como un solo producto significa vigilar 2 a 4 equipos con un
+// unico precio: medido, 4 fichas asi escondian 10 productos reales, y la pagina
+// del Book3 360 publica 4 precios distintos ($1.399.990, $849.990, $749.990 y
+// $1.299.991) de los que el monitor guardaba uno.
+export const RE_API_PRODUCTOS = /tokocommercewebservices.*\/products/i;
+
+/**
+ * Indexa por SKU las respuestas que la PROPIA pagina le pide a la API de
+ * Samsung. No se hace ningun request extra: run.mjs solo escucha lo que el
+ * navegador ya recibe, asi que no cambia la carga sobre el sitio.
+ */
+export function productosDesdeApi(respuestas) {
+  const porCodigo = new Map();
+  for (const cuerpo of respuestas ?? []) {
+    const lista = cuerpo?.products ?? cuerpo?.productList ?? (Array.isArray(cuerpo) ? cuerpo : null);
+    if (!Array.isArray(lista)) continue;
+    for (const p of lista) {
+      const codigo = p?.code ?? p?.sku;
+      if (!codigo) continue;
+      const precio = aNumero(p?.price?.value ?? p?.priceValue ?? p?.price);
+      if (!Number.isFinite(precio) || precio <= 0) continue;
+      // la primera respuesta con precio valido gana (algunas llegan sin precio)
+      if (!porCodigo.has(codigo)) porCodigo.set(codigo, { precio });
+    }
+  }
+  return porCodigo;
+}
+
+/**
+ * Devuelve UN registro, o un ARRAY de registros cuando la pagina expone varios
+ * productos (ver mas abajo). run.mjs normaliza ambos casos.
+ * @param respuestasApi cuerpos JSON que la pagina ya le pidio a la API de
+ *   Samsung, capturados por run.mjs. Sin ellos, una pagina con varios productos
+ *   se trata como fallida en vez de guardar una ficha fusionada.
+ */
+export async function extractSingleProduct(page, url, respuestasApi = []) {
+  try {
+    await page.waitForFunction(
+      () => {
+        const p = window.digitalData?.product?.model_price;
+        const n = Number(String(p ?? "").replace(",", "."));
+        return Number.isFinite(n) && n > 0;
+      },
+      { timeout: PRECIO_TIMEOUT_MS },
+    );
+  } catch {
+    // se agoto la espera: puede ser un producto realmente dado de baja (los
+    // monitores descontinuados dejan model_price en "" para siempre) o una
+    // pagina lenta. Quien decide es el bloque de abajo, con el dato en mano.
+  }
+
   const digitalData = await page.evaluate(() => {
     try {
       return window.digitalData?.product ?? null;
@@ -150,11 +216,19 @@ export async function extractSingleProduct(page, url) {
     }
   });
 
-  const precio = digitalData ? Number(digitalData.model_price) : NaN;
+  const precio = digitalData ? aNumero(digitalData.model_price) : NaN;
   if (!digitalData || !Number.isFinite(precio) || precio <= 0) {
-    // pagina sin precio (categoria/descontinuada), o el propio Samsung trae
-    // "NaN" como model_price (visto en productos "combo"/bundle) -- en
-    // ambos casos se trata como "sin precio", nunca se guarda un numero invalido.
+    // Si la pagina IDENTIFICA un producto pero su precio no llego, no hay
+    // evidencia de que el producto no exista: lo mas probable es que la pagina
+    // haya tardado. Se lanza para que run.mjs cuente la pagina como fallida y
+    // comparar() conserve el ultimo dato bueno en vez de contar una ausencia.
+    // Un producto REALMENTE dado de baja no llega aca: su pagina redirige a la
+    // categoria y digitalData ya no trae model_code.
+    if (digitalData?.model_code) {
+      throw new Error(`precio no disponible tras ${PRECIO_TIMEOUT_MS} ms (model_code=${digitalData.model_code})`);
+    }
+    // sin producto identificable: pagina de categoria, redireccion de baja, o el
+    // "NaN" que el propio Samsung publica en algunos combos.
     return null;
   }
 
@@ -162,6 +236,39 @@ export async function extractSingleProduct(page, url) {
   const disponible = !STOCK_NEGATIVO.test(bodyText);
 
   const modelo = digitalData.model_code || null;
+  const codigos = String(modelo ?? "")
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  // pagina con varios productos: se emite uno por SKU, con SU precio y SUS
+  // especificaciones (el diccionario del buy-box tambien esta indexado por SKU)
+  if (codigos.length > 1) {
+    const porCodigo = productosDesdeApi(respuestasApi);
+    const nombres = String(digitalData.displayName ?? "").split(";").map((n) => n.trim());
+    const salida = [];
+    for (const [i, codigo] of codigos.entries()) {
+      const datos = porCodigo.get(codigo);
+      // sin precio propio no se inventa nada: ese SKU simplemente no se emite
+      if (!datos) continue;
+      const espec = await leerEspecificaciones(page, codigo).catch(() => null);
+      salida.push({
+        modelo: codigo,
+        nombre: nombres[i] || nombres[0] || null,
+        precio: datos.precio,
+        moneda: "CLP",
+        disponible,
+        url,
+        especificaciones: filtrarEspecificacionesUtiles(espec),
+      });
+    }
+    if (salida.length > 0) return salida;
+    // no se pudo separar (la API no respondio): se trata como pagina fallida
+    // para que los productos conserven su ultimo dato bueno, en vez de guardar
+    // otra vez una ficha fusionada con un precio que no se sabe de cual es.
+    throw new Error(`pagina con varios productos sin datos por SKU (model_code=${modelo})`);
+  }
+
   // El precio ya esta a salvo en este punto: si la lectura de especificaciones
   // fallara (selector que Samsung cambie, HTML raro), el .catch la deja en null y
   // la corrida sigue con el titulo que se pueda armar del slug. Nunca puede

@@ -1,0 +1,7 @@
+# Los .jsonl de datos son append-only: cada corrida agrega lineas al final y
+# nunca modifica las anteriores. Ante un conflicto, lo correcto es CONSERVAR LAS
+# DE AMBAS corridas, no elegir un lado. Sin esto, el workflow resolvia con
+# "-X theirs" y borraba las lineas de la otra corrida (medido en el historial de
+# git: hubo commits donde history.jsonl perdio lineas).
+data/history.jsonl merge=union
+data/ejecuciones.jsonl merge=union
