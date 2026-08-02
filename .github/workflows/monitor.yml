@@ -32,7 +32,11 @@ concurrency:
 jobs:
   revisar:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    # 330 min es red de seguridad, no el objetivo (la corrida normal tarda
+    # 130-175 min). Con 240 min una corrida lenta se pasaba y GitHub la mataba
+    # SIN dejar datos ni avisos: peor una corrida larga que una muerta.
+    # Incidente del 2026-08-02, ver BITACORA.md.
+    timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
 

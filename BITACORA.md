@@ -332,3 +332,38 @@ tablets reales** (Tab A9, Tab A9 Plus, Tab S9 FE en sus 4 variantes) que van a
 anunciarse como "producto nuevo" en la primera corrida. No son avisos falsos: son
 productos que hasta hoy nadie vigilaba individualmente y ahora tienen su propio
 precio bajo seguimiento.
+
+## Incidente 2026-08-02: el monitor estuvo ~15 h sin completar una revisión
+
+**Causado por el arreglo del día anterior (regresión propia, no de Samsung).**
+
+Qué pasó: la espera de precio se aplicaba a TODAS las páginas sin precio válido, y
+además hacía `throw`, lo que las mandaba al reintento. Hay ~150 páginas que
+legítimamente nunca publican precio (accesorios: filtros, kits). Medido en vivo:
+esas páginas tardan ~30 s en disparar `load`, así que cada una pasó a costar
+~37 s **dos veces** (intento + reintento) ≈ 92 min extra. La corrida se pasó del
+límite de 240 min del job y **GitHub la mató sin dejar datos ni avisos**. Las
+corridas programadas siguientes hicieron lo mismo o quedaron canceladas por la
+concurrencia, así que ninguna completó entre las 00:43 y las 15:48 UTC.
+
+Cómo se detectó: la corrida de validación figuraba `cancelled` exactamente a las
+4 h de arrancar el job (00:43:20Z → 04:43:36Z), la firma del timeout.
+
+Arreglos:
+- `PRECIO_TIMEOUT_MS` 8000 → **3000 ms** (34 veces la carrera medida de 88 ms).
+- El `throw` protector ahora es **selectivo**: solo cuando el precio parece estar
+  cargando, señal medida = relleno con coma (`"0,0"`, lo que publica una página
+  multi-producto mientras espera a la API — el caso del Book3). Las páginas que
+  simplemente no tienen precio traen un valor permanente (`"NaN"` en el filtro de
+  purificador, `"0"` en el kit receptor) y vuelven a devolver `null` sin lanzar y
+  **sin reintento**.
+- `timeout-minutes` 240 → **330** como red de seguridad: es preferible una
+  corrida larga que una muerta.
+
+Verificado en vivo tras el arreglo: el filtro y el kit devuelven `null` sin
+lanzar; el Book3 360 se separa en `NP750QFG-KB2CL` ($1.399.990) y
+`NP750XFG-KB4CL` ($849.990) en 1,0 s; el S26 Ultra sigue normal ($1.199.990).
+Pruebas 115 → 116.
+
+**Lección:** un cambio que agrega espera hay que medirlo contra el PEOR caso del
+catálogo (páginas lentas sin precio), no contra el caso que se está arreglando.

@@ -148,7 +148,12 @@ export function especificacionesDesdeHtml(html, sku) {
 // tarde. Leer sin esperar hacia que el producto se diera por inexistente, y a
 // las 2 corridas se anunciaba "desaparecido" (el ciclo del Book3: 48 avisos
 // falsos). El numero tambien puede venir con coma decimal.
-const PRECIO_TIMEOUT_MS = 8000;
+// 3 s es 34 veces la carrera medida (88 ms) y mantiene la corrida bajo el limite
+// de 4 h del job. Con 8 s la corrida se pasaba de las 4 h y GitHub la mataba
+// SIN dejar datos ni avisos: hay ~150 paginas que legitimamente no publican
+// precio (accesorios, kits) y cada una pagaba la espera completa DOS veces, por
+// la espera mas el reintento. Incidente del 2026-08-02, ver BITACORA.md.
+const PRECIO_TIMEOUT_MS = 3000;
 
 function aNumero(valor) {
   return Number(String(valor ?? "").replace(",", "."));
@@ -218,13 +223,16 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
 
   const precio = digitalData ? aNumero(digitalData.model_price) : NaN;
   if (!digitalData || !Number.isFinite(precio) || precio <= 0) {
-    // Si la pagina IDENTIFICA un producto pero su precio no llego, no hay
-    // evidencia de que el producto no exista: lo mas probable es que la pagina
-    // haya tardado. Se lanza para que run.mjs cuente la pagina como fallida y
-    // comparar() conserve el ultimo dato bueno en vez de contar una ausencia.
-    // Un producto REALMENTE dado de baja no llega aca: su pagina redirige a la
-    // categoria y digitalData ya no trae model_code.
-    if (digitalData?.model_code) {
+    // Solo se protege (lanzando, para que la pagina cuente como fallida) cuando
+    // el precio TODAVIA parece estar cargando. La marca medida en vivo es un
+    // relleno con coma -- "0,0" es lo que publica una pagina multi-producto
+    // mientras espera a api.shop.samsung.com, y es justo el caso del Book3.
+    // Las paginas que simplemente NO tienen precio traen un valor permanente
+    // ("NaN" en el filtro de purificador, "0" en el kit receptor) y devuelven
+    // null como siempre: sin lanzar y sin reintento, que era lo que hacia que
+    // la corrida se pasara de las 4 h.
+    const pareceCargando = /,/.test(String(digitalData?.model_price ?? ""));
+    if (digitalData?.model_code && pareceCargando) {
       throw new Error(`precio no disponible tras ${PRECIO_TIMEOUT_MS} ms (model_code=${digitalData.model_code})`);
     }
     // sin producto identificable: pagina de categoria, redireccion de baja, o el

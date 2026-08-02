@@ -71,13 +71,25 @@ test("acepta el precio con coma decimal", async () => {
   assert.equal(r.precio, 1399990);
 });
 
-test("si la pagina identifica el producto pero el precio nunca llega, LANZA (no lo da por inexistente)", async () => {
+test("si el precio sigue en el relleno '0,0' (cargando), LANZA para proteger al producto", async () => {
   const page = paginaConPrecio(["0,0"]);
   await assert.rejects(
     () => extractSingleProduct(page, "https://x/p"),
     /precio no disponible/,
     "debe lanzar para que la pagina cuente como fallida y el producto quede protegido",
   );
+});
+
+test("una pagina que NUNCA publica precio devuelve null rapido, sin lanzar ni reintentar", async () => {
+  // valores reales medidos el 2026-08-02: el filtro de purificador publica "NaN"
+  // y el kit receptor "0", de forma permanente. Son ~150 paginas por corrida:
+  // hacerlas esperar y reintentar pasaba la corrida de las 4 h y GitHub la
+  // mataba sin dejar datos ni avisos.
+  for (const valor of ["NaN", "0", "", null]) {
+    const page = paginaConPrecio([valor]);
+    const r = await extractSingleProduct(page, "https://x/p");
+    assert.equal(r, null, `con model_price=${JSON.stringify(valor)} debe devolver null sin lanzar`);
+  }
 });
 
 test("una pagina sin producto identificable sigue devolviendo null (baja real)", async () => {
