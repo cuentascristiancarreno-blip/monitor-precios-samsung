@@ -24,7 +24,7 @@ async function main() {
       console.log(variants.slice(0, 3));
     } else {
       const page = await context.newPage();
-      await page.goto(caso.url, { waitUntil: "load", timeout: 30000 });
+      await page.goto(caso.url, { waitUntil: "domcontentloaded", timeout: 30000 });
       const result = await extractSingleProduct(page, caso.url);
       console.log(result);
       await page.close();

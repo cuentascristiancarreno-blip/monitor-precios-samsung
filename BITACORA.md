@@ -404,3 +404,32 @@ operador: bajar a 6 revisiones (cada 4 h) o acelerar la corrida. Candidato
 concreto para acelerar: cambiar `waitUntil: "load"` por `"domcontentloaded"` en
 `src/run.mjs` — medido, las páginas de accesorios tardan ~30 s en disparar
 `load`, y hay 135 de ellas por corrida (~60 min del total).
+
+### Aceleración de la corrida: `domcontentloaded` (2026-08-02)
+
+Decisión del operador tras el informe anterior: acelerar la corrida en vez de
+bajar la frecuencia de revisiones.
+
+`src/run.mjs` pasa de `waitUntil: "load"` a `"domcontentloaded"`. Es seguro
+porque el precio **no viene en la carga inicial de todos modos**: la página se lo
+pide después a `api.shop.samsung.com`, y `extractSingleProduct` ya lo espera
+explícitamente (hasta 3 s). Esperar a que terminen de bajar imágenes y scripts de
+terceros no aportaba nada.
+
+**Verificado antes de aplicarlo**, comparando los dos modos sobre 10 páginas
+reales de tipos distintos (accesorio sin precio, accesorio 2, smartphone
+flagship, smartphone gama media, tablet, multi-producto Book3, TV, línea blanca,
+monitor, reloj): **10 de 10 dieron resultado IDÉNTICO** en precio, stock y
+especificaciones. Ahorro medido: 3,12 s promedio por página → **~61 min menos por
+corrida** sobre 1168 páginas.
+
+Detalle del ahorro por tipo: TV 6,8 s · smartphone flagship 4,5 s · línea blanca
+2,0 s · reloj 1,5 s · smartphone gama media 1,0 s · tablet 0,7 s · multi-producto
+0,6 s. Las 2 páginas sin precio siguen siendo lentas (~31 s): tardan en llegar al
+propio `domcontentloaded`, así que ahí el ahorro es marginal — la ganancia viene
+del resto del catálogo.
+
+Prueba end-to-end con el flujo completo sobre 6 páginas reales: 7 productos
+capturados con precio, stock y especificaciones correctos, Book3 separado en
+$1.399.990 y $849.990 y silenciado (`INFO silenciados regla=book3 avisos=2`).
+Pruebas: 116 verdes.
