@@ -367,3 +367,40 @@ Pruebas 115 → 116.
 
 **Lección:** un cambio que agrega espera hay que medirlo contra el PEOR caso del
 catálogo (páginas lentas sin precio), no contra el caso que se está arreglando.
+
+### Resultado medido de la corrida de restauración (run 30755481919, commit 9fde55b)
+
+Corrida completa el 2026-08-02, **success**, `confiable: true`, 1168 páginas,
+13 errores, 940 productos.
+
+**Los 3 arreglos, verificados con datos reales:**
+
+1. **Ciclo desaparece/reaparece: detenido.** Esta corrida emitió **0
+   desaparecidos y 0 recuperados** (antes eran el ruido principal: 48 avisos).
+   Las líneas `precio no disponible` pasaron de **150 a 0**, y los reintentos de
+   81 a 13 — o sea la tormenta de reintentos que mataba la corrida se apagó.
+2. **Fichas fusionadas: separadas.** 0 llaves con coma en el catálogo. Los 10
+   productos reales quedaron con su propio precio:
+   Book3 360 $1.399.990 · Book3 $849.990 · Book3 Pro $1.699.990 · Book3 Pro 360
+   $1.999.990 · Tab A9 $159.990 · Tab A9 Plus $239.990 · Tab S9 FE WiFi $499.990
+   · Tab S9 FE 5G $619.990 · Tab S9 FE+ WiFi $669.990 · Tab S9 FE+ 5G $779.990.
+   Antes los 4 primeros compartían un solo precio con otro producto.
+3. **Corridas que se pisan:** la concurrencia a nivel de workflow funcionó (se
+   vio en vivo: una corrida quedó en cola en vez de ejecutarse en paralelo).
+
+**Silencio del Book3 funcionando:** el log dice
+`INFO silenciados regla=book3 avisos=3`. De los 9 avisos "nuevo" que generó la
+separación de fichas, 3 eran Book3 y **no se enviaron a Discord**; los otros 6
+son las tablets reales (Tab A9, A9 Plus y las 4 del Tab S9 FE) que ahora se
+vigilan individualmente. El operador recibió 7 avisos: esos 6 + 1 suba de precio.
+
+**PENDIENTE — la corrida tardó 212 min, fuera del rango histórico (127-179,
+promedio 140).** De mis cambios solo puedo atribuir ~7 min medidos (135 páginas
+sin precio × 3 s); el resto no está explicado y puede ser latencia de Samsung ese
+día. Importa porque **con 7 revisiones al día cada 3 h, una corrida de 3,5 h se
+solapa con la siguiente** y la concurrencia la deja en cola o la cancela: en la
+práctica saldrían 5-6 revisiones al día en vez de 7. Decisión pendiente del
+operador: bajar a 6 revisiones (cada 4 h) o acelerar la corrida. Candidato
+concreto para acelerar: cambiar `waitUntil: "load"` por `"domcontentloaded"` en
+`src/run.mjs` — medido, las páginas de accesorios tardan ~30 s en disparar
+`load`, y hay 135 de ellas por corrida (~60 min del total).
