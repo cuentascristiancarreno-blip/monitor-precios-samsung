@@ -159,6 +159,25 @@ function aNumero(valor) {
   return Number(String(valor ?? "").replace(",", "."));
 }
 
+// ¿Esta este monto escrito en la pagina, con el formato chileno ($ 974.980)?
+function montoVisible(monto, texto) {
+  if (!Number.isFinite(monto) || monto <= 0 || !texto) return false;
+  const formateado = new Intl.NumberFormat("es-CL").format(Math.round(monto));
+  return texto.replace(/\s/g, "").includes(formateado);
+}
+
+/**
+ * Elige el precio que el cliente realmente ve. Ver el comentario largo en
+ * extractSingleProduct: hay productos donde model_price es un numero interno que
+ * no aparece en la ficha y el precio de venta esta en list_price.
+ */
+export function precioVisiblePreferido(modelPrice, listPrice, texto) {
+  if (!Number.isFinite(listPrice) || listPrice <= 0) return modelPrice;
+  if (montoVisible(modelPrice, texto)) return modelPrice;
+  if (montoVisible(listPrice, texto)) return listPrice;
+  return modelPrice;
+}
+
 // Hay paginas que exponen VARIOS productos a la vez. En esas,
 // digitalData.product.model_code viene con los codigos pegados
 // ("NP750QFG-KB2CL,NP750XFG-KB4CL") y displayName con los nombres separados por
@@ -243,6 +262,18 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
   const bodyText = await page.evaluate(() => document.body.innerText).catch(() => "");
   const disponible = !STOCK_NEGATIVO.test(bodyText);
 
+  // El precio que se vigila tiene que ser el que el cliente VE. Medido el
+  // 2026-08-03 en el pack "Watch Ultra (2025) Blue + Galaxy Buds4 Pro"
+  // (F-SMR640SML70): digitalData publicaba model_price=555980, un numero que NO
+  // aparece en ninguna parte de la pagina, mientras el cliente veia $974.980
+  // (= list_price). El monitor avisaba bajadas de un precio inexistente.
+  // Regla: si el model_price no esta escrito en la pagina pero el list_price si,
+  // gana el list_price. Verificado sobre 8 paginas (4 packs y 4 productos
+  // normales): solo ese pack cae en la excepcion; en los otros 7 el model_price
+  // es el visible y no se toca nada. Si NINGUNO de los dos esta visible (pagina
+  // a medio renderizar) no se cambia nada, para no inventar un precio.
+  const precioFinal = precioVisiblePreferido(precio, aNumero(digitalData.list_price), bodyText);
+
   const modelo = digitalData.model_code || null;
   const codigos = String(modelo ?? "")
     .split(",")
@@ -286,7 +317,7 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
   return {
     modelo,
     nombre: digitalData.displayName || null,
-    precio,
+    precio: precioFinal,
     moneda: "CLP",
     disponible,
     url,

@@ -433,3 +433,55 @@ Prueba end-to-end con el flujo completo sobre 6 páginas reales: 7 productos
 capturados con precio, stock y especificaciones correctos, Book3 separado en
 $1.399.990 y $849.990 y silenciado (`INFO silenciados regla=book3 avisos=2`).
 Pruebas: 116 verdes.
+
+---
+
+# Precio fantasma en fichas de pack — 2026-08-03
+
+**Reporte del operador:** llego un aviso de baja de precio del pack
+"Watch Ultra (2025) Blue + Galaxy Buds4 Pro" (F-SMR640SML70), pero al entrar a la
+pagina el precio era el normal ($974.980) y ademas figuraba sin stock.
+
+**Causa (medida en vivo, 3 cargas seguidas):** esa ficha publica DOS precios
+distintos en `digitalData`:
+- `model_price` = 555980 -> es el que leia el monitor
+- `list_price` = 974980 -> es el que el cliente VE en pantalla
+
+El numero 555.980 **no aparece en ninguna parte de la pagina**: los unicos montos
+visibles son $974.980 y la cuota de $81.248. O sea el monitor llevaba meses
+vigilando un precio que no existe para el cliente, y su vaiven genero los avisos
+del 03-08 (sube 555.980 -> 974.980 a las 19:13 y baja de vuelta a las 22:04).
+
+**No es "todos los packs".** Comparadas 8 fichas (4 packs y 4 productos normales),
+solo esta cae en la excepcion; en las otras 7 el `model_price` es exactamente el
+monto visible, incluidos los packs de aire acondicionado.
+
+**Arreglo:** `precioVisiblePreferido()` en `src/extract.mjs`. Si el `model_price`
+no esta escrito en la pagina pero el `list_price` si, gana el `list_price`. Si
+ninguno de los dos esta visible (pagina a medio renderizar) no se cambia nada,
+para no inventar un precio. Cuesta cero requests: el texto de la pagina ya se lee
+para detectar el stock.
+
+Verificado en vivo tras el arreglo: el pack pasa a $974.980 y los tres controles
+quedan intactos (S26 Ultra $1.199.990, TV F6000 $209.990, pack aire+microondas
+$1.395.980). Pruebas 116 -> 122. Se corrigio a mano el precio guardado del pack
+en `data/latest.json` para que la correccion no dispare un aviso de "subio".
+
+## Pendiente: el stock del pack no se detecto
+
+El operador tambien vio "Avísame" (= sin stock) mientras el monitor lo tenia como
+disponible. `STOCK_NEGATIVO` busca "agotado|no disponible|fuera de stock|sin
+stock" en el texto de TODA la pagina, y Samsung marca el sin-stock con el boton
+**"Avísame"**, que no esta en esa lista.
+
+**Pero agregar la palabra sin mas seria peor:** medido, el TV F6000 — que SI
+tiene stock — contiene "avisame" 2 veces en su texto (viene del carrusel
+"¿Buscas alternativas?"). Agregarla generaria falsos "agotado" en productos
+disponibles.
+
+El arreglo correcto es acotar la deteccion de stock al bloque de compra en vez de
+leer la pagina entera, y eso hay que verificarlo contra una ficha que este
+realmente sin stock en el momento de la prueba. Cuando se probo, la ficha del
+pack ya habia vuelto a tener stock ("Avísame" ya no aparecia), asi que quedo
+pendiente de verificacion. NO se toco `STOCK_NEGATIVO` para no cambiar a ciegas
+algo que hoy funciona.
