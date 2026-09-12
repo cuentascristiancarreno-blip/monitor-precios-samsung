@@ -12,6 +12,9 @@ import { mensajeCorreccionesDePrecio, notifyDiscord, notifyTecnico } from "./dis
 import { crearDespachadorVivo, repartirCierre } from "./despachador-vivo.mjs";
 import { leerPendientes, serializarPendientes } from "./pendientes.mjs";
 import { entorno } from "./entorno.mjs";
+import { medicionPrincipales, prepararRecorrido, skusQueCambiaronDeSeccion } from "./prioridad.mjs";
+import { diaDe, leerHuellas, serializarHuellas, yaSeAviso } from "./avisos-repetidos.mjs";
+import { masCorridas, muestraDeUrls } from "./muestras.mjs";
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 // CARPETA_DATOS permite correr pruebas completas sin tocar los datos reales
@@ -26,6 +29,10 @@ const NOTIFICADOS_PATH = path.join(DATA_DIR, "notificados.jsonl");
 // borra al terminar la corrida: se borra cuando por fin se entregan (ver
 // src/pendientes.mjs).
 const PENDIENTES_PATH = path.join(DATA_DIR, "pendientes.jsonl");
+// Huellas de los avisos tecnicos que se repiten solos (ver
+// src/avisos-repetidos.mjs): sin esto, una condicion que dura hasta que alguien
+// edite el codigo manda 7 mensajes identicos por dia.
+const AVISOS_TECNICOS_PATH = path.join(DATA_DIR, "avisos-tecnicos.jsonl");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -52,13 +59,29 @@ async function main() {
     }
   }
 
-  let entries = [...seedRaw, ...familyEntries];
-  const urlsVistas = new Set();
-  entries = entries.filter((e) => e.url && !urlsVistas.has(e.url) && urlsVistas.add(e.url));
-  const limite = Number(process.env.LIMITE_PAGINAS);
-  if (Number.isFinite(limite) && limite > 0) entries = entries.slice(0, limite);
+  // EL RECORRIDO ARRANCA POR LAS CATEGORIAS PRINCIPALES (ver src/prioridad.mjs).
+  // Todo el armado -- juntar, deduplicar por URL, reordenar y recortar -- vive
+  // en prepararRecorrido() y no aca, porque este archivo arranca main() al
+  // importarse y nada de lo que este adentro lo puede cubrir una prueba.
+  const {
+    entries,
+    paginasPrincipales,
+    recorridasPrincipales,
+    bloquePrincipalCompleto,
+    porCategoria,
+    ausentes,
+    inversiones,
+  } = prepararRecorrido({ seedRaw, familyEntries, limite: process.env.LIMITE_PAGINAS });
 
   console.log(`INFO paginas=${entries.length} (listado=${seedRaw.length}, familia=${familyEntries.length})`);
+  // El tamano REAL del bloque y cuantas de esas alcanza a visitar esta corrida
+  // son dos numeros distintos (con LIMITE_PAGINAS no coinciden). Imprimir uno
+  // solo hacia que la linea se contradijera con su propio desglose por categoria.
+  console.log(
+    `INFO bloque_principal paginas=${paginasPrincipales} recorridas=${recorridasPrincipales} ${porCategoria
+      .map((c) => `${c.categoria}=${c.listado}+${c.familia}`)
+      .join(" ")}`,
+  );
 
   const previo = await readJsonSafe(LATEST_PATH, {});
   const observado = {};
@@ -71,6 +94,67 @@ async function main() {
   const redirigidas = [];
 
   const webhook = process.env.DISCORD_WEBHOOK_URL;
+
+  // FRENO DE LOS AVISOS TECNICOS QUE SE REPITEN SOLOS. Las condiciones de abajo
+  // duran hasta que una persona edite el codigo, asi que sin freno salen 7 veces
+  // por dia por el mismo canal donde llegan las momias. Una vez al dia por clave
+  // (ver src/avisos-repetidos.mjs).
+  const hoy = diaDe(timestamp);
+  const huellasAviso = leerHuellas(await readFile(AVISOS_TECNICOS_PATH, "utf-8").catch(() => ""));
+  const avisarUnaVezAlDia = async (clave, texto) => {
+    if (yaSeAviso(huellasAviso, clave, hoy)) {
+      console.log(`INFO aviso_tecnico_omitido ${clave} (ya salio hoy)`);
+      return false;
+    }
+    await notifyTecnico(webhook, texto);
+    huellasAviso.push({ clave, dia: hoy });
+    // se guarda al tiro: si la corrida muere despues, el aviso no se repite
+    await writeFile(AVISOS_TECNICOS_PATH, serializarHuellas(huellasAviso, hoy)).catch((err) =>
+      console.error(`WARNING no se pudo guardar la huella del aviso tecnico: ${err.message}`),
+    );
+    return true;
+  };
+
+  // UNA CATEGORIA PRINCIPAL QUE YA NO ESTA EN EL LISTADO NO PUEDE PASAR CALLADA.
+  // Nada se rompe (esas paginas se siguen recorriendo, y si la seccion de la URL
+  // sigue viva incluso siguen entrando temprano), pero la promesa que se le hizo
+  // al operador deja de cumplirse y hay que corregir el nombre en
+  // src/prioridad.mjs. Sale al PRINCIPIO de la corrida, no al final: la revision
+  // dura del orden de 2 h y el aviso no tiene por que esperarlas.
+  if (ausentes.length > 0) {
+    for (const a of ausentes) {
+      console.error(`WARNING categoria principal "${a.categoria}" no aparece en el listado (paginas bajo /${a.seccion}/: ${a.paginasEnLaSeccion})`);
+    }
+    const detalle = ausentes
+      .map((a) =>
+        a.paginasEnLaSeccion > 0
+          ? `• **${a.categoria}** — ya no existe con ese nombre, pero la sección /${a.seccion}/ sigue teniendo ${a.paginasEnLaSeccion} página(s): parece un cambio de nombre.`
+          : `• **${a.categoria}** — no hay ninguna página en el listado ni en la sección /${a.seccion}/: la categoría desapareció del sitio.`,
+      )
+      .join("\n");
+    await avisarUnaVezAlDia(
+      `categorias-ausentes:${ausentes.map((a) => a.categoria).join(",")}`,
+      `🧭 **Monitor Samsung — una categoría principal ya no está en el listado**\n${detalle}\nLa revisión sigue corriendo normal y no se pierde ninguna página; lo que se pierde es la garantía de revisarla primero.\nPara arreglarlo hay que corregir el nombre en la lista de categorías principales (src/prioridad.mjs).\nEste aviso sale una vez al día mientras la condición dure.`,
+    );
+  }
+
+  // EL GUARDIAN DEL INVARIANTE DEL ORDEN (ver inversionesIntraSeccion en
+  // src/prioridad.mjs). Que reordenar el recorrido no cambie el RESULTADO se
+  // apoya en un hecho: el reordenamiento no invierte nunca dos paginas de la
+  // misma seccion, y dos paginas que hablan del mismo producto viven siempre
+  // bajo la misma seccion. Hoy son 0 inversiones sobre el recorrido real. Si
+  // alguna vez deja de ser 0, el orden vuelve a poder decidir resultados y hay
+  // que enterarse el mismo dia, no a los tres avisos raros.
+  if (inversiones.length > 0) {
+    for (const i of inversiones) {
+      console.error(`WARNING el reordenamiento invierte dos paginas de la seccion /${i.seccion}/: ${i.antes} pasa a ir despues de ${i.ahora}`);
+    }
+    const muestra = inversiones.slice(0, 5).map((i) => `• /${i.seccion}/: ${i.antes}\n  pasa a ir después de ${i.ahora}`).join("\n");
+    await avisarUnaVezAlDia(
+      `inversiones-intra-seccion:${inversiones.length}`,
+      `🔀 **Monitor Samsung — el orden del recorrido volvió a poder cambiar resultados**\nEl reordenamiento por categorías principales adelantó ${inversiones.length} par(es) de páginas de una MISMA sección del sitio, y eso es justo lo que no debía pasar: dos páginas que hablan del mismo producto viven bajo la misma sección.\n${muestra}\nLa causa típica es que una categoría principal pasó a tener páginas en la sección de otra (por ejemplo, una ficha catalogada como "Smartphones" que vive bajo /tablets/). Revisar la lista de src/prioridad.mjs.\nEste aviso sale una vez al día mientras la condición dure.`,
+    );
+  }
 
   // GUARDA CONTRA EL CATALOGO VACIO: si latest.json se corrompio o el checkout
   // vino sin el, previo={} y comparar() emite "nuevo" para CADA SKU (~650
@@ -114,6 +198,11 @@ async function main() {
 
   const browser = await chromium.launch();
   const context = await browser.newContext({ userAgent: USER_AGENT });
+  // Cuando se termino de recorrer el bloque de categorias principales. Se mide
+  // en la PRIMERA pasada: el reintento del final vuelve sobre las paginas lentas
+  // de toda la corrida, y meterlo aca convertiria "cuanto tarda el bloque
+  // principal" en "cuanto tarda la corrida entera".
+  let finPrincipales = null;
   try {
     let pagina = 0;
     for (const entry of entries) {
@@ -136,6 +225,12 @@ async function main() {
       // El envio va EN PARALELO con la pausa de la politica de scraping, que
       // igual hay que esperar: los avisos no le agregan tiempo a la corrida.
       await Promise.all([sleep(DELAY_MS), despachador.quizasEnviar()]);
+      if (pagina === recorridasPrincipales) {
+        finPrincipales = Date.now();
+        console.log(
+          `INFO bloque_principal_listo paginas=${recorridasPrincipales}${bloquePrincipalCompleto ? "" : ` (de ${paginasPrincipales}, recortado por LIMITE_PAGINAS)`} minutos=${Math.round((finPrincipales - inicio) / 60000)}`,
+        );
+      }
     }
 
     // reintento unico con mas timeout: recupera la mayoria de los 10-30
@@ -198,6 +293,16 @@ async function main() {
     timestamp,
   });
 
+  // UN SKU QUE CAMBIO DE SECCION DEL SITIO. Es el unico sintoma observable, en
+  // datos reales, de que dos paginas de secciones distintas se estan peleando el
+  // mismo producto -- y esa pelea es la unica forma en que el orden del recorrido
+  // podria decidir un resultado. Paso una sola vez en 348 corridas
+  // (GP-TOS928SBEYW el 2026-07-25: su ficha de /mobile-accessories/ perdio
+  // contra una de /tv-accessories/ y volvio sola a la corrida siguiente).
+  // El desempate de src/identidad.mjs ya no deja que lo decida el orden, pero el
+  // aviso queda igual: es lo que hay que ir a mirar.
+  const cambiosDeSeccion = skusQueCambiaronDeSeccion(previo, catalogo);
+
   // PRODUCTOS MOMIFICADOS. Un SKU cuya pagina falla o que Samsung redirige
   // conserva su ultimo dato bueno y no acumula ausencias (eso esta bien: no hay
   // evidencia de que se haya ido), pero entonces puede quedar congelado para
@@ -214,7 +319,13 @@ async function main() {
   const sinPrecioVisible = Object.values(observado).filter((r) => !Number.isFinite(r.precio)).length;
   const precioCongelado = Object.values(catalogo).filter((r) => (r.corridasSinPrecio ?? 0) > 0).length;
 
-  await writeFile(LATEST_PATH, JSON.stringify(catalogo, null, 1));
+  // CLAVES ORDENADAS. El orden de las claves de latest.json seguia el orden en
+  // que se visitaban las paginas, asi que reordenar el recorrido lo reordenaba
+  // entero y cada diff diario mezclaba cambios reales con movimientos de lineas.
+  // Ordenar por SKU no cambia ningun dato (un objeto JSON no tiene orden) y hace
+  // que el diff muestre solo lo que de verdad cambio, para siempre.
+  const catalogoOrdenado = Object.fromEntries(Object.entries(catalogo).sort(([a], [b]) => a.localeCompare(b)));
+  await writeFile(LATEST_PATH, JSON.stringify(catalogoOrdenado, null, 1));
 
   // El estado quedo guardado: las huellas de lo avisado en vivo ya no sirven
   // para nada (previo ya incluye estos cambios, asi que comparar() no puede
@@ -241,12 +352,35 @@ async function main() {
     fin: fin.toISOString(),
     duracionMin: Math.round((fin - inicio) / 60000),
     paginas: entries.length,
+    // La promesa "primero las categorias principales", medible: cuantas paginas
+    // tenia ese bloque y cuanto tardo en quedar listo. `paginasPrincipales` es el
+    // tamano REAL del bloque (no el recortado por LIMITE_PAGINAS) y
+    // `duracionPrincipalesMin` es null cuando la corrida no alcanzo a
+    // terminarlo: informar el tamano recortado hacia que una corrida que nunca
+    // termino el bloque se leyera como si lo hubiera terminado.
+    ...medicionPrincipales({
+      paginas: paginasPrincipales,
+      desde: inicio.getTime(),
+      hasta: bloquePrincipalCompleto ? finPrincipales : null,
+    }),
+    // categorias principales que el listado ya no trae con ese nombre (ver
+    // src/prioridad.mjs). Casi siempre vacio; si deja de estarlo, el orden del
+    // recorrido ya no es el que el operador pidio.
+    categoriasPrincipalesAusentes: ausentes.map((a) => a.categoria),
+    // pares de paginas de la MISMA seccion que el reordenamiento invierte: tiene
+    // que ser 0 siempre (ver inversionesIntraSeccion en src/prioridad.mjs)
+    inversionesIntraSeccion: inversiones.length,
+    // SKU que pasaron a estar firmados por una pagina de otra seccion del sitio
+    skusQueCambiaronDeSeccion: cambiosDeSeccion.length,
     errores: fallidas.length,
-    urlsConError: fallidas.slice(0, 20).map((f) => f.url),
+    // MUESTRAS ESTABLES (ver src/muestras.mjs): cuales 20 se muestran no puede
+    // depender de por donde empezo el recorrido. La lista que se REINTENTA sigue
+    // en orden de recorrido, que es la prioridad que pidio el operador.
+    urlsConError: muestraDeUrls(fallidas, 20),
     // fichas que Samsung redirigio a la de otro producto: no son errores, pero
     // conviene verlas en el resumen (si el numero se dispara, Samsung cambio algo)
     redirigidas: redirigidas.length,
-    urlsRedirigidas: redirigidas.slice(0, 20).map((f) => f.url),
+    urlsRedirigidas: muestraDeUrls(redirigidas, 20),
     // SKU que esta corrida no se pudo verificar (su pagina fallo o redirigio):
     // conservan su ultimo dato bueno y no cuentan ausencias, pero si el numero
     // crece corrida tras corrida hay productos congelados en el catalogo
@@ -313,7 +447,7 @@ async function main() {
   console.log(`INFO resumen ${JSON.stringify(resumen)}`);
 
   if (momificados.length > 0) {
-    const lista = momificados.slice(0, 15).map((m) => `• ${m.modelo} (${m.corridas} revisiones)`).join("\n");
+    const lista = masCorridas(momificados, 15).map((m) => `• ${m.modelo} (${m.corridas} revisiones)`).join("\n");
     const resto = momificados.length > 15 ? `\n…y ${momificados.length - 15} más.` : "";
     await notifyTecnico(
       webhook,
@@ -322,7 +456,7 @@ async function main() {
   }
 
   if (sinPrecioMomificados.length > 0) {
-    const lista = sinPrecioMomificados.slice(0, 15).map((m) => `• ${m.modelo} (${m.corridas} revisiones, último precio $${(m.precio ?? 0).toLocaleString("es-CL")})`).join("\n");
+    const lista = masCorridas(sinPrecioMomificados, 15).map((m) => `• ${m.modelo} (${m.corridas} revisiones, último precio $${(m.precio ?? 0).toLocaleString("es-CL")})`).join("\n");
     const resto = sinPrecioMomificados.length > 15 ? `\n…y ${sinPrecioMomificados.length - 15} más.` : "";
     await notifyTecnico(
       webhook,
@@ -337,6 +471,20 @@ async function main() {
   // por que esta entero en mensajeCorreccionesDePrecio (src/discord.mjs).
   if (correccionesDePrecio.length > 0) {
     await notifyTecnico(webhook, mensajeCorreccionesDePrecio(correccionesDePrecio));
+  }
+
+  // DOS SECCIONES PELEANDOSE UN PRODUCTO (ver arriba). Una vez al dia por SKU:
+  // mientras la pelea dure, el registro va a cambiar de mano en cada corrida y
+  // sin freno serian 7 avisos diarios del mismo producto.
+  for (const c of cambiosDeSeccion.slice(0, 5)) {
+    console.error(`WARNING ${c.modelo} cambio de seccion: /${c.antes}/ -> /${c.ahora}/ (${c.paginaAhora})`);
+    await avisarUnaVezAlDia(
+      `seccion-cambiada:${c.modelo}`,
+      `🧩 **Monitor Samsung — un producto cambió de sección del sitio**\n**${c.modelo}** estaba colgado de una página de **/${c.antes}/** y ahora lo firma una de **/${c.ahora}/**:\n${c.paginaAhora}\nNo es un error por sí solo (Samsung mueve fichas), pero es la señal de que dos páginas distintas publican el mismo producto. Su precio y su categoría pueden venir de la página equivocada.\nEste aviso sale una vez al día por producto.`,
+    );
+  }
+  if (cambiosDeSeccion.length > 5) {
+    console.error(`WARNING ${cambiosDeSeccion.length - 5} SKU mas cambiaron de seccion (no se avisan uno por uno)`);
   }
 
   if (!corridaConfiable) {

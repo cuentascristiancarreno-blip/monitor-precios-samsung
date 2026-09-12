@@ -469,6 +469,24 @@ test("el aviso tecnico corta la lista larga y dice cuantos quedaron fuera", () =
   assert.ok(texto.length < 1900, "tiene que caber en un mensaje de Discord sin que notifyTecnico lo corte");
 });
 
+test("CUALES 15 se muestran no depende del orden en que se recorrieron las paginas", () => {
+  // El mensaje corta en 15. Antes, entre correcciones del mismo tipo mandaba el
+  // orden de llegada -- o sea el orden del recorrido --, asi que reordenar las
+  // paginas cambiaba la seleccion sin que nadie lo hubiera decidido.
+  const unas = Array.from({ length: 40 }, (_, i) => ({ modelo: `SKU-${String(i).padStart(2, "0")}`, precioAnterior: 100000, precio: 90000 }));
+  const alReves = [...unas].reverse();
+  assert.equal(mensajeCorreccionesDePrecio(alReves), mensajeCorreccionesDePrecio(unas));
+  // y las bajas siguen yendo primero, que es la otra mitad de la regla
+  const mixto = [
+    { modelo: "SUBE-Z", precioAnterior: 100000, precio: 120000 },
+    { modelo: "BAJA-Z", precioAnterior: 100000, precio: 90000 },
+    { modelo: "BAJA-A", precioAnterior: 100000, precio: 90000 },
+  ];
+  const texto = mensajeCorreccionesDePrecio(mixto);
+  assert.ok(texto.indexOf("BAJA-A") < texto.indexOf("BAJA-Z"));
+  assert.ok(texto.indexOf("BAJA-Z") < texto.indexOf("SUBE-Z"));
+});
+
 // === 9. un producto nuevo a la venta sin precio ===============================
 
 test("un producto NUEVO a la venta sin precio publicado se anuncia igual", () => {

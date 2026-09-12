@@ -950,3 +950,179 @@ Arreglado: el timeout va en la posicion de opciones, `PRECIO_TIMEOUT_MS` sube a 
 4. **A vigilar en una semana:** repetir el conteo de "el precio vuelve a un valor ya visto". Hoy 68 SKU y 366 avisos en 30 dias; tiene que caer a cerca de 0.
 5. **Pendiente antiguo que sigue abierto:** una pagina con `model_code` que nunca publica `model_price` no cuenta como pagina fallida, asi que si le pasara a un producto vivo sus SKU acumularian ausencias y en 2 corridas saldria un "desaparecio" falso.
 6. **Menor:** `npm test` todavia intenta alcanzar discord.com en algunas pruebas de transporte (URLs falsas, nunca el webhook real). Seria mas limpio interceptar `globalThis.fetch` tambien ahi.
+
+---
+
+## 2026-09-12 (cierre) — Las categorias principales van primero
+
+Encargo del operador, textual: *"Smartphones / Tablets / Audio y Galaxy Buds / Relojes / Computadoras. ¿Puedes dejar estas categorias como las principales? Y siempre que comience un nuevo ciclo o revision, partir por estas categorias?"*. Con avisos en vivo, lo que se revisa primero es lo primero que se entera, y se viene el Cyber.
+
+### Lo medido ANTES de tocar nada
+
+`src/seed.json` viene ordenado alfabeticamente por categoria, asi que el recorrido partia por "Accesorios linea blanca". Sobre el listado real (1.023 paginas) mas las paginas familia reales (162, sacadas de `data/latest.json`, sin red), y al ritmo de la ultima corrida real (126 min / 1.185 paginas = 6,4 s por pagina):
+
+| Categoria | Primera pagina, antes | Ahora | Se adelanta |
+|---|---|---|---|
+| Smartphones | 717 | **1** | ~76 min |
+| Tablets | 810 | 186 | ~66 min |
+| Audio y Galaxy Buds | 456 | 254 | ~22 min |
+| Relojes (Galaxy Watch) | 688 | 268 | ~45 min |
+| Computadores | 492 | 317 | ~19 min |
+
+El bloque principal son **347 paginas de 1.185 (29%), ~37 min**: 185 del listado (18%) y 162 familia.
+
+**Traduccion de los nombres.** El operador dijo "Relojes" y "Computadoras"; el listado dice "Relojes (Galaxy Watch)" y "Computadores". Y existe ademas "Audio (Soundbars/Torres)" (14 paginas) que NO se pidio: no entra, y no puede colarse porque vive en otra seccion de la web (`audio-devices` contra `audio-sound`, verificado sobre las 1.023 paginas).
+
+### Lo que se hizo
+
+**`src/prioridad.mjs` (nuevo).** Un solo lugar con la lista, en el orden del operador, cada linea con el nombre EXACTO del listado y la seccion de la URL que le corresponde. Exporta `ordenarRecorrido()` (la particion) y `medicionPrincipales()` (los campos del resumen). `run.mjs` solo lo llama.
+
+**El reordenamiento es una particion estable por baldes** (sin comparador): dentro de cada balde las paginas quedan en el orden en que llegaron. Mismo insumo, mismo recorrido, siempre; y reordenar lo ya ordenado no lo mueve.
+
+**Se aplica ANTES de `LIMITE_PAGINAS`**, a proposito: asi una corrida de prueba corta visita justo lo que hay que poder comprobar.
+
+### La decision del punto 3 del encargo, con su razon
+
+Las paginas familia auto-descubiertas de una seccion principal entran **en el bloque de su propia categoria, inmediatamente despues de las del listado de esa categoria**. Dos decisiones, las dos medidas:
+
+1. **En el bloque de su categoria y no en un bloque unico detras de las cinco.** Medido sobre `data/latest.json`: de los 130 SKU que cuelgan de `/smartphones/`, **37 no tienen ficha plana en el listado** — solo existen en una pagina familia. Con un bloque unico al final, "partir por Smartphones" habria cubierto 93 de sus 130 SKU y los otros 37 (los Galaxy nuevos) habrian esperado detras de las 94 paginas de listado de las otras cuatro categorias, ~10 min. Lo mismo en Relojes (13 de 31) y Computadores (7 de 20). **Lo que se pierde:** la segunda categoria arranca mas tarde (Smartphones pasa de 91 a 185 paginas) y el bloque de cada categoria deja de ser un tramo puro del listado.
+2. **Despues del listado de su categoria, no intercaladas una a una.** Esto no es cosmetico. Hay **126 paginas /buy/ descubiertas cuya ficha plana tambien esta en el listado (116 SKU con las dos paginas del MISMO rango)**, y para ese par el orden de llegada si decide quien firma el registro. Intercalar de verdad exigiria inventar un emparejamiento URL a URL y podria poner la /buy/ delante de su ficha plana, que es **exactamente el orden que produjo el defecto del 2026-09-12 (noche), pieza 4**.
+
+> ⚠️ **Corregido el mismo dia — aca decia una cosa falsa.** La frase original era "hoy en produccion el listado va siempre antes que lo descubierto; manteniendo ese orden relativo, el reordenamiento no puede cambiar ningun resultado". **Es falsa**, y la midieron los tres verificadores: el reordenamiento invierte 273.380 pares de paginas del recorrido real y 146.246 de ellos son una pagina familia que pasa a ir antes de una del listado. La conclusion (el resultado no cambia) igual se sostiene, pero por otra razon, y la razon esta abajo, en la seccion "segunda vuelta".
+
+Ese invariante se apoya en un hecho medido: las cinco secciones (`smartphones`, `tablets`, `audio-sound`, `watches`, `computers`) las usa **una sola categoria cada una** en las 1.023 paginas del listado. Si algun dia una categoria que no es principal pasara a vivir bajo una de esas secciones, su /buy/ se adelantaria a su ficha — y hay una prueba contra el listado REAL que lo caza.
+
+### La promesa es comprobable
+
+`data/ejecuciones.jsonl` trae ahora `paginasPrincipales` y `duracionPrincipalesMin` (null si la corrida no alcanzo a terminar el bloque; se mide en la PRIMERA pasada, porque el reintento del final vuelve sobre paginas de toda la corrida). En el log: `INFO bloque_principal` al empezar, con el desglose por categoria, y `INFO bloque_principal_listo` al terminarlo.
+
+### Si una categoria cambia de nombre o desaparece del listado
+
+Ni se rompe ni se calla. Las paginas se siguen recorriendo todas; si la seccion de la URL sigue viva, **igual entran temprano** (respaldo por seccion en `indicePrincipal`). Y se denuncia por tres vias: `WARNING` en el log, aviso por el canal TECNICO al PRINCIPIO de la corrida (no al final: la revision dura ~2 h) y `categoriasPrincipalesAusentes` en el resumen. El aviso distingue los dos casos con `paginasEnLaSeccion`: > 0 es un renombre (hay que corregir el nombre en `src/prioridad.mjs`), 0 es que la categoria desaparecio del sitio. Contar solo las entradas del LISTADO es deliberado: contar las familia taparia justo la desaparicion que se quiere detectar.
+
+### Verificacion
+
+- `npm test`: **308 -> 333 verdes, 0 fallas.** Linea base 308, nunca baja. Archivo nuevo: `test/orden-recorrido.test.mjs` (25 pruebas).
+- **Mutantes: 19 de 19 mueren.** Se deshizo cada pieza, una por vez, en una copia fuera del arbol (`scratchpad/mutantes.mjs` + `scratchpad/mut/`), se corrio la suite entera y se restauro. Incluye: cambiar el orden de la lista, sacarle una categoria, escribir "Computadoras" en vez de "Computadores", apuntar Buds a `audio-devices`, poner las familia antes del listado, volver al bloque unico de familia, romper la estabilidad, romper el orden del resto, no denunciar ausentes, dar por presente una categoria con sus paginas familia, no distinguir renombre de desaparicion, sacar el respaldo por seccion, mirar una sola de las dos marcas de pagina descubierta, no saltar el tramo `/cl/` de la URL, devolver 0 en vez de null en la duracion, renombrar el campo del resumen, no reordenar, y confundir listado con familia en el desglose.
+- **ORDEN VIEJO CONTRA ORDEN NUEVO, el punto central del encargo.** Prueba con un recorrido de juguete que tiene TODAS las formas de colision reales (mismo SKU desde dos paginas del mismo rango, desde rangos distintos con el precio de LISTA, una pagina que no leyo el precio, otra que no leyo el stock, un SKU que solo existe en la familia, un accesorio y un producto que ya no aparece): se procesa en el orden viejo y en el nuevo y se exige **catalogo identico y los mismos cambios emitidos**. Pasa. No es una comparacion entre listas vacias: la prueba exige que salgan una "baja" y un "desaparecido".
+- **Ensayo sobre datos reales, sin red** (`scratchpad/ensayo-orden.mjs`, listado real + las 162 paginas familia de `data/latest.json`): **0 /buy/ adelantadas a su ficha plana**, ninguna pagina perdida ni duplicada, `ausentes` vacio.
+- **Corrida real del pipeline** contra una COPIA del catalogo real en carpeta temporal (`CARPETA_DATOS`, `LIMITE_PAGINAS=8`, sin `DISCORD_WEBHOOK_URL`, descubrimiento activo): **las 8 paginas visitadas fueron de Smartphones** (antes habrian sido las 8 primeras de "Accesorios linea blanca"), 0 errores, resumen con `paginasPrincipales: 8` y `duracionPrincipalesMin: 1`, y `INFO bloque_principal Smartphones=91+96 Tablets=45+21 Audio y Galaxy Buds=14+0 Relojes (Galaxy Watch)=18+29 Computadores=17+14`. La corrida quedo marcada `confiable: false` por el limite de paginas, que es lo correcto y lo que protege de falsos desaparecidos.
+- **Politica:** 8 cargas de paginas + 4 sitemaps en una sola corrida, UA CazadorBot, `DELAY_MS` 2500 sin tocar, cero requests extra. Jamas el webhook real. `data/` del repo intacta (todo en carpeta temporal). No se commiteo nada.
+
+### Un defecto que aparecio al medir, y que NO es de este cambio
+
+Buscando si el orden puede cambiar el resultado se encontro uno que **ya existia**: cuando dos paginas del MISMO rango publican **precios distintos** para el mismo SKU, gana la que llegue ultima. Medido con el codigo real (`scratchpad/probe-orden.mjs`, Tab S10 FE, $656.990 en la ficha plana y $729.990 en su /buy/): en un orden el registro queda firmado por la /buy/ y con `precioPendiente: 729990` + `corridasPrecioDistinto: 1`; en el otro queda limpio y firmado por la ficha plana. Los avisos de ESA corrida son los mismos (la corroboracion por fuente los contiene), pero el estado guardado difiere y a las 3 corridas ese pendiente se adopta y **se avisa**.
+
+- **Alcance:** los 116 SKU que se ven desde su ficha plana y desde su /buy/ descubierta. Hoy ninguno tiene `fuentePrecio` ni `precioPendiente` guardado, o sea que las dos paginas vienen coincidiendo: el defecto esta latente, no disparando.
+- **Ya pasa en produccion sin este cambio:** el reintento del final de `run.mjs` procesa las paginas lentas DESPUES de todas las demas, asi que una ficha plana que timeoutea una vez gana esa corrida y pierde la siguiente. Ese flapping es real.
+- **Este cambio no lo toca ni lo despierta:** el orden relativo listado -> familia se conserva, y hay dos pruebas que lo exigen (una de ellas contra el listado real completo).
+- **Arreglo propuesto, para su propio ticket:** un desempate determinista dentro del rango (por ejemplo, la /buy/ manda sobre la ficha plana, que es lo que ocurre hoy cuando no hay reintento), o directamente el pendiente nº 1 de abajo: dejar de descubrir las 126 /buy/ que ya tienen ficha plana, que ademas ahorra ~20 min de corrida. No se aplico aca: cambia el `paginaOrigen`/`fuentePrecio` de 116 SKU reales, roza la maquinaria de corroboracion de precios a dias del Cyber, y no es lo que el operador pidio en este encargo.
+
+### Pendientes
+
+1. **Las 126 paginas /buy/ duplicadas** (sigue abierto, y ahora tiene un motivo mas: es la raiz del defecto de arriba).
+2. **`data/latest.json` se va a reordenar entero una vez.** Las claves del archivo siguen el orden en que se visitan las paginas, asi que el primer commit despues de este cambio va a tener un diff gigante y de una sola vez. No cambia ningun dato. Si molesta, escribirlo con las claves ordenadas alfabeticamente haria legibles los diffs diarios para siempre — cambio chico, pero es otro ticket.
+3. **Medir la promesa en la primera corrida real:** `duracionPrincipalesMin` deberia dar del orden de 37 min con 347 paginas. Si da mucho mas, el bloque principal esta cargando paginas mas lentas que el promedio.
+4. **`categoriasPrincipalesAusentes` tiene que quedarse vacio.** Si aparece algo, Samsung renombro una categoria y hay que corregir `src/prioridad.mjs`.
+
+---
+
+## 2026-09-12 (cierre, segunda vuelta) — Lo que encontro la revision del reordenamiento
+
+Tres verificadores independientes revisaron el cambio de arriba. **Dos lo tumbaron.** Ninguno encontro que el reordenamiento estuviera cambiando resultados HOY — a escala real, con el catalogo real y el despachador real, los dos ordenes dan el mismo catalogo y los mismos avisos —, pero si encontraron que **la razon por la que no los cambia no era la que el codigo declaraba**, y que varias piezas nuevas no las defendia ninguna prueba. Once defectos. Estan los once arreglados.
+
+### 1. El invariante declarado era falso (gravedad media, 2 verificadores)
+
+El comentario de `src/prioridad.mjs` y el reporte decian: *"hoy en produccion el listado va siempre antes que lo descubierto; manteniendo ese orden relativo, el reordenamiento no puede cambiar ningun resultado"*.
+
+**Lo medi yo mismo antes de tocar nada, sobre el recorrido real (1.023 del listado + 162 familia):**
+
+```
+pares invertidos TOTAL:                           273.380
+de esos, listado -> familia (la que "no pasaba"): 146.246
+inversiones DENTRO de la misma seccion:                 0
+```
+
+O sea: el reordenamiento **si** adelanta paginas descubiertas por delante de paginas del listado, a montones. Es justo lo que el operador pidio. Lo que no hace nunca es adelantar una pagina por delante de otra **de su misma seccion**, y ESE es el invariante que de verdad protege el resultado, porque dos paginas que hablan del mismo producto viven bajo la misma seccion.
+
+**Y eso ya se rompio una vez en produccion.** Barri los 348 snapshots commiteados de `data/latest.json` (~7 semanas):
+
+```
+SKU firmados por mas de una pagina:                 111
+...por paginas de SECCIONES distintas:                1
+```
+
+El unico: **GP-TOS928SBEYW**, el 2026-07-25 (commit `49b8557`). Su ficha de `/mobile-accessories/` ($10.493) perdio contra `.../tv-accessories/customizable-frame--vg-scfa--vg-scfa43wtbru/` ($14.990, categoria "Accesorios TV") y volvio sola a la corrida siguiente. Lo decidio el orden de llegada.
+
+**Lo que se hizo:**
+
+- **El comentario dice ahora el invariante verdadero**, con los numeros de arriba, y la frase vieja quedo marcada como falsa donde estaba (mas arriba en esta bitacora).
+- **`inversionesIntraSeccion()` (nuevo, en `src/prioridad.mjs`)**: calcula los pares de la misma seccion que el reordenamiento invierte. Hoy da 0. Se comprueba en una prueba contra el listado REAL **y en cada corrida**, y si alguna vez deja de dar 0 sale un aviso tecnico y queda en el resumen (`inversionesIntraSeccion`).
+- **`skusQueCambiaronDeSeccion()` (nuevo)**: el sintoma observable en datos reales. Si un SKU pasa a estar firmado por una pagina de otra seccion, aviso tecnico + campo en el resumen. Habria cazado el caso del 2026-07-25.
+
+### 2. El desempate ya no lo decide el orden de llegada (gravedad media)
+
+El verificador construyo el caso que faltaba: un SKU publicado por una pagina de seccion PRINCIPAL y por una de seccion NO principal, las dos con el MISMO rango. Lo reproduje con el codigo real: en un orden el registro queda firmado por una y con `precioPendiente`; en el otro, por la otra y limpio. **Mismo insumo, dos catalogos.**
+
+**Lo que se hizo: `ganaElEmpate()` en `src/identidad.mjs`.** Cuando dos paginas del mismo rango y de **secciones distintas** publican el mismo SKU, ya no gana la ultima en llegar: gana la que **NOMBRA al SKU en su slug** (es la ficha de ese producto, no una que lo menciona de pasada); si eso no desempata, la ruta menor en orden alfabetico. Arbitrario a proposito: lo que importa es que sea siempre la misma.
+
+Aplicado al caso real: la ficha de `/mobile-accessories/` nombra a GP-TOS928SBEYW y la de `/tv-accessories/` no, asi que gana la propia. Verificado.
+
+**Por que solo entre secciones distintas, y no en todos los empates.** Porque el empate intra-seccion (la ficha plana y su propia /buy/, 115 SKU) el recorrido no lo mueve nunca, y cambiar ahi el criterio si tendria consecuencias: medi que hoy hay **6 registros reales** firmados por una pagina que no los nombra existiendo otra que si, dos de ellos con rango 3. Cambiarlos tocaria el `paginaOrigen` y el `fuentePrecio` de productos reales a dias del Cyber, sin ganar nada: son todos intra-seccion. **La rama nueva esta muerta sobre los datos de hoy** (0 SKU publicados desde dos secciones, de 1.031) y existe para el dia que Samsung lo haga.
+
+### 3. `duracionPrincipalesMin` nunca salia null (gravedad media)
+
+`const principales = Math.min(paginasPrincipales, entries.length)` reescribia el TAMANO del bloque en vez de marcar que quedo incompleto. La corrida de humo del cambio anterior informo `{paginasPrincipales: 8, duracionPrincipalesMin: 1}` y se reporto como correcta: se lee como "el bloque eran 8 paginas y lo termine en 1 minuto" cuando el bloque son 347 y no se termino nunca.
+
+Ahora el resumen lleva el tamano REAL y la duracion en null cuando no se completo. **Verificado en la corrida real de hoy: `"paginasPrincipales":345,"duracionPrincipalesMin":null`.**
+
+### 4. La linea del log se contradecia sola (gravedad baja)
+
+`INFO bloque_principal paginas=8 Smartphones=91+96 Tablets=45+21 ...` — 8 no es la suma de nada. Ahora: `paginas=345 recorridas=8 ...`, que son los dos numeros que existen de verdad.
+
+### 5. El aviso de categoria ausente no tenia freno (gravedad baja)
+
+Salia en CADA corrida mientras la condicion durara: 7 mensajes identicos por dia, por el mismo canal donde llegan las momias, hasta que una persona editara `src/prioridad.mjs`. El proyecto ya tenia la disciplina "una sola vez" en otros avisos (`avisadoSinVerificar`, `avisadoSinPrecio`) pero ahi la huella vive en el catalogo, y estos avisos no cuelgan de ningun SKU.
+
+**`src/avisos-repetidos.mjs` (nuevo)**: una vez al dia por clave, con huella en `data/avisos-tecnicos.jsonl` (append-only, `merge=union` en `.gitattributes`, se poda sola a los 7 dias). No es "una sola vez para siempre" a proposito: una condicion que dura semanas tiene que seguir recordandose, pero una vez al dia, no siete.
+
+**Verificado end-to-end, sin tocar samsung.com ni el webhook real**: tres corridas seguidas con un listado local y un webhook falso en `127.0.0.1`, con una categoria principal inventada. Resultado: **1 aviso, no 3**; en la segunda y la tercera el log dice `INFO aviso_tecnico_omitido ... (ya salio hoy)`; el archivo de huellas queda con una sola linea.
+
+### 6. Lo que se muestra cuando no cabe todo dependia del recorrido (gravedad baja)
+
+Tres mensajes al operador y dos campos del resumen cortan la lista (`slice(0, 15)` / `slice(0, 20)`), y esas listas salian en el orden en que se visitaron las paginas: **cuales 15 veia el operador cambiaba al reordenar**. Hoy no muerde (en 305 corridas ninguna paso de 15), pero no tiene por que decidirlo el azar.
+
+**`src/muestras.mjs` (nuevo)**: `masCorridas()` ordena por insistencia y despues por modelo; `muestraDeUrls()` ordena alfabeticamente y saca repetidas. Y `mensajeCorreccionesDePrecio()` gano el desempate por modelo que le faltaba. **La lista que se REINTENTA sigue en orden de recorrido**, que es la prioridad que pidio el operador.
+
+De yapa: **`data/latest.json` se escribe con las claves ordenadas por SKU**. No cambia ningun dato y era el pendiente nº 2 del cambio anterior; ademas quita la ultima salida cuyo orden dependia del recorrido. El primer commit despues de esto trae un diff grande de una sola vez.
+
+### 7. Las promesas de tiempo estaban calculadas con la corrida mas rapida (gravedad baja)
+
+El "~37 min" del bloque salia de 126 min / 1.183 paginas = 6,39 s/pagina, que es **la mas rapida de las ultimas 20 corridas completas**. La mediana de esas 20 es 9,13 (→ 53 min) y la mas lenta 10,65 (→ 62 min). Ademas el bloque se lleva el **100% de las 162 paginas /buy/ descubiertas**, que son las que pagan navegador.
+
+README y pendientes dicen ahora **"entre 37 y 62 min, del orden de 53"**, y los adelantos por categoria van con rango. Lo que no depende del ritmo — el PUESTO en que empieza cada categoria — se mantiene exacto: Smartphones 717 → 1.
+
+### 8. Piezas que ninguna prueba defendia (gravedad media y baja)
+
+- **`seccion: "tablets"` no lo probaba nada**: era el unico de los cinco valores cuyo mutante sobrevivia (escribir `"tablet"` dejaba la suite en 333 verdes), porque el recorrido de juguete no tenia paginas familia bajo `/tablets/` y esa entrada siempre calzaba por NOMBRE. Costo medido del typo (medicion propia sobre el recorrido real): **23 paginas familia bajo `/tablets/`, que hoy firman 27 registros del catalogo**, se irian del bloque principal al final del recorrido — del minuto ~27 al ~126 — y en silencio, porque "Tablets" sigue existiendo por nombre y `categoriasPrincipalesAusentes` seguiria vacio.
+  - **Ojo con la trampa**: mi primer intento de prueba fabricaba la pagina a partir del `seccion` declarado, asi que el typo se fabricaba a si mismo y **el mutante seguia sobreviviendo**. La prueba buena saca la seccion de los DATOS REALES (`src/seed.json`): exige que la seccion declarada de cada categoria sea la que esa categoria usa de verdad. Cierra las cinco y las que se agreguen manana.
+- **El cableado de `run.mjs` no lo defendia nada**: borrar `entries = recorrido` apagaba la funcionalidad entera con la suite en verde. Ahora todo el armado (juntar, deduplicar, reordenar, recortar) es **`prepararRecorrido()`**, una funcion pura probada directo: que reordene, que deduplique, que el recorte por `LIMITE_PAGINAS` vaya DESPUES del reordenamiento, que un limite vacio/cero/negativo/basura no recorte, y que informe el tamano real del bloque.
+
+### Verificacion
+
+- **`npm test`: 308 → 371 verdes, 0 fallas.** Linea base 308 (sin el archivo de orden), 333 al cerrar el cambio anterior, 371 ahora.
+- **MUTANTES: 52 corridos, 0 SOBREVIVEN.**
+  - 33 mutantes nuevos sobre los arreglos de hoy (`scratchpad/fix2/mutar.py`), uno por vez sobre una copia fuera del arbol, suite entera, restaurando despues. **En la primera pasada sobrevivieron 4** — el typo de Tablets (prueba circular), borrar la regla del slug del desempate (la prueba lo dejaba ganar igual por alfabeto), el orden estable del canario (probado con un solo elemento) y no calcular las inversiones (comparado contra una lista vacia). Los cuatro son ahora pruebas mas duras y los cuatro mueren.
+  - 19 mutantes del banco anterior re-corridos (`mutar2.py`) para comprobar que los arreglos de hoy no debilitaron ninguna proteccion vieja: mueren los 19, incluidos los dos del nucleo (`conservaPrecio` sin la comprobacion de rango, `conservaEstado`).
+- **Corrida real del pipeline** contra una COPIA del catalogo real (1.031 registros) en carpeta temporal, `LIMITE_PAGINAS=8`, sin `DISCORD_WEBHOOK_URL`: 8 cargas de pagina + 4 sitemaps, las 8 de Smartphones, 0 errores, `inversionesIntraSeccion: 0`, `skusQueCambiaronDeSeccion: 0`, `paginasPrincipales: 345`, `duracionPrincipalesMin: null`, claves de `latest.json` ordenadas, `confiable: false` por el limite (correcto). Ningun aviso tecnico disparo, asi que `avisos-tecnicos.jsonl` ni se creo.
+- **Corrida del cableado de avisos**: 3 corridas mas con listado y webhook LOCALES (`127.0.0.1`), **cero requests a samsung.com**.
+- **Politica:** UA `CazadorBot/1.0`, `DELAY_MS` 2500 sin tocar, cero requests extra. **Jamas se toco el webhook real.** `data/` del repo intacta (md5 de `latest.json` identico antes y despues, `ejecuciones.jsonl` sigue en 305 lineas).
+- **No se commiteo nada.**
+
+### Lo que sigue pendiente
+
+1. **Las 126 paginas /buy/ duplicadas** (pendiente antiguo). Sigue abierto: ahorra ~20 min de corrida y 126 cargas a samsung.com. **Ojo con una cosa al hacerlo**: no basta con borrarlas del descubrimiento. Esas /buy/ son las que leen el stock y el precio que la ficha plana a veces no logra leer (para eso existen `conservaEstado` y `conservaPrecio`), asi que sacarlas perderia datos. Habria que medir antes cuantos SKU dependen de ellas.
+2. **Medir la promesa en la primera corrida real**: `duracionPrincipalesMin` deberia dar **entre 37 y 62 min (del orden de 53)** con 347 paginas. Si da mucho mas que 62, el bloque esta cargando paginas mas lentas de lo que se estimo.
+3. **`categoriasPrincipalesAusentes`, `inversionesIntraSeccion` y `skusQueCambiaronDeSeccion` tienen que quedarse en vacio/0.** Si `inversionesIntraSeccion` deja de ser 0, el orden del recorrido volvio a poder cambiar resultados y hay que mirarlo el mismo dia.
+4. **Sigue sin cubrir `npm test`**: las pocas lineas que quedan en `run.mjs` (llamar a `prepararRecorrido`, el instante en que se marca el fin del bloque, y el envio de los tres avisos tecnicos). Quedaron verificadas con las corridas reales de arriba, incluida la del webhook falso.
+5. **Si el operador quiere agregar "Audio (Soundbars/Torres)"** (14 paginas, seccion `audio-devices`) es una linea en `src/prioridad.mjs`, explicada en el README.

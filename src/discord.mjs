@@ -627,7 +627,13 @@ export function mensajeCorreccionesDePrecio(correcciones, tope = 15) {
   const lista = correcciones ?? [];
   if (lista.length === 0) return null;
   const esBaja = (c) => Number.isFinite(c.precio) && Number.isFinite(c.precioAnterior) && c.precio < c.precioAnterior;
-  const ordenadas = [...lista].sort((a, b) => Number(esBaja(b)) - Number(esBaja(a)));
+  // El desempate por modelo NO es cosmetico: sin el, entre dos correcciones del
+  // mismo tipo mandaba el orden de llegada, o sea el orden del recorrido, y
+  // CUALES 15 ve el operador cambiaba al reordenar las paginas (medido en la
+  // revision del 2026-09-12).
+  const ordenadas = [...lista].sort(
+    (a, b) => Number(esBaja(b)) - Number(esBaja(a)) || String(a.modelo).localeCompare(String(b.modelo)),
+  );
   const lineas = ordenadas
     .slice(0, tope)
     .map((c) => `• ${esBaja(c) ? "🟢" : "🔴"} ${c.modelo}: ${fmt(c.precioAnterior)} → ${fmt(c.precio)}`)

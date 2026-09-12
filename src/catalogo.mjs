@@ -7,7 +7,7 @@
 // comparar() lo declararia desaparecido en 2 corridas y se irian ~60 avisos
 // falsos por Discord (ya paso: ~150 avisos falsos en 4 dias, ver BITACORA.md).
 import { varianteUtil } from "./titulo.mjs";
-import { RANGO, RANGO_POR_VIA } from "./identidad.mjs";
+import { ganaElEmpate, mismaSeccion, RANGO, RANGO_POR_VIA } from "./identidad.mjs";
 import { ESTADO } from "./stock.mjs";
 
 // Las categorias "Accesorios *" nunca se notifican (regla del operador).
@@ -68,7 +68,35 @@ export function integrarVariantes(observado, entry, variants, { via = "individua
     // pagina /buy/ que si estaba en el listado) se pisaban por orden de llegada.
     const rangoNuevo = rangoDe(v, RANGO_POR_VIA[via] ?? RANGO.FAMILIA);
     const rangoExistente = rangoDe(existente, esFamiliaGenerica(existente?.categoria) ? RANGO.FAMILIA : RANGO.PROPIA);
-    if (existente && rangoNuevo < rangoExistente) {
+
+    // EMPATE ENTRE PAGINAS DE SECCIONES DISTINTAS (2026-09-12, arreglo de la
+    // revision del reordenamiento del recorrido). Dos paginas del MISMO rango
+    // que publican el mismo SKU son casi siempre la ficha plana y su propia
+    // /buy/ (medido: 115 SKU, mismas seccion las dos): el recorrido nunca las
+    // separa, asi que entre ellas el orden de llegada es siempre el mismo y
+    // sigue mandando como hasta ahora.
+    //
+    // Lo que el recorrido SI puede invertir es un par de paginas de SECCIONES
+    // DISTINTAS (una de /smartphones/, que ahora va al principio, contra una de
+    // /mobile-accessories/, que va al final). Ahi el orden de llegada dejaria de
+    // ser estable y el mismo insumo daria dos catalogos distintos, asi que el
+    // empate se arbitra con un criterio propio de las paginas (ver ganaElEmpate
+    // en src/identidad.mjs): gana la que NOMBRA al SKU en su slug.
+    //
+    // Medido antes de escribirlo: hoy esta rama esta MUERTA. Ningun SKU del
+    // catalogo es publicado por paginas de dos secciones (0 de 1.031; 0 de los
+    // 111 SKU que en 348 snapshots cambiaron de pagina firmante, salvo el
+    // GP-TOS928SBEYW del 2026-07-25, que hoy ya lo contiene repartirPorPropiedad).
+    // No cambia nada de lo que hay; existe para que el dia que Samsung publique
+    // un SKU desde dos secciones, lo decida una regla y no el azar del recorrido.
+    const pierdeElEmpate =
+      existente &&
+      rangoNuevo === rangoExistente &&
+      existente.paginaOrigen &&
+      !mismaSeccion(existente.paginaOrigen, entry.url) &&
+      !ganaElEmpate(entry.url, existente.paginaOrigen, v.modelo);
+
+    if (existente && (rangoNuevo < rangoExistente || pierdeElEmpate)) {
       // ...pero su nombre rico y sus especificaciones igual se aprovechan para el
       // titulo: son datos del mismo SKU, no del precio
       if (nombreRico && !existente.nombreFamilia) existente.nombreFamilia = nombreRico;

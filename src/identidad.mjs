@@ -93,6 +93,68 @@ export function slugNombraSku(url, sku) {
 }
 
 /**
+ * Primer tramo de la ruta bajo /cl/: ".../cl/smartphones/galaxy-s/x/" ->
+ * "smartphones". Es la seccion del sitio a la que pertenece una pagina.
+ *
+ * Vive aca, en el modulo de la identidad de una pagina, y no en
+ * src/prioridad.mjs (que lo re-exporta) porque lo necesitan dos cosas distintas:
+ * el reordenamiento del recorrido y el desempate de abajo.
+ */
+export function seccionDeUrl(url) {
+  if (!url) return null;
+  let ruta;
+  try {
+    ruta = new URL(String(url)).pathname;
+  } catch {
+    ruta = String(url).split(/[?#]/)[0];
+  }
+  const tramos = ruta.toLowerCase().split("/").filter(Boolean);
+  const i = tramos[0] === "cl" ? 1 : 0;
+  return tramos[i] ?? null;
+}
+
+/** ¿Las dos paginas viven en la misma seccion del sitio? */
+export function mismaSeccion(a, b) {
+  return seccionDeUrl(a) === seccionDeUrl(b);
+}
+
+/**
+ * DESEMPATE ENTRE DOS PAGINAS DEL MISMO RANGO QUE PUBLICAN EL MISMO SKU, cuando
+ * el orden de llegada no puede decidir (2026-09-12, defecto medido por los
+ * verificadores del reordenamiento del recorrido).
+ *
+ * EL PROBLEMA. El rango (arriba) resuelve "ficha propia contra pagina que solo
+ * agrupa". Lo que no resuelve es el empate: dos paginas que valen lo MISMO y
+ * dicen cosas distintas del mismo SKU. Ahi ganaba la que llegara ultima, o sea
+ * el ORDEN DEL RECORRIDO. Mientras las dos paginas del empate fueran la ficha
+ * plana y su propia /buy/ eso no se notaba (el recorrido nunca las separa), pero
+ * con el recorrido reordenado por categorias principales una pagina de
+ * /smartphones/ puede adelantarse a una de /mobile-accessories/.
+ *
+ * PASO DE VERDAD, UNA VEZ: el 2026-07-25 el SKU GP-TOS928SBEYW (una tarjeta para
+ * Galaxy S24 Ultra) quedo firmado por .../tv-accessories/customizable-frame--vg-scfa--
+ * vg-scfa43wtbru/ con categoria "Accesorios TV" y precio $14.990, en vez de su
+ * propia ficha de /mobile-accessories/ ($10.493). Volvio solo a la corrida
+ * siguiente: lo decidio el orden. (Hoy esa pagina ya no puede publicarlo, porque
+ * su slug nombra a OTRO SKU y repartirPorPropiedad lo declara ajeno; el empate
+ * que queda abierto es el de las paginas cuyo slug no nombra a ninguno.)
+ *
+ * LA REGLA. Gana la pagina cuyo slug NOMBRA al SKU: es la ficha de ESE producto,
+ * no una que lo menciona de pasada. Si eso no desempata (las dos lo nombran, o
+ * ninguna), gana la ruta menor en orden alfabetico. Es arbitrario a proposito:
+ * lo que importa es que sea SIEMPRE LA MISMA, sin importar por donde empezo el
+ * recorrido.
+ *
+ * @returns true si `nueva` tiene que pisar lo que escribio `existente`
+ */
+export function ganaElEmpate(nueva, existente, sku) {
+  const a = slugNombraSku(nueva, sku);
+  const b = slugNombraSku(existente, sku);
+  if (a !== b) return a;
+  return String(rutaDe(nueva)) < String(rutaDe(existente));
+}
+
+/**
  * REGLA DE PROPIEDAD. De los SKU que esta pagina publica, ¿cuales le pertenecen
  * de verdad a la entrada que se pidio?
  *

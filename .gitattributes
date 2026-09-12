@@ -15,3 +15,8 @@ data/notificados.jsonl merge=union
 # un aviso repetido y una de menos deja al operador sin enterarse. El duplicado
 # lo filtra leerPendientes() en src/pendientes.mjs.
 data/pendientes.jsonl merge=union
+# avisos-tecnicos.jsonl guarda que aviso tecnico ya salio hoy, para que una
+# condicion que dura dias no mande 7 mensajes identicos diarios. Por union: ante
+# un conflicto, una huella de mas solo evita un aviso repetido (y las huellas
+# viejas se podan solas a los 7 dias).
+data/avisos-tecnicos.jsonl merge=union

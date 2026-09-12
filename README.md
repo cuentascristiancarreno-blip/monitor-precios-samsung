@@ -6,6 +6,7 @@ Revisa el precio, stock y catálogo de los productos de samsung.com/cl y avisa p
 
 - `src/seed.json`: el listado base de ~1023 productos/variantes (viene del Excel que armaste).
 - `src/discover.mjs`: antes de cada revisión, además busca automáticamente páginas "familia" (como el Galaxy S25, donde una sola página agrupa todos los colores y capacidades) que no estaban en el listado.
+- `src/prioridad.mjs`: **por dónde empieza cada revisión.** Acá está la lista de las categorías principales, en el orden en que las quieres ver (ver la sección "Por dónde empieza cada revisión" más abajo). Es el único lugar donde se edita esa lista.
 - `src/run.mjs`: revisa cada página (con un reintento para las que fallan), detecta si la corrida completa es confiable, y delega la comparación.
 - `src/catalogo.mjs`: arma el catálogo de la corrida (un producto por SKU) y decide qué categorías no se notifican. La identidad de un producto es **siempre su SKU**: el nombre nunca influye en si algo se considera nuevo, desaparecido o cambiado.
 - `src/comparar.mjs`: la lógica que decide qué cambió y qué se notifica (ver reglas abajo). Es un módulo puro con pruebas automatizadas.
@@ -14,9 +15,10 @@ Revisa el precio, stock y catálogo de los productos de samsung.com/cl y avisa p
 - `src/despachador-vivo.mjs`: los **avisos en vivo** — ver la sección siguiente.
 - `data/latest.json`: catálogo con el último estado conocido de cada producto (precio, stock confirmado, presencia). El historial git de este archivo es el snapshot completo de cada revisión.
 - `data/history.jsonl`: eventos de cambio (una línea por cambio detectado, con campo `tipo`).
-- `data/ejecuciones.jsonl`: registro de cada corrida — duración, páginas, errores, conteos por tipo de cambio, y si fue confiable.
+- `data/ejecuciones.jsonl`: registro de cada corrida — duración, páginas, errores, conteos por tipo de cambio, si fue confiable, y **cuánto tardó el bloque de categorías principales** (`paginasPrincipales`, `duracionPrincipalesMin`).
 - `data/notificados.jsonl`: apunte temporal de lo que ya se avisó en vivo. Se borra solo al terminar cada revisión; solo sirve para que una revisión que se muere a mitad no haga que la siguiente te avise dos veces lo mismo.
 - `data/pendientes.jsonl`: avisos que Discord nunca llegó a aceptar (por ejemplo, Discord caído durante toda la revisión). Se mandan al principio del resumen de la revisión siguiente y ahí se borran.
+- `data/avisos-tecnicos.jsonl`: qué avisos técnicos ya salieron hoy, para que una condición que dura días (por ejemplo, una categoría que Samsung renombró) no te mande 7 mensajes idénticos por día. Se poda solo a los 7 días.
 - `.github/workflows/monitor.yml`: la tarea programada (7 veces al día, hora Chile: 01, 04, 10, 13, 16, 19, 22). Corre las pruebas antes de cada revisión, sube los datos actualizados y dispara los avisos.
 
 ## Avisos en vivo (2026-09-11)
@@ -211,3 +213,90 @@ Medido con el código real, 5 revisiones seguidas alternando solo si el bloque s
 - El aviso técnico de precios congelados ahora incluye a los productos **agotados** (Samsung los vende, solo que sin unidades).
 
 **7. Dos cosas de fondo, medidas.** El tiempo máximo que el monitor esperaba por el precio de cada página **nunca se estaba aplicando**: por un error de una línea, en vez de esperar los 3 segundos configurados esperaba **30**. Eso significa que cada una de las ~150 páginas que legítimamente no publican precio costaba medio minuto — unos 75 minutos por revisión. Ya está corregido, y de paso la pausa entre visitas subió de 2 a 2,5 segundos, que es lo que pide la política de scraping del proyecto. En neto, la revisión debería **acortarse**, no alargarse; hay que confirmarlo con el reloj en la primera corrida real.
+
+---
+
+## Por dónde empieza cada revisión (2026-09-12)
+
+Los avisos llegan **en vivo**, a medida que la revisión avanza. Eso significa que lo que se revisa primero es lo primero que te enteras. Hasta ahora la revisión seguía el orden crudo del listado, que está ordenado alfabéticamente por categoría: partía por "Accesorios línea blanca" y **el primer smartphone era la página 717 de 1.185**. Una baja de un Galaxy podía llegarte con más de una hora de atraso.
+
+Desde ahora la revisión **parte por las categorías que pediste, en tu orden**:
+
+1. Smartphones
+2. Tablets
+3. Audio y Galaxy Buds
+4. Relojes (Galaxy Watch)
+5. Computadores
+
+### Lo que se gana, con números
+
+Lo que no depende de nada es el **puesto**: en qué número de página empieza cada categoría. Los minutos sí dependen de lo rápido que vaya esa revisión, así que van como rango, medido sobre las últimas 20 revisiones completas (entre 6,4 y 10,7 segundos por página; lo típico son 9,1):
+
+| Categoría | Antes empezaba en la página… | Ahora empieza en… | Se adelanta (típico) |
+|---|---|---|---|
+| Smartphones | 717 | **1** | ~109 min (76 a 127) |
+| Tablets | 810 | 186 | ~95 min (66 a 111) |
+| Audio y Galaxy Buds | 456 | 254 | ~31 min (22 a 36) |
+| Relojes (Galaxy Watch) | 688 | 268 | ~64 min (45 a 75) |
+| Computadores | 492 | 317 | ~27 min (19 a 31) |
+
+El bloque de las cinco categorías son **347 páginas de 1.185 (29%)**: entre **37 y 62 minutos, del orden de 53 en una revisión normal**. Ojo con una cosa al comparar: ese bloque se lleva el **100% de las páginas que el monitor descubre solo**, que son las que cuestan una carga extra (pasan por navegador), así que tarda un poco más que el promedio de una página cualquiera.
+
+Después del bloque la revisión sigue con todo lo demás exactamente como antes: **no se deja de revisar nada, solo cambia el orden**.
+
+### Las páginas "familia" también entran temprano
+
+Hay dos tipos de página: las del listado y las que el monitor **descubre solo** (las páginas donde una sola dirección agrupa todos los colores y capacidades de un modelo). Las descubiertas entran **dentro del bloque de su propia categoría**, justo después de las del listado.
+
+Por qué importa: de los 130 productos que el monitor conoce bajo "smartphones", **37 solo existen en una página descubierta** — no tienen ficha propia en el listado. Si las descubiertas hubieran quedado todas juntas al final del bloque, "empezar por Smartphones" habría cubierto 93 de los 130 y los otros 37 (los Galaxy nuevos, justo los del Cyber) habrían esperado detrás de las otras cuatro categorías, unos 10 minutos más. Lo mismo pasa en Relojes (13 de 31) y Computadores (7 de 20).
+
+Lo que se pierde con esta decisión: la segunda categoría arranca más tarde, porque Smartphones pasa de 91 a 185 páginas.
+
+### Cómo comprobar que se está cumpliendo
+
+Cada revisión anota en `data/ejecuciones.jsonl`:
+
+- `paginasPrincipales`: cuántas páginas tenía el bloque de categorías principales. Es el tamaño **real** del bloque, aunque la revisión no lo haya terminado.
+- `duracionPrincipalesMin`: cuántos minutos tardó en terminarlo (contados desde que empezó la revisión). Si sale `null`, la revisión **no alcanzó a completar el bloque** — no es lo mismo que cero.
+- `inversionesIntraSeccion`: tiene que ser **0 siempre** (ver la sección de abajo).
+- `skusQueCambiaronDeSeccion`: productos que pasaron a colgar de una página de otra sección de la web. Casi siempre 0.
+
+En el log de GitHub Actions aparecen además dos líneas: `INFO bloque_principal` (al empezar, con el tamaño del bloque, cuántas de esas se van a recorrer y el desglose por categoría) y `INFO bloque_principal_listo` (al terminarlo).
+
+### Si quieres cambiar la lista
+
+La lista está en **`src/prioridad.mjs`**, arriba del todo, y es la única copia que existe. Cada línea tiene el nombre de la categoría tal como aparece en el listado y el tramo de la dirección web que le corresponde. Por ejemplo, para agregar los soundbars (que hoy **no** están, porque no los pediste) habría que agregar una línea con `"Audio (Soundbars/Torres)"` y `audio-devices`.
+
+Ojo con una trampa: el nombre tiene que ser el **exacto del listado**. Tú los nombraste "Relojes" y "Computadoras"; en el listado se llaman "Relojes (Galaxy Watch)" y "Computadores". Hay una prueba automática que revienta si alguien escribe un nombre que no existe en el listado.
+
+### Si Samsung le cambia el nombre a una categoría
+
+No se rompe nada y no se queda callado:
+
+- La revisión sigue corriendo igual y **no se pierde ninguna página**.
+- Si la sección de la web sigue existiendo (o sea, fue un cambio de nombre), esas páginas **igual entran temprano**, reconocidas por su dirección.
+- Te llega un aviso por el **canal técnico** diciendo cuál categoría dejó de calzar y si parece un cambio de nombre o una desaparición, y queda anotado en `data/ejecuciones.jsonl` en `categoriasPrincipalesAusentes`.
+- Ese aviso sale **una vez al día como máximo**, no en cada revisión. La condición dura hasta que alguien corrija el archivo, y siete mensajes idénticos por día por el mismo canal donde llegan las momias no ayudan a nadie.
+
+### Lo más importante: cambiar el orden no cambia el resultado
+
+El sistema ya tuvo un defecto causado por el orden de las páginas (el precio de lista de una página de familia quedando firmado como si fuera de la ficha propia, ver más arriba), así que esto es lo que hay que cuidar.
+
+**La versión corta:** dos páginas que hablan del mismo producto viven siempre bajo la misma sección de la web (`/smartphones/`, `/tablets/`…), y el reordenamiento **nunca cambia el orden entre dos páginas de la misma sección**. Por eso no puede cambiar quién escribe qué.
+
+Hay que decirlo así y no como estaba escrito antes ("las páginas del listado van siempre antes que las descubiertas"), porque eso **no es cierto**: el reordenamiento adelanta 146.246 páginas descubiertas por delante de páginas del listado — es justo lo que pediste. Lo que nunca adelanta es una página por delante de otra **de su misma sección**.
+
+Tres cosas lo sostienen, y las tres se vigilan solas:
+
+1. **Pruebas contra el listado real.** Que cada sección de la web pertenezca a una sola categoría, que ninguna categoría viva repartida en dos secciones, y que sobre las 1.023 páginas reales el reordenamiento no invierta **ningún** par de la misma sección. Si Samsung cambia eso, las pruebas se ponen rojas antes de que salga un aviso equivocado.
+2. **Un desempate que no depende del orden.** Si dos páginas de secciones distintas publican el mismo producto, ya no gana "la última que pasó": gana la página que **nombra al producto en su dirección**, que es la ficha de ese producto. Esto pasó de verdad una vez (el 25 de julio, una tarjeta para Galaxy quedó colgada de una página de accesorios de TV y volvió sola a la revisión siguiente).
+3. **Dos alarmas en cada revisión.** Si el reordenamiento llegara a invertir dos páginas de la misma sección, o si un producto cambia de sección, te llega un aviso técnico (una vez al día) y queda en el resumen de la revisión.
+
+Y sigue estando la prueba que toma el mismo conjunto de observaciones, lo procesa en el orden viejo y en el nuevo, y exige que **el catálogo y los avisos sean idénticos** — ahora incluyendo el caso cruzado (un producto publicado por una página de una categoría principal y por otra que no lo es), que antes no cubría.
+
+Lo único que cambia a propósito es **el orden en que te llegan los avisos**.
+
+### Dos detalles chicos que también se arreglaron
+
+- **Los mensajes que cortan la lista** ("y 12 más") ya no muestran los primeros que pasaron, sino los más insistentes, en un orden fijo. Antes, cuáles 15 veías dependía de por dónde había empezado la revisión.
+- **`data/latest.json` se guarda ordenado por producto.** No cambia ningún dato: hace que el historial de cambios del archivo muestre solo lo que de verdad cambió. La primera revisión después de este cambio va a tener un cambio grande de una sola vez, y nunca más.
