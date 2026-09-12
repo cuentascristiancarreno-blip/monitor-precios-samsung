@@ -58,15 +58,39 @@ test("slugNombraSku tolera los separadores del slug", () => {
   assert.equal(slugNombraSku(U_FE512, "S25"), false);
 });
 
-test("caso S25 FE 512GB: de los 3 codigos de la pagina agrupada solo uno es suyo", () => {
+test("caso S25 FE 512GB: la pagina redirigida no es suya, ni siquiera la parte que la URL nombra", () => {
+  // ESTA PRUEBA FIJABA LO CONTRARIO HASTA EL 2026-09-12 Y LA PRODUCCION LA
+  // DESMINTIO. Esperaba propios=["SM-S731BDBPLTL"] porque la URL PEDIDA nombra a
+  // ese SKU. Pero la pagina a la que se aterriza (.../galaxy-s25/buy/) es el
+  // selector de compra del S25, y adoptarla como "su" ficha metio su precio por
+  // defecto -- $1.229.990, que es el del Galaxy S25+ -- en las CINCO versiones
+  // del S25 FE del catalogo, incluidas las tres de 256 GB que se venden a
+  // $579.990, y mando 4 avisos falsos a Discord (history.jsonl, 2026-09-12
+  // 05:19Z: "recuperado" y "sube" de SM-S731BZKJLEL y SM-S731BDBPLTL a
+  // $1.229.990). La pagina redirige: no es de esta entrada y punto. El SKU que
+  // la URL nombra ya se captura desde su propia ficha.
   // digitalData real: "SM-S936BDBJLTL,SM-S931BDBJLTL,SM-S731BDBPLTL"
-  const { propios, ajenos } = repartirPorPropiedad(U_FE512, U_FE512_FINAL, [
+  const { propios, ajenos, motivo } = repartirPorPropiedad(U_FE512, U_FE512_FINAL, [
     "SM-S936BDBJLTL",
     "SM-S931BDBJLTL",
     "SM-S731BDBPLTL",
   ]);
-  assert.deepEqual(propios, ["SM-S731BDBPLTL"]);
-  assert.deepEqual(ajenos, ["SM-S936BDBJLTL", "SM-S931BDBJLTL"]);
+  assert.deepEqual(propios, []);
+  assert.deepEqual(ajenos, ["SM-S936BDBJLTL", "SM-S931BDBJLTL", "SM-S731BDBPLTL"]);
+  assert.match(motivo, /redirigida/);
+});
+
+test("el codigo en la QUERY de la URL final no rescata a una pagina redirigida", () => {
+  // la redireccion real termina en ".../galaxy-s25/buy/?modelCode=SM-S731BDBPLTL":
+  // el SKU viaja en la query. Si la regla mirara la URL final completa en vez de
+  // su RUTA, volveria a adoptar el selector como ficha propia.
+  const { propios, motivo } = repartirPorPropiedad(
+    U_FE512,
+    "https://www.samsung.com/cl/smartphones/galaxy-s25/buy/?modelCode=SM-S731BDBPLTL",
+    ["SM-S731BDBPLTL"],
+  );
+  assert.deepEqual(propios, []);
+  assert.match(motivo, /redirigida/);
 });
 
 test("caso The Frame: una ficha redirigida a la de otro producto no se queda con nada", () => {
@@ -188,7 +212,11 @@ const API_S25 = {
   ],
 };
 
-test("la pagina del S25 FE 512GB emite UN solo producto: el suyo", async () => {
+test("la pagina del S25 FE 512GB no emite NINGUN producto: redirige al selector del S25", async () => {
+  // Antes esta prueba esperaba un registro de SM-S731BDBPLTL con el precio de la
+  // API. Produccion demostro que ese registro es basura: el precio que sale de
+  // esa pagina es el del Galaxy S25+. Ver la nota larga en la prueba de
+  // repartirPorPropiedad de mas arriba.
   const page = paginaFalsa({
     dd: {
       model_code: "SM-S936BDBJLTL,SM-S931BDBJLTL,SM-S731BDBPLTL",
@@ -197,12 +225,11 @@ test("la pagina del S25 FE 512GB emite UN solo producto: el suyo", async () => {
     },
     urlFinal: U_FE512_FINAL,
   });
-  const r = await extractSingleProduct(page, U_FE512, [API_S25]);
-  assert.ok(!Array.isArray(r), "un solo registro, no la ficha fusionada");
-  assert.equal(r.modelo, "SM-S731BDBPLTL");
-  assert.equal(r.nombre, "Galaxy S25 FE", "el nombre es el de SU posicion en displayName");
-  assert.equal(r.precio, 969990, "el precio por SKU lo da la API, no la ficha agrupada");
-  assert.equal(r.rango, RANGO.PROPIA);
+  await assert.rejects(
+    () => extractSingleProduct(page, U_FE512, [API_S25]),
+    (e) => e?.ajena === true,
+    "tiene que subir como PaginaAjena, que protege a sus SKU en vez de declararlos desaparecidos",
+  );
 });
 
 test("una ficha redirigida a la de otro producto se declara ajena, no fallida", async () => {

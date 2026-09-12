@@ -96,33 +96,57 @@ export function slugNombraSku(url, sku) {
  * REGLA DE PROPIEDAD. De los SKU que esta pagina publica, ¿cuales le pertenecen
  * de verdad a la entrada que se pidio?
  *
- *  1. Si la URL pedida nombra a alguno de los SKU -> esos y solo esos. Cubre a la
- *     vez el slug renombrado (el refrigerador, que redirige pero sigue siendo el
- *     mismo producto) y la ficha que ademas lista a sus hermanos (el S25 FE
- *     512GB, cuyo digitalData trae "SM-S936BDBJLTL,SM-S931BDBJLTL,SM-S731BDBPLTL"
- *     y del que solo le corresponde el ultimo).
- *  2. Si no nombra a ninguno y la navegacion ATERRIZO EN OTRA PAGINA -> ninguno.
- *     Se pidio la ficha de un producto y Samsung entrego la de otro; ese otro
- *     producto ya se captura desde su propia pagina.
- *  3. Si no nombra a ninguno y no hubo redireccion -> todos. Son las paginas de
- *     grupo legitimas (Tab S9 FE, Tab A9, Book3, Book3 Pro, Z Fold7) y las
- *     fichas normales cuyo slug no repite el codigo.
+ * PRIMERO SE MIRA LA REDIRECCION, DESPUES EL SLUG. El orden importa y tenerlo al
+ * reves costo caro (incidente del 2026-09-12, ver BITACORA.md): la regla del slug
+ * se evaluaba antes y, como la URL PEDIDA del S25 FE nombra a su SKU, el selector
+ * de compra al que Samsung la redirige quedaba adoptado como "su" ficha. De ahi
+ * salio el precio del Galaxy S25+ ($1.229.990) escrito en las CINCO versiones del
+ * S25 FE, y 4 avisos falsos a Discord.
+ *
+ *  1. ¿Hubo redireccion? Entonces esta es la ficha de OTRO producto, salvo que la
+ *     RUTA FINAL siga nombrando al SKU: eso es un slug renombrado y el producto
+ *     si es de esta entrada (rs5300t "22-cu-ft" -> "628l", mismo SM/RS). La ruta
+ *     se mira SIN la query a proposito: ".../galaxy-s25/buy/?modelCode=SM-S731..."
+ *     lleva el codigo en la query y aun asi es la pagina de otro producto.
+ *  2. Sin redireccion, si la URL nombra a alguno de los SKU -> esos y solo esos.
+ *     Es la ficha que ademas lista a sus hermanos: el digitalData de una ficha
+ *     puede traer "SM-S936BDBJLTL,SM-S931BDBJLTL,SM-S731BDBPLTL" y solo uno le
+ *     corresponde.
+ *  3. Sin redireccion y sin nombrar a ninguno -> todos. Son las paginas de grupo
+ *     legitimas (Tab S9 FE, Tab A9, Book3, Book3 Pro, Z Fold7) y las fichas
+ *     normales cuyo slug no repite el codigo.
  *
  * @returns {{propios: string[], ajenos: string[], motivo: string}}
  */
 export function repartirPorPropiedad(urlPedida, urlFinal, skus) {
   const lista = (skus ?? []).filter(Boolean);
-  const nombrados = lista.filter((s) => slugNombraSku(urlPedida, s));
+  const reparto = (propios, motivo) => ({
+    propios,
+    ajenos: lista.filter((s) => !propios.includes(s)),
+    motivo,
+  });
 
-  if (nombrados.length > 0) {
-    return {
-      propios: nombrados,
-      ajenos: lista.filter((s) => !nombrados.includes(s)),
-      motivo: "la URL nombra a su producto",
-    };
-  }
+  // 1. HUBO REDIRECCION. Se pidio la ficha de un producto y Samsung entrego otra
+  //    pagina. Solo se conserva el SKU si la RUTA FINAL lo sigue nombrando, que
+  //    es la firma de un slug renombrado. Sin eso, nada de lo que publique esa
+  //    pagina es de esta entrada: su producto ya se captura desde su ficha.
   if (!mismaPagina(urlPedida, urlFinal)) {
-    return { propios: [], ajenos: lista, motivo: "redirigida a la ficha de otro producto" };
+    // Un renombre de slug nombra al MISMO SKU en las dos URL. Que la ruta final
+    // nombre a un SKU que la pedida NO nombra es justo lo contrario: aterrizamos
+    // en la ficha de otro (The Frame 55" -> ficha del 50", cuya ruta final si
+    // nombra al QN50 pero la pedida nombraba al QN55).
+    const enRutaFinal = lista.filter(
+      (s) => slugNombraSku(rutaDe(urlFinal), s) && slugNombraSku(urlPedida, s),
+    );
+    return enRutaFinal.length > 0
+      ? reparto(enRutaFinal, "redirigida, pero la ruta final sigue nombrando a su producto")
+      : reparto([], "redirigida a la ficha de otro producto");
   }
-  return { propios: lista, ajenos: [], motivo: "pagina servida tal cual se pidio" };
+
+  // 2. Sin redireccion: si la URL nombra a alguno, esos y solo esos.
+  const nombrados = lista.filter((s) => slugNombraSku(urlPedida, s));
+  if (nombrados.length > 0) return reparto(nombrados, "la URL nombra a su producto");
+
+  // 3. Sin redireccion y sin nombrar a ninguno: pagina de grupo legitima.
+  return reparto(lista, "pagina servida tal cual se pidio");
 }
