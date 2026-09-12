@@ -135,3 +135,33 @@ test("esAccesorio reconoce todas las categorias de accesorios y ninguna otra", (
     assert.equal(esAccesorio(c), false, String(c));
   }
 });
+
+// --- dos paginas del mismo rango, una sola lectura util (medido 2026-09-12) ---
+
+test("una lectura 'desconocido' no borra el stock que otra pagina SI pudo leer", () => {
+  // Caso real: Galaxy Book4 NP750XGJ-KS4CL. Su ficha plana trae un bloque sin
+  // precio (un enlace suelto a /buy/) y queda en "desconocido"; su pagina /buy/,
+  // cargada el mismo dia, dice "Avísame" -> agotado. Las dos son rango PROPIA,
+  // asi que antes ganaba la que llegara ultima y el resultado dependia del orden
+  // de las paginas de la corrida.
+  const fila = { categoria: "Computadores", subcategoria: "galaxy-book", url: "https://ejemplo/book4/" };
+  const buena = { modelo: "NP750XGJ-KS4CL", precio: 699990, estadoStock: "agotado", disponible: false, rango: 3 };
+  const ciega = { modelo: "NP750XGJ-KS4CL", precio: 699990, estadoStock: "desconocido", disponible: null, rango: 3 };
+
+  for (const orden of [[buena, ciega], [ciega, buena]]) {
+    const observado = {};
+    for (const v of orden) integrarVariantes(observado, fila, [v], { timestamp: TS });
+    assert.equal(observado["NP750XGJ-KS4CL"].estadoStock, "agotado", JSON.stringify(orden.map((v) => v.estadoStock)));
+    assert.equal(observado["NP750XGJ-KS4CL"].disponible, false);
+  }
+});
+
+test("pero una lectura util SI actualiza a otra lectura util (no se congela)", () => {
+  // la regla protege contra el vacio, no contra un cambio real de estado
+  const fila = { categoria: "Computadores", subcategoria: "galaxy-book", url: "https://ejemplo/book4/" };
+  const observado = {};
+  integrarVariantes(observado, fila, [{ modelo: "X1", precio: 1000, estadoStock: "agotado", disponible: false, rango: 3 }], { timestamp: TS });
+  integrarVariantes(observado, fila, [{ modelo: "X1", precio: 1000, estadoStock: "disponible", disponible: true, rango: 3 }], { timestamp: TS });
+  assert.equal(observado.X1.estadoStock, "disponible");
+  assert.equal(observado.X1.disponible, true);
+});

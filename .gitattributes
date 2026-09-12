@@ -5,3 +5,13 @@
 # git: hubo commits donde history.jsonl perdio lineas).
 data/history.jsonl merge=union
 data/ejecuciones.jsonl merge=union
+# notificados.jsonl guarda las huellas de lo ya avisado en vivo y se trunca al
+# terminar cada corrida. Tambien por union: ante un conflicto, una huella de mas
+# solo evita un aviso repetido, una de menos produce un duplicado.
+data/notificados.jsonl merge=union
+# pendientes.jsonl guarda los avisos que Discord nunca acepto, para que la
+# corrida siguiente los mande. NO es append-only (se reescribe cuando se
+# entregan), pero igual va por union: ante un conflicto, una linea de mas manda
+# un aviso repetido y una de menos deja al operador sin enterarse. El duplicado
+# lo filtra leerPendientes() en src/pendientes.mjs.
+data/pendientes.jsonl merge=union

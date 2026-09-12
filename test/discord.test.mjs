@@ -2,6 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { notifyDiscord, notifyTecnico, armarMensajes } from "../src/discord.mjs";
 
+// Estas pruebas verifican el CONTENIDO de los mensajes, no el ritmo de envio:
+// sin esto el cubo de fichas (una ficha cada 2,3 s) haria que la suite durmiera
+// minutos de verdad. El ritmo se verifica aparte en test/vivo.test.mjs, con un
+// reloj virtual y el valor de produccion.
+process.env.DISCORD_PAUSA_MS = "0";
+
 function capturarEnvios() {
   const enviados = [];
   globalThis.fetch = async (url, opts) => {
@@ -279,4 +285,57 @@ test("armarMensajes nunca corta una linea a la mitad", () => {
   const mensajes = armarMensajes("encabezado", [["nuevo", lineas]]);
   const todo = mensajes.join("\n");
   for (const l of lineas) assert.ok(todo.includes(l));
+});
+
+// --- los tres estados de stock ----------------------------------------------
+// Desde 2026-09-11 el stock tiene cuatro estados y dos de ellos comparten el
+// booleano false: "agotado" (se vende, no hay unidades) y "no está a la venta"
+// (Samsung no lo vende). El operador tiene que poder distinguirlos.
+
+test("el mensaje de stock distingue agotado de 'no está a la venta'", async () => {
+  const enviados = capturarEnvios();
+  await notifyDiscord("https://fake.webhook", {
+    totalRevisado: 10,
+    errores: 0,
+    changes: [
+      {
+        tipo: "stock",
+        modelo: "M1",
+        nombre: "Aspiradora",
+        estado: "no-a-la-venta",
+        estadoAnterior: "disponible",
+        disponible: false,
+        disponibleAnterior: true,
+        precio: 50000,
+        categoria: "Aspiradoras",
+        url: "https://x/1",
+      },
+      {
+        tipo: "stock",
+        modelo: "M2",
+        nombre: "Tele",
+        estado: "agotado",
+        estadoAnterior: "disponible",
+        disponible: false,
+        disponibleAnterior: true,
+        precio: 60000,
+        categoria: "Televisores",
+        url: "https://x/2",
+      },
+    ],
+  });
+  const texto = enviados.join("\n");
+  assert.match(texto, /Stock antes: \*\*disponible\*\* → ahora: \*\*no está a la venta\*\*/);
+  assert.match(texto, /Stock antes: \*\*disponible\*\* → ahora: \*\*agotado\*\*/);
+  assert.ok(!texto.includes("undefined"));
+});
+
+test("un evento viejo de history.jsonl (solo booleanos) se sigue leyendo igual", async () => {
+  const enviados = capturarEnvios();
+  await notifyDiscord("https://fake.webhook", {
+    totalRevisado: 10,
+    errores: 0,
+    changes: [{ tipo: "stock", modelo: "M1", nombre: "Reloj", disponible: true, disponibleAnterior: false, precio: 50000, categoria: "Relojes (Galaxy Watch)", url: "https://x/1" }],
+  });
+  assert.match(enviados.join("\n"), /Stock antes: \*\*agotado\*\* → ahora: \*\*disponible\*\*/);
 });

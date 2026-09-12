@@ -485,3 +485,321 @@ realmente sin stock en el momento de la prueba. Cuando se probo, la ficha del
 pack ya habia vuelto a tener stock ("Avísame" ya no aparecia), asi que quedo
 pendiente de verificacion. NO se toco `STOCK_NEGATIVO` para no cambiar a ciegas
 algo que hoy funciona.
+
+# 2026-09-11 — El stock estaba mal en todo el sistema (y productos colgados de la pagina equivocada)
+
+Cierra el "Pendiente: el stock del pack no se detecto" de mas arriba, y de paso
+dos problemas de atribucion que salieron de la misma investigacion.
+
+## 1. El stock: 894 de 928 "disponibles" era un default, no una medicion
+
+`STOCK_NEGATIVO` buscaba 4 palabras en el texto de TODA la pagina y lo que no las
+trajera quedaba **disponible por defecto**. Samsung marca el sin-stock con el
+boton "Avísame", que no estaba en esa lista.
+
+Medido antes del arreglo:
+- Aspiradoras: el catalogo decia 15 disponibles de 17; en vivo solo 1 era
+  comprable, 15 mostraban "Avísame" y 1 "no está a la venta".
+- Muestra de 42 productos (2 por categoria notificable): la regla vieja acertaba
+  **26 de 42 (62%)** y los 16 errores iban TODOS en el mismo sentido.
+
+**Arreglo:** `src/stock.mjs`, una maquina de estados unica con cuatro estados
+(disponible / agotado / no-a-la-venta / desconocido) alimentada, en este orden de
+confianza, por el **bloque de compra** (`[class*='buying']`), por
+`stock.stockLevelStatus` de la API que la propia pagina ya pide, y por el
+`availability` del JSON-LD. **"desconocido" nunca se convierte en "disponible"**:
+si no se sabe, el estado no cambia y no se notifica nada.
+
+La trampa que documentaba la entrada anterior sigue viva y ahora tiene prueba: el
+TV F6000 trae "avisame" en el carrusel "¿Buscas alternativas?", y por eso la
+lectura se acota al bloque de compra en vez de al body.
+
+Dos falsos positivos mas aparecieron al verificar contra paginas reales, los dos
+tambien con prueba:
+- "Agregar al carro" es el boton de compra de TV y linea blanca (los celulares
+  dicen "Comprar" y los relojes "Comprar ahora"). Sin el, media tienda habria
+  quedado en "desconocido".
+- **"Dónde comprar" NO es un boton de compra**: es el buscador de tiendas fisicas
+  que Samsung pone en lo que no vende online (medido en el Flip Pro WM85B y en el
+  hub SmartThings ET-WV521BWEGCH). La palabra "comprar" que lleva adentro los
+  daba por disponibles.
+
+## 2. Productos atribuidos a la pagina equivocada: son REDIRECCIONES
+
+La pagina del Galaxy S25 FE 512GB producia 4 SKU que no son S25 FE sino S25
+normal (SM-S931B*, $1.069.990). Verificado cargando las paginas: Samsung redirige
+la ficha que deja de vender a la de un hermano, y el monitor anotaba el producto
+del hermano como si fuera de la URL que habia pedido.
+
+    ls03f-55-inch-...-qn55ls03fagxzs/        -> ls03f-50-inch-...-qn50ls03fagxzs/
+    rs5300t-...-natural-gray-rs60t5200s9-zs/ -> rs5300t-...-ebony-black-rs60t5200b1-zs/
+    galaxy-s25-fe-navy-512gb-sm-s731bdbpltl/buy/ -> galaxy-s25/buy/?modelCode=SM-S731BDBPLTL
+
+Como el producto del hermano TAMBIEN se captura desde su propia pagina, el mismo
+SKU entraba por dos caminos y ganaba el ultimo que escribia, con precios
+distintos: ese era el reclamo de los "precios contradictorios".
+
+**Arreglo:** `src/identidad.mjs`. Una entrada se queda con un SKU si la URL pedida
+lo nombra, o si la navegacion no termino en otra pagina. Mirar solo la
+redireccion no alcanzaba: Samsung tambien **renombra slugs** del mismo producto
+("22-cu-ft" -> "628l") y esa ficha si es la suya.
+
+Las 5 paginas de grupo legitimas (Tab S9 FE, Tab A9, Book3, Book3 Pro, Z Fold7)
+se verificaron en vivo: no redirigen y su slug no nombra ningun SKU, asi que
+siguen entregando todas sus variantes.
+
+**Red de seguridad:** una pagina redirigida NO cuenta como error (no se reintenta
+ni ensucia el indicador de corrida confiable) pero SI entra al conjunto de
+"paginas no verificadas" que recibe `comparar()`. Por muchas fichas que Samsung
+empiece a redirigir, sus productos conservan el ultimo dato bueno y jamas se
+convierten en una tanda de falsos "ya no aparece".
+
+## 3. Precedencia: manda la ficha donde el cliente compra
+
+Medido en el S25 FE 256GB: su ficha propia muestra **$579.990 con boton
+"Comprar"** mientras la pagina agrupada y su API dicen **$829.990** para el mismo
+SKU, y hasta lo marcan agotado. Cada registro lleva ahora un **rango**
+(propia 3 > familia 2 > agrupada 1) y en `integrarVariantes` gana el rango mas
+alto, no el ultimo que escribe. Antes esto dependia de que la categoria fuera
+"Familia (auto-descubierta)", asi que dos paginas agrupadas entre si se pisaban
+por orden de llegada.
+
+## 4. Migracion: por que no llegaron cientos de "se agoto"
+
+Si el detector nuevo hubiera entrado sin mas, la primera corrida habria dejado
+cientos de "agotado" esperando confirmacion y la SEGUNDA los habria notificado
+todos juntos: cientos de avisos que no son novedades del sitio, sino la
+correccion de un dato que siempre estuvo mal.
+
+Cada observacion viaja ahora con la **version del detector** que la produjo
+(`VERSION_STOCK`, hoy 2). Cuando la observacion viene de un detector mas nuevo
+que el que produjo el estado guardado, el estado se adopta **en silencio** y se
+sella la version en el registro. Se auto-desactiva sola y por SKU: a la corrida
+siguiente vuelven a regir las reglas normales, incluida la confirmacion en 2
+corridas. No hay fecha de corte ni variable de entorno que apagar.
+
+Verificado con una corrida real de 10 paginas contra el catalogo de produccion:
+9 productos leidos, **8 tenian el estado equivocado**, **0 eventos emitidos**
+(`history.jsonl` no se llego a crear).
+
+### Que se re-establece y que no
+
+Solo se re-establece en silencio lo que la version vieja **no habia medido**: su
+"disponible" era un DEFECTO, no una lectura. El "agotado" de la version vieja si
+salia de encontrar la palabra en la pagina, asi que es linea base valida y NO se
+re-establece. Si tambien se re-estableciera, un producto que estaba agotado y
+vuelve a tener stock se adoptaria en silencio y se perderia el aviso que el
+operador mas quiere. Costo medido sobre el catalogo real: ~891 SKU se siguen
+corrigiendo en silencio, ~34 conservan su linea base, ~19 avisos legitimos en la
+segunda corrida.
+
+Eso ademas **cierra la ventana**. Antes, un SKU que se leyera siempre como
+"desconocido" no sellaba nunca la version y quedaba con la adopcion silenciosa
+armada indefinidamente (caso real: SM-S741BLGPLTL).
+
+### ⚠️ LA MIGRACION ES DE UNA SOLA VIA: revertir el codigo OBLIGA a revertir los datos
+
+Despues de la primera corrida corregida, `data/latest.json` queda lleno de
+estados v2 ("agotado", "no-a-la-venta") con su `versionStock` sellado. Si en ese
+momento se revierte SOLO el codigo -- el gesto natural si algo se ve raro en
+pleno Cyber --, vuelve el detector viejo, que daba "disponible" por defecto en el
+96% de las paginas, y la confirmacion en 2 corridas retrasa el golpe una corrida
+y despues lo suelta entero.
+
+Simulado con el `comparar.mjs` de HEAD sobre el catalogo real: corrida 1 con el
+codigo nuevo, 0 eventos; se revierte el codigo; corrida 2, 0 eventos (se llenan
+los pendientes); corrida 3: **407 eventos de stock y ~256 avisos de golpe, todos
+falsos**. Revertir SOLO los datos y dejar el codigo nuevo da 0 eventos, porque la
+migracion se re-arma sola.
+
+Reglas practicas:
+
+1. El commit del codigo y el de `data/latest.json` tienen que ser **el mismo
+   commit**, para que un `git revert` unico deje las dos cosas consistentes.
+2. Si hay que volver atras: revertir el codigo **y** `data/latest.json` al mismo
+   commit. Alternativa equivalente: borrarle `estadoStock` y `versionStock` a
+   todos los registros.
+3. Revertir solo los datos es seguro. Revertir solo el codigo, no.
+
+## 5. Limpieza de data/latest.json
+
+Se borraron 4 registros: SM-S931BDBKLTL, SM-S931BLBKLTL, SM-S931BZKKLTL y
+SM-S931BZDKLTL. Colgaban de la pagina del S25 FE y su pagina duena
+(`/smartphones/galaxy-s25/buy/`) **no esta ni en `seed.json` ni en ninguno de los
+4 sitemaps**, o sea que nadie los va a observar nunca mas. Borrar la llave no
+genera avisos: el segundo bucle de `comparar()` solo recorre lo que existe en
+`previo`, asi que un SKU que ya no esta simplemente no produce ningun evento
+(dejarlos habria dado 4 falsos "ya no aparece").
+
+Los demas mal atribuidos (QN50LS03FAGXZS, RS60T5200B1/ZS y dos kits de repuesto)
+NO se tocaron: cada uno tiene su propia pagina en `seed.json` y se recaptura ahi,
+con su precio correcto.
+
+## Verificacion
+
+Recorrido nuevo sobre 22 paginas reales, una por categoria notificable, distintas
+de las 42 de la medicion inicial: 14 disponible, 5 agotado, 2 no-a-la-venta,
+1 redireccion detectada, 0 errores. **En 7 de las 22 la regla vieja decia
+"disponible" y la nueva dice que no** (32%, consistente con el 38% de la muestra
+original). Cada veredicto calza con el texto literal del bloque de compra.
+
+Pruebas: 144 -> 196.
+
+---
+
+## 2026-09-11 (tarde) — Reparacion tras la revision del arreglo de stock
+
+Tres revisores independientes auditaron el arreglo anterior y encontraron 13
+defectos. Se corrigieron todos. Lo importante:
+
+### 1. El falso "disponible" se habia mudado, no eliminado (critico)
+
+El arreglo de la manana acotaba la lectura al bloque de compra
+(`[class*='buying']`). Pero en las paginas /buy/ con plantilla **hubble**
+(galaxy-z-flip7/buy/ y companeras) el primer `[class*='buying']` del documento no
+es la barra de precio: es el Buying Tool ENTERO, con el pie promocional adentro.
+Texto literal medido en vivo:
+
+    "¡Al comprar tu Galaxy Z Flip7!"
+    "Acumula puntos al comprar tus productos favoritos y luego paga con puntos"
+
+Buscar la palabra "comprar" ahi devolvia DISPONIBLE para un producto agotado, y
+ademas de forma **no deterministica** segun si el pie alcanzaba a renderizarse:
+el mismo SKU alternaba entre disponible y agotado de una corrida a otra. Era el
+mismo falso positivo de siempre, mudado de la pagina entera al bloque.
+
+Ahora el veredicto sale del **CTA, no del parrafo**, en tres capas:
+
+1. los **botones** del bloque: se compara el texto COMPLETO del boton contra un
+   vocabulario cerrado, asi que ninguna frase de marketing se puede colar. Es la
+   capa deterministica.
+2. las **lineas** del innerText: el CTA real ocupa su propia linea.
+3. el texto colapsado, despues de cortar el pie promocional y de descartar los
+   "comprar" que son verbo de una oracion ("al comprar tu…", "de comprar mi…").
+
+Y el bloque se elige del mas **estrecho** al mas amplio: `pd-buying-price`
+(verificado en vivo sobre TV, notebook y accesorio: su innerText es exactamente
+precio + CTA) antes que el contenedor grande.
+
+### 2. Las /buy/ de una sola variante nunca abrian el navegador (alto)
+
+`procesarEntrada` cortaba apenas el JSON-LD devolvia una variante, asi que para
+esos SKU el bloque de compra no se leia jamas. Y el `availability` del JSON-LD
+**miente**: medido en `galaxy-book4-…-np750xgj-ks4cl/buy/`, dice `"inStock"`
+mientras el boton en pantalla dice "Avísame" y la API responde outOfStock. Como
+esa pagina es la UNICA fuente de ese SKU, el rango FAMILIA no salvaba nada.
+
+Ahora una /buy/ de UNA variante va al navegador (son 71 de ~1170 paginas, del
+orden de 7 min de corrida) y una de VARIAS sigue resolviendose barata. Si el
+navegador falla, el SKU no se pierde: se conserva el PRECIO del JSON-LD y el
+stock queda "desconocido". El nombre rico del JSON-LD se reinyecta por SKU para
+no perder capacidad/RAM/color en el titulo.
+
+`procesarEntrada` se movio de `run.mjs` a **`src/resolver.mjs`** para poder
+probarlo (run.mjs arranca `main()` al importarse).
+
+### 3. La barra de precio pegajosa, antes de la API
+
+En las paginas hubble el bloque no trae ningun boton, pero la barra de abajo si:
+en galaxy-z-flip7/buy/ dice literalmente **"No está a la venta"**
+(`a.cta.price-bar-cart-btn.is-cta-disabled`, visible) y esta FUERA de
+`[class*='buying']`. Sin mirarla ese SKU se guardaba como "agotado" por la API,
+que es un estado distinto del que ve el cliente. Orden de fuentes:
+**bloque -> barra -> API**, cada una solo si la anterior no decidio, asi que
+agregar la barra no le puede quitar el veredicto a nadie.
+
+### 4. "Dónde comprar" es "no esta a la venta", no "agotado"
+
+El modulo documentaba que ahi habia que callarse, pero `extractSingleProduct`
+caia enseguida a la API, que para esos productos responde outOfStock: la decision
+de callarse duraba una linea. Un producto que Samsung no vende online no esta
+agotado. Ahora es un estado comprometido y corta el fallback a la API, asi que la
+API tampoco lo puede resucitar con un falso "volvió el stock".
+
+### 5. El precio de la API ya no pisa al que el cliente ve
+
+`varios ? precioApi : precioFinal` tiraba a la basura `precioVisiblePreferido()`
+justo en el caso que esa defensa vino a cubrir (el pack Watch Ultra + Buds4 Pro,
+03-08). La API entra SOLO cuando el precio leido no aparece escrito en ninguna
+parte de la pagina, que es la senal de que no es de este SKU.
+
+### 6. Otros
+
+- **La migracion ya no se puede quedar armada** y no se traga un "volvió el
+  stock": ver "Que se re-establece y que no" mas arriba.
+- **El registro ya no se contradice**: `disponible` se deriva SIEMPRE del
+  `estadoStock` comprometido.
+- **Productos momificados visibles**: un SKU cuya pagina falla o redirige
+  conserva su ultimo dato (bien) pero podia quedar congelado para siempre sin que
+  nada lo dijera. Se cuenta en el resumen (`sinVerificar`) y a las 20 corridas
+  seguidas sale UNA vez por el canal tecnico. La regla de ausencias no se toco.
+
+### Verificacion
+
+- **Muestra nueva de 49 paginas** (2 por categoria notificable, distintas de las
+  muestras anteriores, mas los 4 casos problema), con el `procesarEntrada` real:
+  **36 de 36 comparables correctas = 100%**. La regla vieja habria acertado 17 de
+  36 (47%). Verdad medida: 16 disponibles, 11 agotados, 9 no a la venta.
+- Las 13 paginas restantes no producen registro porque Samsung nunca publica
+  `model_price` en ellas (se verifico hasta 10 s). **Las 13 son pre-existentes**:
+  10 nunca estuvieron en el catalogo y 3 ya figuraban "desaparecido" con 240-271
+  ausencias. No es una regresion de este cambio.
+- **Mutantes**: se deshizo cada arreglo uno por uno en una copia fuera del arbol y
+  la suite fallo en los 12 casos. Ninguna prueba nueva es decorativa.
+- Corrida real de `run.mjs` contra el catalogo de produccion en carpeta temporal
+  (sin webhook, VIVO=0): 1027 registros conservados, **0 eventos**.
+- Pruebas: 214 -> 241.
+
+---
+
+## 2026-09-12 — Segunda revision en vivo: el enlace a /buy/ y el precio tachado
+
+Verificacion independiente del arreglo anterior, con muestra PROPIA (percentiles 10 y 90 de cada categoria por precio guardado, un puesto que ninguna ronda anterior habia usado) y verdad medida a mano sobre el texto literal del bloque de compra. 29 paginas + 6 comparaciones ficha-plana-contra-/buy/ + 46 paginas para el precio. UA CazadorBot, >=2,5 s entre requests, cero requests extra, jamas el webhook real.
+
+El arreglo del 11-09 quedo confirmado (de 29 paginas, el catalogo decia "disponible" en las 29 y la realidad eran 10), pero aparecieron dos defectos que la revision anterior no cubrio.
+
+### 1. El CTA "Comprar" de una ficha plana es un ENLACE, no un boton de compra
+
+Medido: en las fichas planas, "Comprar"/"Comprar ahora" lleva `href="/cl/.../buy/?modelCode=..."` — es navegacion a la pagina de compra. El boton que de verdad agrega al carro es "Agregar al carro", con `href="javascript:;"`.
+
+Comparando las 6 fichas de la muestra cuyo CTA es ese enlace contra su propia pagina /buy/:
+
+| Producto | Ficha plana | Su /buy/ | Veredicto |
+|---|---|---|---|
+| Watch9, Watch8 40mm, A37, Tab S10 Lite, Book6 Pro | "Comprar ahora" + precio | "Agregar al carro" | hay stock: la ficha plana acertaba |
+| Galaxy Book4 NP750XGJ-KS4CL | "Comprar ahora", SIN precio | **"Avísame"** | NO hay stock: la ficha plana lo daba por disponible |
+
+Lo que separa los dos casos no es el boton sino el PRECIO: los 5 correctos traen "Desde $ 33.333 en 12 cuotas sin intereses* o $399.990 ... Comprar ahora"; el Book4 trae literalmente "Comprar ahora" y nada mas. Cuando Samsung no puede vender, la barra suelta el precio y deja solo el enlace.
+
+**Arreglo** (`src/stock.mjs`): un veredicto DISPONIBLE exige que el bloque traiga un precio. Sin precio el bloque no decide y mandan las fuentes siguientes (barra pegajosa -> API por SKU). No se exige para "Avísame" ni "no está a la venta": esos son decisivos igual, y ese es el lado seguro.
+
+**Arreglo 2** (`src/catalogo.mjs`): dos paginas del MISMO rango pueden ver el mismo SKU y que solo una logre leer el stock (la ficha plana del Book4 queda "desconocido"; su /buy/ dice "agotado"). Antes ganaba la que llegara ultima, o sea que el orden de las paginas decidia. Ahora una lectura "desconocido" no borra un estado que si se pudo medir.
+
+Verificado en vivo despues del arreglo: 10 de 10 casos coinciden con lo medido a mano (Book4 plana -> desconocido, Book4 /buy/ -> agotado, los 5 con stock -> disponible, ademas de "Agregar al carro" -> disponible, "Avísame" -> agotado y "Dónde comprar" -> no-a-la-venta).
+
+### 2. El precio guardado era el TACHADO en ~4% de las fichas
+
+Verdad independiente: el monto que el bloque escribe despues de " o $", que es el que se cobra. Medido sobre 46 paginas (2 por categoria notificable, percentiles 30 y 60): **35 de 37 comparables correctas, 2 mal** — y las 2 guardaban el precio tachado.
+
+| SKU | Guardaba | El cliente paga | Diferencia |
+|---|---|---|---|
+| SM-X520NLBECHO | $839.990 | $579.990 | 31% |
+| SM-X400NZAHCHO | $649.990 | $479.990 | 26% |
+| SM-X400NZRDCHO (visto aparte) | $549.989 | $494.990 | 10% |
+
+Causa: en esas fichas `digitalData.model_price` es un numero que no esta escrito en la pagina (379990 en el Tab S10 Lite) y `list_price` es el precio TACHADO. `precioVisiblePreferido` hacia lo correcto segun su regla — descartar el monto que no aparece en la pagina — pero el tachado tambien aparece, asi que elegia el mas caro.
+
+**Arreglo** (`src/extract.mjs`, `precioDelBloqueCompra`): el precio sale del monto escrito en el bloque de compra cuando esta la frase; si no esta, sigue mandando digitalData sin cambio de comportamiento. Proyectado sobre la muestra: cambia exactamente esos 2 y deja los otros 35 igual (37/37).
+
+**Y una migracion para no inundar Discord.** Sin proteccion, la primera corrida corregida mandaria del orden de 40 avisos de "bajo 26-31%" con fuego, por productos que nunca bajaron. `corrigePrecioTachado` en `src/comparar.mjs` adopta el precio nuevo en silencio SOLO cuando el guardado es EXACTAMENTE el tachado que la pagina muestra hoy (`precioTachado`, que extract.mjs escribe solo cuando las dos fuentes discrepan). Una baja de verdad en ese mismo SKU y esa misma corrida tiene otro numero y se avisa igual. Se apaga sola por SKU al sellar `versionPrecio`. El rastro `precioTachado` no se guarda en el catalogo: es diagnostico de la lectura.
+
+### Verificacion
+
+- `npm test`: 241 -> **256 verdes** (+15), ninguna prueba vieja debilitada. Dos fixtures se corrigieron porque les faltaba el precio que el bloque REAL si trae ("*Aplican condiciones Agregar al carro" -> "Desde $ 19.166 ... *Aplican condiciones Agregar al carro").
+- **Mutantes: los 6 arreglos mueren** al deshacerlos uno por uno (1 a 4 fallas cada uno). El primer intento dejo vivo el cableado del precio dentro de `extractSingleProduct` — se agrego la prueba que faltaba y murio.
+- Corrida real de `run.mjs` contra el catalogo de produccion en carpeta temporal, sin webhook: 25 paginas, 23 productos, **0 eventos**, `history.jsonl` ni se creo, 14 estados de stock corregidos en silencio, 0 registros con `precioTachado` guardado.
+- Verificacion en vivo del precio despues del arreglo: los 3 rotos leen el precio real y su `precioTachado` calza con lo guardado (la correccion sera silenciosa); los 4 sanos no se mueven.
+
+### Pendiente que quedo anotado
+
+Hay paginas que nunca publican `model_price` y por eso no producen registro (~9 de 46 en la muestra). Hoy no cuentan como pagina fallida, asi que si le pasara a un producto VIVO sus SKU acumularian ausencias y en 2 corridas saldria un "desaparecio" falso. En la muestra los casos observados ya estaban clasificados como desaparecidos de antes (243-246 ausencias) o redirigen a la home / al soporte, o sea que el sistema no esta inventando nada — pero merece su propio arreglo: si la pagina trae `model_code` y nunca `model_price`, tratarla como no verificada.

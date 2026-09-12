@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { comparar, UMBRAL_AUSENCIAS } from "../src/comparar.mjs";
+import { comparar, marcarSinVerificarProlongado, UMBRAL_AUSENCIAS, UMBRAL_SIN_VERIFICAR } from "../src/comparar.mjs";
 import { componerTitulo } from "../src/titulo.mjs";
 
 const TS = "2026-07-24T12:00:00.000Z";
@@ -321,4 +321,150 @@ test("registros con esquema viejo (sin presencia/estadoStock) se migran sin aler
   assert.equal(cambios.length, 0);
   assert.equal(catalogo["SKU-1"].estadoStock, "disponible");
   assert.equal(catalogo["SKU-1"].presencia, "activo");
+});
+
+// ---------------------------------------------------------------------------
+// PRODUCTOS MOMIFICADOS (defecto 12 de la revision del 2026-09-11)
+// ---------------------------------------------------------------------------
+//
+// Una pagina que falla o que Samsung redirige deja a sus SKU en
+// presencia="error_verificacion" con ausencias congeladas. Eso esta bien: no hay
+// evidencia de que el producto se haya ido, y es justo lo que evita una tanda de
+// falsos "desaparecido". El efecto secundario es que esos productos quedan en el
+// catalogo con su ultimo precio y su ultimo stock presentados como vigentes,
+// corrida tras corrida, sin que nada lo reporte. Con el detector nuevo deja de
+// ser raro: 3 de 13 paginas del recorrido real redirigian.
+//
+// La regla de ausencias NO se toca. Solo se cuenta y se hace visible.
+
+function registroSinVerificar(extra = {}) {
+  return {
+    modelo: "SKU-M",
+    precio: 500000,
+    estadoStock: "disponible",
+    disponible: true,
+    presencia: "activo",
+    ausencias: 0,
+    categoria: "Televisores",
+    url: "https://example.com/momia",
+    paginaOrigen: "https://example.com/momia",
+    notificadoDesaparecido: false,
+    ...extra,
+  };
+}
+
+test("un SKU cuya pagina no se puede verificar acumula la cuenta, pero NO ausencias", () => {
+  let previo = { "SKU-M": registroSinVerificar() };
+  const fallida = new Set(["https://example.com/momia"]);
+  for (let i = 1; i <= 3; i++) {
+    const r = comparar({ previo, observado: {}, paginasFallidas: fallida, corridaConfiable: true, timestamp: "t" });
+    assert.deepEqual(r.cambios, [], "jamas un 'desaparecido' por una pagina que no se pudo verificar");
+    assert.equal(r.catalogo["SKU-M"].ausencias, 0, "la regla de ausencias no se toca");
+    assert.equal(r.catalogo["SKU-M"].corridasSinVerificar, i);
+    previo = r.catalogo;
+  }
+});
+
+test("volver a ver el producto borra la cuenta (y no le agrega campos al catalogo)", () => {
+  const previo = { "SKU-M": registroSinVerificar({ presencia: "error_verificacion", corridasSinVerificar: 30, avisadoSinVerificar: true }) };
+  const r = comparar({
+    previo,
+    observado: { "SKU-M": registroSinVerificar() },
+    paginasFallidas: new Set(),
+    corridaConfiable: true,
+    timestamp: "t",
+  });
+  assert.ok(!("corridasSinVerificar" in r.catalogo["SKU-M"]), "se borra, no se pone en 0: son ~1000 registros sanos");
+  assert.ok(!("avisadoSinVerificar" in r.catalogo["SKU-M"]), "y el aviso tecnico queda rearmado");
+});
+
+test("el aviso tecnico sale UNA vez por SKU, pasado el umbral", () => {
+  const catalogo = {
+    JOVEN: registroSinVerificar({ presencia: "error_verificacion", corridasSinVerificar: UMBRAL_SIN_VERIFICAR - 1 }),
+    MOMIA: registroSinVerificar({ presencia: "error_verificacion", corridasSinVerificar: UMBRAL_SIN_VERIFICAR }),
+    ACTIVO: registroSinVerificar({ corridasSinVerificar: 99 }),
+  };
+
+  const primera = marcarSinVerificarProlongado(catalogo);
+  assert.deepEqual(primera.map((m) => m.modelo), ["MOMIA"], "solo el que cruzo el umbral y sigue sin verificarse");
+  assert.equal(catalogo.MOMIA.avisadoSinVerificar, true);
+
+  const segunda = marcarSinVerificarProlongado(catalogo);
+  assert.deepEqual(segunda, [], "y no se repite en cada corrida");
+});
+
+test("una corrida entera no confiable NO le suma la cuenta a todo el catalogo", () => {
+  // no es evidencia contra ningun producto en particular: sumarsela a los ~1000
+  // registros seria inventar momias y ademas engordar latest.json de golpe
+  const previo = { "SKU-M": registroSinVerificar({ corridasSinVerificar: 4 }) };
+  const r = comparar({ previo, observado: {}, paginasFallidas: new Set(), corridaConfiable: false, timestamp: "t" });
+  assert.equal(r.catalogo["SKU-M"].corridasSinVerificar, 4, "se conserva, no se incrementa");
+  assert.equal(r.catalogo["SKU-M"].presencia, "error_verificacion");
+});
+
+test("un producto ya anunciado como desaparecido no entra en la cuenta", () => {
+  // de ese el operador ya se entero: no hace falta un segundo aviso tecnico
+  const previo = { "SKU-M": registroSinVerificar({ presencia: "desaparecido", notificadoDesaparecido: true, ausencias: 200 }) };
+  const r = comparar({
+    previo,
+    observado: {},
+    paginasFallidas: new Set(["https://example.com/momia"]),
+    corridaConfiable: true,
+    timestamp: "t",
+  });
+  assert.ok(!("corridasSinVerificar" in r.catalogo["SKU-M"]));
+  assert.deepEqual(marcarSinVerificarProlongado(r.catalogo), []);
+});
+
+// --- correccion del precio tachado (medido 2026-09-12) ----------------------
+
+const BASE_TACHADO = {
+  nombre: "Galaxy Tab S10 FE",
+  categoria: "Tablets",
+  url: "https://ejemplo/tab/",
+  presencia: "activo",
+  ausencias: 0,
+  estadoStock: "disponible",
+  disponible: true,
+  versionStock: 2,
+};
+
+test("adoptar el precio del bloque en vez del tachado NO manda un aviso de baja", () => {
+  // Caso real: SM-X520NLBECHO guardaba $839.990 (el tachado) y el cliente paga
+  // $579.990. La primera corrida corregida lo adopta en silencio.
+  const previo = { "SM-X520NLBECHO": { ...BASE_TACHADO, precio: 839990 } };
+  const observado = { "SM-X520NLBECHO": { ...BASE_TACHADO, precio: 579990, versionPrecio: 2, precioTachado: 839990 } };
+  const { cambios, catalogo } = comparar({ previo, observado, paginasFallidas: new Set(), corridaConfiable: true, timestamp: TS });
+  assert.deepEqual(cambios, []);
+  assert.equal(catalogo["SM-X520NLBECHO"].precio, 579990);
+  assert.equal(catalogo["SM-X520NLBECHO"].versionPrecio, 2);
+  assert.equal(catalogo["SM-X520NLBECHO"].precioTachado, undefined, "el rastro no se guarda");
+});
+
+test("una baja DE VERDAD en la misma corrida si se avisa", () => {
+  // mismo SKU, misma corrida de migracion, pero el precio nuevo NO es el que
+  // deja el tachado: es una baja real y tiene que sonar
+  const previo = { "SM-X520NLBECHO": { ...BASE_TACHADO, precio: 839990 } };
+  const observado = { "SM-X520NLBECHO": { ...BASE_TACHADO, precio: 499990, versionPrecio: 2, precioTachado: 999990 } };
+  const { cambios } = comparar({ previo, observado, paginasFallidas: new Set(), corridaConfiable: true, timestamp: TS });
+  assert.equal(cambios.length, 1);
+  assert.equal(cambios[0].tipo, "baja");
+  assert.equal(cambios[0].precioAnterior, 839990);
+  assert.equal(cambios[0].precio, 499990);
+});
+
+test("la correccion se apaga sola: la corrida siguiente ya avisa normal", () => {
+  const previo = { "SM-X520NLBECHO": { ...BASE_TACHADO, precio: 579990, versionPrecio: 2 } };
+  const observado = { "SM-X520NLBECHO": { ...BASE_TACHADO, precio: 529990, versionPrecio: 2, precioTachado: 579990 } };
+  const { cambios } = comparar({ previo, observado, paginasFallidas: new Set(), corridaConfiable: true, timestamp: TS });
+  assert.equal(cambios.length, 1);
+  assert.equal(cambios[0].tipo, "baja");
+});
+
+test("sin rastro de tachado, un cambio de precio se avisa aunque suba la version", () => {
+  const previo = { "SM-X520NLBECHO": { ...BASE_TACHADO, precio: 839990 } };
+  const observado = { "SM-X520NLBECHO": { ...BASE_TACHADO, precio: 579990, versionPrecio: 2 } };
+  const { cambios } = comparar({ previo, observado, paginasFallidas: new Set(), corridaConfiable: true, timestamp: TS });
+  assert.equal(cambios.length, 1);
+  assert.equal(cambios[0].tipo, "baja");
 });

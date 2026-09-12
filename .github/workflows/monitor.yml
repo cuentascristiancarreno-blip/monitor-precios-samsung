@@ -63,7 +63,16 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: npm run run
 
+      # always(): antes este paso se SALTABA ante cualquier falla del paso
+      # anterior, incluido el timeout del job (que GitHub trata como cancelacion
+      # y si corre los pasos always() dentro de la ventana de limpieza). Con
+      # avisos en vivo eso sale caro: la corrida YA le mando avisos al operador,
+      # y si su registro (data/notificados.jsonl) no se commitea, la corrida
+      # siguiente los vuelve a detectar y se los avisa DE NUEVO. Cuando no hay
+      # nada que commitear el paso sale solo en la tercera linea, asi que no
+      # cuesta nada dejarlo siempre encendido.
       - name: Guardar historial y ultimo estado
+        if: always()
         run: |
           git config user.name "monitor-samsung-bot"
           git config user.email "actions@users.noreply.github.com"

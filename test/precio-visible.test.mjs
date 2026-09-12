@@ -6,7 +6,7 @@
 // de un precio inexistente.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { precioVisiblePreferido } from "../src/extract.mjs";
+import { precioDelBloqueCompra, precioVisiblePreferido } from "../src/extract.mjs";
 
 // texto real de la ficha del pack: solo aparecen la cuota y el precio de venta
 const TEXTO_PACK = "Watch Ultra (2025) Blue + Galaxy Buds4 Pro\nDesde $ 81.248 en 12 cuotas sin intereses* o $974.980\nAvísame";
@@ -43,4 +43,43 @@ test("el monto se busca con formato chileno y tolera los espacios de la pagina",
 test("no se cambia el precio cuando ambos montos son iguales", () => {
   // packs de aire acondicionado medidos: model_price == list_price
   assert.equal(precioVisiblePreferido(1395980, 1395980, "valor $1.395.980"), 1395980);
+});
+
+// --- el precio que el cliente PAGA, leido del bloque (medido 2026-09-12) -----
+
+test("del bloque de compra sale el precio cobrado, no la cuota ni el tachado", () => {
+  // textos LITERALES de fichas reales
+  assert.equal(
+    precioDelBloqueCompra("Desde $ 48.333 en 12 cuotas sin intereses* o $579.990 Precio original: $839.990 Ahorra $ 260.000 *Aplican condiciones Comprar"),
+    579990,
+  );
+  assert.equal(
+    precioDelBloqueCompra("Desde $ 39.999 en 12 cuotas sin intereses* o $479.990 Precio original: $649.990 Ahorra $ 170.000 *Aplican condiciones Comprar ahora"),
+    479990,
+  );
+  assert.equal(
+    precioDelBloqueCompra("Desde $ 41.249 en 12 cuotas sin intereses* o $494.990 Precio original: $549.989 Ahorra $ 54.999 *Aplican condiciones Comprar ahora"),
+    494990,
+  );
+  // sin descuento, y con espacio despues del signo
+  assert.equal(precioDelBloqueCompra("Desde $ 19.166 en 12 cuotas sin intereses* o $ 229.990 *Aplican condiciones Agregar al carro"), 229990);
+  // millones
+  assert.equal(precioDelBloqueCompra("Desde $ 370.635 en 12 cuotas sin intereses* o $4.447.625 *Aplican condiciones Avísame"), 4447625);
+});
+
+test("si el bloque no trae la frase, no inventa un precio", () => {
+  for (const t of [null, undefined, "", "Comprar ahora", "Dónde comprar", "Ahorra $ 260.000", "Buying Tool Galaxy Tab S11 Desde $ 1.169.990"]) {
+    assert.equal(precioDelBloqueCompra(t), null, JSON.stringify(t));
+  }
+});
+
+test("un bloque con saltos de linea se lee igual (es el innerText real)", () => {
+  // innerText literal, con sus saltos: se usa una plantilla para no escribirlos escapados
+  const innerText = `Desde $ 46.666 en 12 cuotas sin intereses* o $ 559.990
+Precio original:
+$ 839.990
+Ahorra $ 280.000
+*Aplican condiciones
+Agregar al carro`;
+  assert.equal(precioDelBloqueCompra(innerText), 559990);
 });
