@@ -153,3 +153,61 @@ La diferencia entre los dos casos es el precio: cuando Samsung puede vender, el 
 Pasaba porque Samsung no siempre publica el precio de venta en los datos internos de la pagina, y ahi el monitor terminaba tomando el precio original. Ahora **lee el numero que tu ves junto al boton de compra**, que es el que se cobra.
 
 Como eso corrige del orden de 40 productos de golpe, la primera revision los ajusta **en silencio**, igual que con el stock: si no, llegarian 40 avisos de "bajo 31%" por productos que nunca bajaron. La proteccion es estrecha a proposito — solo calla el aviso cuando el precio guardado es exactamente el tachado que la pagina muestra hoy; una baja de verdad, en ese mismo producto y esa misma revision, se avisa igual.
+
+## El precio que iba y venía entre dos valores (2026-09-12, tarde)
+
+**El problema.** Había productos cuyo precio saltaba de un valor a otro de una revisión a la siguiente, y volvía al anterior unas horas después. Cada salto mandaba un aviso de "subió" o "bajó" que no correspondía a nada: Samsung nunca había cambiado ese precio. Medido en el último mes: **68 productos con ese vaivén y 361 avisos de precio de esos productos — el 46% de todos los avisos de precio del mes**. El peor fue un monitor gamer, con 56 avisos rebotando entre $199.990 y $279.990.
+
+**Por qué pasaba.** La página de Samsung no trae el precio escrito: lo pide aparte y lo dibuja unos instantes después. El monitor esperaba a que el precio existiera *por dentro* de la página, pero no a que estuviera *escrito en pantalla*, y ahí leía. Según cuál de las dos cosas llegara primero, la misma página le entregaba uno de dos números distintos:
+
+| Lo que leía | Qué es ese número |
+|---|---|
+| $729.990 | el precio **tachado** ("Precio original"), cuando alcanzaba a dibujarse |
+| $479.990 | un número **interno** que no aparece por ninguna parte de la página, cuando no |
+| $656.990 | lo que el cliente **realmente paga**, que es lo único que había que guardar |
+
+(Son los números reales de un Galaxy Tab S10 FE, medidos cargando su ficha.)
+
+**Qué cambió.**
+
+1. Ahora el monitor **espera a ver el precio escrito en la página** antes de leerla. No se demora más: reparte el mismo tiempo de espera que ya gastaba.
+2. Si igual no aparece ningún precio, **el monitor no inventa uno**: deja el precio que ya tenía y no avisa nada. Es la misma regla que ya usa para el stock — más vale callarse que inventar.
+3. Si un precio cambia y además **viene de otra página** (un mismo producto puede verse desde su ficha y desde la página de su familia, y cada una publica un número distinto), el aviso espera a que una segunda revisión lo confirme. **Una baja normal, vista en la ficha de siempre, se avisa al instante como hasta ahora**: es el 97% de los casos, así que el Cyber no pierde ni un minuto.
+
+**Por qué no llega una avalancha de avisos.** Hoy hay unos 50 productos con uno de esos números equivocados guardados. La primera revisión con el arreglo los corrige **en silencio**, igual que se hizo con el stock, y solo calla cuando el precio guardado es exactamente uno de los dos números que la propia página publica y que el monitor dejó de usar. Cualquier otro cambio es real y se avisa. Se apaga solo, producto por producto.
+
+**Qué mirar la primera semana.** En `data/ejecuciones.jsonl` aparecen dos números nuevos por revisión: `sinPrecioVisible` (productos cuya página no mostró precio esa vez) y `precioCongelado` (los que llevan al menos una revisión así). Si un producto **a la venta** lleva 20 revisiones sin mostrar precio, llega un aviso técnico, una sola vez. Los productos que Samsung ya no vende no generan ese aviso: hay 426 así, y simplemente no publican precio — eso es normal, no una falla.
+
+## El vaivén, segunda parte: lo que faltaba tapar (2026-09-12, noche)
+
+El arreglo de arriba no alcanzó. Tres revisiones independientes lo probaron pieza por pieza y encontraron que **el vaivén seguía vivo, con los mismos dos números**. Lo que se corrigió:
+
+**1. El monitor mira la página en dos lugares, y solo uno estaba arreglado.** Primero lee el texto de la página; después lee, aparte, el bloque de compra (el recuadro con el precio y el botón). Ese segundo vistazo es el que manda — y cuando fallaba, el monitor se quedaba con el **precio tachado**, que es exactamente el número al que saltaba el vaivén. Peor: en ese caso ni siquiera quedaba registrado como "no pude leer", así que los contadores nuevos marcaban todo en orden mientras salían los avisos falsos.
+
+Ahora el monitor distingue tres situaciones que antes eran una sola:
+
+| Lo que pasa con el bloque de compra | Qué hace el monitor |
+|---|---|
+| No se pudo leer | **No se sabe el precio**: conserva el que tenía y no avisa nada |
+| Se leyó y no publica monto (productos que Samsung no vende online) | Usa el precio escrito en la página, que ahí sí es el único que hay |
+| Se leyó y publica el monto | Ese es el precio, siempre |
+
+Y una regla que cruza las tres: **un número que la propia página marca como "Precio original" no se adopta nunca.**
+
+Medido con el código real, 5 revisiones seguidas alternando solo si el bloque se deja leer: **antes salían 4 avisos falsos, ahora salen 0.**
+
+**2. La "corrección silenciosa" se quemaba sola.** El monitor marca cada producto como ya corregido para no repetir la corrección. El problema era que lo marcaba **incluso cuando no había logrado leer ningún precio**: bastaba una revisión mala para que un producto perdiera su corrección y, en la siguiente, su precio bueno saliera anunciado como "subió 37%". Probado sobre una copia del catálogo real: **antes eso producía avisos falsos en masa; ahora, cero.**
+
+**3. El precio de la página de familia se disfrazaba de precio de la ficha.** Un mismo producto se ve desde su propia ficha y desde la página de su familia, y esa segunda publica el precio de **lista**. Cuando la ficha se demoraba, el precio de la familia se copiaba al registro **con el nombre de la ficha encima**, y el monitor lo trataba como si viniera de la fuente de siempre: aviso inmediato. Ahora un precio solo se presta entre páginas del mismo tipo, y el registro **recuerda de qué página salió su precio** aunque después lo vea otra.
+
+**4. Una página que vale menos ya no le pisa el precio a una que vale más** — pero con plazo. Si la ficha propia falla dos revisiones seguidas, antes la página de familia imponía su precio de lista y cobraba **dos** avisos falsos (uno al adoptarlo y otro al volver la ficha). Ahora no adopta nada... salvo que la ficha propia no vuelva en 3 revisiones (unas 9 horas): ahí se adopta igual y se avisa, aclarando que **el precio viene de otra página del sitio**. Ningún producto queda congelado para siempre con un precio viejo.
+
+**5. Las correcciones silenciosas ya no son del todo silenciosas.** Cuando el precio guardado era el tachado, hay dos historias posibles que se ven **idénticas** desde una sola lectura: que el monitor lo estuviera leyendo mal, o que el producto **acabe de estrenar una oferta** y su precio de ayer sea justamente el tachado de hoy. Callarse las dos se tragaba rebajas reales, enteras y sin segunda oportunidad. Ahora las correcciones llegan por el **canal técnico** (no como avisos de precio, que seguirían siendo falsos), con los dos números y **las bajas primero**, para que una oferta real quede a la vista.
+
+**6. Varios detalles que también costaban información:**
+
+- Un producto **nuevo y a la venta** cuya página todavía no publica precio ahora **se anuncia igual**, diciendo que no hay precio. Antes quedaba invisible por tiempo indefinido.
+- Cuando un aviso de stock muestra un precio que lleva revisiones sin poder comprobarse, ahora lo dice: *"último precio conocido: la página no lo publica hace N revisiones"*.
+- El aviso técnico de precios congelados ahora incluye a los productos **agotados** (Samsung los vende, solo que sin unidades).
+
+**7. Dos cosas de fondo, medidas.** El tiempo máximo que el monitor esperaba por el precio de cada página **nunca se estaba aplicando**: por un error de una línea, en vez de esperar los 3 segundos configurados esperaba **30**. Eso significa que cada una de las ~150 páginas que legítimamente no publican precio costaba medio minuto — unos 75 minutos por revisión. Ya está corregido, y de paso la pausa entre visitas subió de 2 a 2,5 segundos, que es lo que pide la política de scraping del proyecto. En neto, la revisión debería **acortarse**, no alargarse; hay que confirmarlo con el reloj en la primera corrida real.

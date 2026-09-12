@@ -5,10 +5,10 @@ import { chromium } from "playwright";
 import { DELAY_MS, USER_AGENT } from "./config.mjs";
 import { discoverFamilyUrls } from "./discover.mjs";
 import { procesarEntrada } from "./resolver.mjs";
-import { comparar, marcarSinVerificarProlongado, UMBRAL_SIN_VERIFICAR } from "./comparar.mjs";
+import { comparar, marcarSinPrecioProlongado, marcarSinVerificarProlongado, UMBRAL_SIN_VERIFICAR } from "./comparar.mjs";
 import { integrarVariantes } from "./catalogo.mjs";
 import { resumirSilenciados } from "./silenciados.mjs";
-import { notifyDiscord, notifyTecnico } from "./discord.mjs";
+import { mensajeCorreccionesDePrecio, notifyDiscord, notifyTecnico } from "./discord.mjs";
 import { crearDespachadorVivo, repartirCierre } from "./despachador-vivo.mjs";
 import { leerPendientes, serializarPendientes } from "./pendientes.mjs";
 import { entorno } from "./entorno.mjs";
@@ -190,7 +190,7 @@ async function main() {
   // tanda de falsos "ya no aparece".
   const noVerificadas = new Set([...fallidas, ...redirigidas].map((f) => f.url));
 
-  const { catalogo, cambios } = comparar({
+  const { catalogo, cambios, correccionesDePrecio } = comparar({
     previo,
     observado,
     paginasFallidas: noVerificadas,
@@ -205,6 +205,14 @@ async function main() {
   // regla: solo lo hace visible, una vez por SKU y por el canal tecnico.
   const momificados = marcarSinVerificarProlongado(catalogo);
   const sinVerificar = Object.values(catalogo).filter((r) => r.presencia === "error_verificacion").length;
+
+  // MOMIAS DE PRECIO: el SKU aparecio, pero su pagina no escribio ningun monto y
+  // se conservo el precio anterior (ver precioVisiblePreferido en extract.mjs).
+  // Es la contracara del arreglo del vaiven y hay que vigilarla: si este numero
+  // se dispara, la espera del render se quedo corta y hay precios congelados.
+  const sinPrecioMomificados = marcarSinPrecioProlongado(catalogo);
+  const sinPrecioVisible = Object.values(observado).filter((r) => !Number.isFinite(r.precio)).length;
+  const precioCongelado = Object.values(catalogo).filter((r) => (r.corridasSinPrecio ?? 0) > 0).length;
 
   await writeFile(LATEST_PATH, JSON.stringify(catalogo, null, 1));
 
@@ -244,6 +252,18 @@ async function main() {
     // crece corrida tras corrida hay productos congelados en el catalogo
     sinVerificar,
     sinVerificarProlongado: momificados.length,
+    // SKU observados cuya pagina no escribio ningun monto en esta corrida (y que
+    // por eso conservan su precio anterior), y cuantos llevan al menos una
+    // corrida asi. Sin estos dos numeros, el arreglo del vaiven podria estar
+    // congelando precios en silencio y nadie lo sabria.
+    sinPrecioVisible,
+    precioCongelado,
+    sinPrecioProlongado: sinPrecioMomificados.length,
+    // SKU cuyo precio guardado se corrigio en silencio porque lo que habia
+    // guardado era el tachado o el numero interno (migracion versionPrecio).
+    // Tiene que caer a 0 en pocas corridas: si no cae, la migracion esta
+    // tapando cambios de precio de verdad.
+    correccionesDePrecio: correccionesDePrecio.length,
     productosEncontrados: encontrados,
     nuevos: porTipo("nuevo"),
     bajas: porTipo("baja"),
@@ -299,6 +319,24 @@ async function main() {
       webhook,
       `🕸️ **Monitor Samsung — productos que no se pueden verificar hace rato**\n${momificados.length} producto(s) llevan ${UMBRAL_SIN_VERIFICAR}+ revisiones seguidas sin poder comprobarse: su página falla o Samsung la redirige a la ficha de otro producto.\nNo se marcan como desaparecidos a propósito (no hay evidencia de que lo estén), pero su precio y su stock en el catálogo son los de la última vez que sí se vieron.\n${lista}${resto}\nEste aviso sale una sola vez por producto.`,
     );
+  }
+
+  if (sinPrecioMomificados.length > 0) {
+    const lista = sinPrecioMomificados.slice(0, 15).map((m) => `• ${m.modelo} (${m.corridas} revisiones, último precio $${(m.precio ?? 0).toLocaleString("es-CL")})`).join("\n");
+    const resto = sinPrecioMomificados.length > 15 ? `\n…y ${sinPrecioMomificados.length - 15} más.` : "";
+    await notifyTecnico(
+      webhook,
+      `💤 **Monitor Samsung — productos que hace rato no muestran precio**\n${sinPrecioMomificados.length} producto(s) llevan ${UMBRAL_SIN_VERIFICAR}+ revisiones seguidas en que su página no escribió ningún precio.\nSe conservó a propósito el último precio conocido (más vale callarse que inventar), pero ese precio ya no está comprobado.\n${lista}${resto}\nEste aviso sale una sola vez por producto.`,
+    );
+  }
+
+  // CORRECCIONES DE LA FUENTE DEL PRECIO (migracion versionPrecio 2 -> 3).
+  // El precio guardado era el TACHADO o el numero INTERNO de digitalData, no lo
+  // que se cobra, asi que corregirlo no es un cambio del sitio y no puede salir
+  // como aviso de precio, pero tampoco se calla: va por el canal tecnico. El
+  // por que esta entero en mensajeCorreccionesDePrecio (src/discord.mjs).
+  if (correccionesDePrecio.length > 0) {
+    await notifyTecnico(webhook, mensajeCorreccionesDePrecio(correccionesDePrecio));
   }
 
   if (!corridaConfiable) {

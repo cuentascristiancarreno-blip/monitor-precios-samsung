@@ -803,3 +803,150 @@ Causa: en esas fichas `digitalData.model_price` es un numero que no esta escrito
 ### Pendiente que quedo anotado
 
 Hay paginas que nunca publican `model_price` y por eso no producen registro (~9 de 46 en la muestra). Hoy no cuentan como pagina fallida, asi que si le pasara a un producto VIVO sus SKU acumularian ausencias y en 2 corridas saldria un "desaparecio" falso. En la muestra los casos observados ya estaban clasificados como desaparecidos de antes (243-246 ausencias) o redirigen a la home / al soporte, o sea que el sistema no esta inventando nada — pero merece su propio arreglo: si la pagina trae `model_code` y nunca `model_price`, tratarla como no verificada.
+
+---
+
+## 2026-09-12 (tarde) — El vaiven de precios: la carrera contra el render
+
+Encargo del operador: "hay productos cuyo precio guardado va y viene entre dos valores de una corrida a la otra, y cada vaiven manda un aviso FALSO. Viene el Cyber y necesito que un aviso de baja signifique una baja de verdad".
+
+### Lo medido
+
+**En data/ (offline, ventana de 30 dias):** 784 avisos de precio sobre 425 SKU. **68 SKU tienen el precio volviendo exactamente a un valor ya visto** y entre ellos suman **361 avisos (46% de todos los avisos de precio del mes)**. El peor es el monitor gamer LS32DG300ELXZS, con 56 avisos rebotando entre $199.990 y $279.990. **50 de esos 68 tienen HOY guardado uno de los dos valores del baile.**
+
+**En vivo (2 fichas, UA CazadorBot, >=3,2 s entre cargas, cero requests extra):**
+
+| Ficha | model_price | list_price | ¿escritos en la pagina? | bloque de compra |
+|---|---|---|---|---|
+| SM-X520NLBACHO (Tab S10 FE) | 479.990 | 729.990 | model NO, list SI | "…o $656.990 Precio original: $729.990" |
+| AR-KH00E (control remoto) | 47.020 | 47.020 | ninguno de los dos | "no está a la venta" (la pagina no escribe NINGUN monto) |
+
+### La causa
+
+`precioVisiblePreferido` (src/extract.mjs) elige entre `model_price` y `list_price` segun cual este ESCRITO en `document.body.innerText`, y si no encontraba ninguno devolvia `model_price`. Pero ese texto se leia sin esperar a que el precio se PINTARA: la unica espera era `waitForFunction` sobre la VARIABLE `digitalData.model_price`, que se llena apenas responde api.shop.samsung.com (medido: 1,3-1,7 s) y ANTES de que el bloque de compra se re-renderice.
+
+O sea: la misma pagina tenia dos salidas estables segun quien ganara la carrera — el `list_price` (el TACHADO) si alcanzo a pintarse, el `model_price` (un numero interno que en las fichas con descuento no aparece en ninguna parte) si no. Cada cambio de ganador mandaba un "subio" o un "bajo" que no correspondia a ningun cambio en Samsung. Por eso el baile siempre es entre los MISMOS dos numeros y no una deriva.
+
+El arreglo del 09-12 en la manana (`precioDelBloqueCompra`) no cerro la carrera: `precioBloque ?? precioFinal` vuelve a caer en la misma regla cuando el bloque no esta pintado. Solo agrego un tercer valor posible.
+
+Segunda puerta, mas chica: el mismo SKU visto desde DOS paginas. El JSON-LD de una pagina familia publica el precio de LISTA, y **126 paginas /buy/ tienen su ficha plana en el seed, o sea 135 SKU que se scrapean dos veces por corrida** (las dos valen rango PROPIA, asi que el rango no arbitra nada y decide el orden de llegada).
+
+### El arreglo (5 piezas)
+
+1. **`src/extract.mjs`, `esperarMontoPintado`:** antes de leer el texto de la pagina se espera a que uno de los dos montos este ESCRITO — el mismo criterio que usa `montoVisible` una linea despues, asi que la decision deja de depender del instante de la lectura. Reparte el MISMO `PRECIO_TIMEOUT_MS` de 3 s (no agrega presupuesto: con 8 s de espera la corrida se pasaba de las 4 h, incidente del 2026-08-02). Medido: 7 ms cuando la pagina ya pinto; 1.823 ms (el resto del presupuesto) en una ficha que nunca escribe precio.
+2. **`precioVisiblePreferido` devuelve `null`** cuando ninguno de los dos montos esta escrito, en vez de inventar con el `model_price` invisible. Se conserva a proposito la primera linea (sin `list_price` valido no hay segundo candidato y por lo tanto no hay carrera: LS32DG300ELXZS estuvo clavado ~75 corridas hasta que su ficha estreno tachado).
+3. **El campo `precio` se OMITE, no se pone en `null`** (un `null` pisa el precio guardado y la corrida siguiente emite "nuevo"), y `comparar.mjs` conserva explicitamente (`precio: obs.precio ?? ant.precio`). Es el "no se sabe" del precio, el equivalente de lo que el stock ya tenia. `integrarVariantes` hace lo mismo entre dos paginas del mismo rango dentro de una corrida.
+4. **Corroboracion solo cuando cambia la FUENTE** (`mismaFuenteDePrecio`): un cambio de precio que ademas viene de otra pagina o de otro rango no se avisa ni se adopta hasta que una segunda corrida lo repita. Un cambio desde la MISMA pagina se avisa al tiro — que es el 97% de los casos (385 de 397 cambios entre corridas consecutivas vienen del mismo origen), asi que ninguna baja normal de Cyber se atrasa.
+5. **Visibilidad:** `corridasSinPrecio` por SKU, `sinPrecioVisible`/`precioCongelado` en `ejecuciones.jsonl` y un aviso tecnico unico por SKU (`marcarSinPrecioProlongado`) a las 20 corridas. **Solo para productos a la venta**: 426 de los 933 registros activos no estan "disponible" y muchos de esos, como AR-KH00E, simplemente no publican precio — eso no es una falla, y avisarlo seria un mensaje de cientos de lineas sin nada que hacer.
+
+**Migracion (`VERSION_PRECIO` 2 -> 3).** Sin adopcion silenciosa, la primera corrida con el arreglo mandaria del orden de 50 a 68 avisos de "subio/bajo 20-40%" por productos que nunca cambiaron de precio (los 50 SKU medidos con el precio guardado clavado en un valor del baile). `corrigeFuenteDePrecio` calla el aviso SOLO cuando el guardado es exactamente uno de los dos numeros que la propia pagina publica hoy y que el arreglo dejo de elegir: `precioTachado` (list_price) o `precioInterno` (model_price). Cualquier otro numero es un cambio real y se avisa. Se apaga sola por SKU al sellar `versionPrecio`; los rastros no se guardan en el catalogo.
+
+### Verificacion
+
+- `npm test`: **257 -> 274 verdes**, ninguna prueba vieja debilitada. Dos assertions de `test/precio-visible.test.mjs` cambiaron porque fijaban el comportamiento EQUIVOCADO: la prueba se llamaba "no se inventa un precio" y exigia justamente que, con la pagina a medio renderizar, se devolviera el `model_price`. Queda escrito en el archivo por que.
+- **Mutantes: 13 de 13 mueren.** Se deshizo cada pieza en una copia fuera del arbol y la suite fallo siempre (1 a 8 pruebas por mutante). Incluye deshacer la espera del render, el `null`, la omision del campo, la conservacion, las dos mitades de la adopcion silenciosa, la corroboracion por fuente, el contador y el filtro del aviso tecnico.
+- **Ensayo con el codigo real sobre la ficha del Tab S10 FE** (resolver -> extract -> integrarVariantes -> comparar, 1 carga): la observacion sale con `precio: 656990`, `precioTachado: 729990`, `precioInterno: 479990` — los dos numeros que bailaban en `history.jsonl`. Catalogo con 479.990 guardado -> 0 eventos y adopta 656.990; con 729.990 -> 0 eventos y adopta; con 699.990 (un precio real anterior) -> **1 evento "baja"**. Las bajas de verdad siguen saliendo en la primera corrida.
+- **Dos corridas reales de `run.mjs`** contra una COPIA del catalogo en carpeta temporal (`CARPETA_DATOS`, `LIMITE_PAGINAS=1`, `SIN_DESCUBRIMIENTO=1`, sin webhook): **0 eventos** en las dos, `history.jsonl` quedo vacio, el precio de AR-KH00E se conservo en $47.020 y su `corridasSinPrecio` subio 1 -> 2. El resumen trae los campos nuevos (`sinPrecioVisible: 1`, `precioCongelado: 1`).
+- Politica: 5 cargas de samsung.com en total (de 8 autorizadas), UA CazadorBot, >=3,2 s entre cargas en las mediciones y una sola pagina por corrida de prueba, cero requests extra, jamas el webhook real.
+
+### Lo que se descarto, con datos
+
+- **"Quedarse con el mas barato":** el peor caso del mes va al reves — LS32DG300ELXZS vale $279.990 y la lectura equivocada es la BARATA ($199.990). Serian 28 avisos falsos de "bajo", el aviso mas caro que existe.
+- **"Confirmar TODO cambio en 2 corridas":** atrasa ~3 h cada baja real de Cyber. Por eso la corroboracion se aplica solo cuando cambia la fuente, que es donde no cuesta nada.
+- **"Ignorar cambios mayores a X%":** los saltos falsos van de +2% a +88% y la promo REAL del 09-09 fue -30% en 206 accesorios. Ningun umbral los separa.
+- **"Esperar mas":** con 8 s la corrida se pasaba de 4 h y GitHub la mataba sin dejar datos (2026-08-02). Por eso la espera nueva reparte el presupuesto que ya se gastaba.
+
+### Pendientes anotados
+
+1. **`DELAY_MS` esta en 2000 ms (`src/config.mjs`) y la politica del encargo dice 2,5 s.** No se toco: subirlo agrega ~10 min a una corrida de 169-186 min (tope 330), pero es un cambio de cadencia de scraping y lo decide el operador.
+2. **Las 126 paginas /buy/ duplicadas** (135 SKU leidos dos veces por corrida). La pieza 4 ya impide que se vuelquen el precio, pero descartarlas en `src/discover.mjs` ahorraria ~20 min de corrida y 126 cargas innecesarias a samsung.com.
+3. **Costo de tiempo de la espera nueva:** hasta ~1,7 s en las fichas que nunca escriben un monto. Cota alta: los 426 registros que no estan "disponible" -> ~12 min sobre 169-186 min. Hay que mirar `sinPrecioVisible` en `ejecuciones.jsonl` la primera semana.
+4. **A vigilar dentro de una semana:** repetir el conteo de "el precio vuelve a un valor ya visto" sobre `data/history.jsonl`. Hoy son 361 avisos/mes en 68 SKU; tiene que caer a cerca de 0.
+
+---
+
+## 2026-09-12 (noche) — Segunda vuelta del vaiven: los agujeros que dejo el arreglo de la tarde
+
+Tres verificadores independientes midieron el arreglo de la tarde y los tres lo tumbaron: **el vaiven seguia vivo**, con los mismos dos numeros. Esta entrada arregla los seis defectos confirmados y anota, de paso, una medicion que nadie habia hecho.
+
+### El agujero principal: la regla se aplico a la lectura equivocada
+
+El arreglo de la tarde puso "no inventar un precio" en `precioVisiblePreferido`, que lee `document.body.innerText`. Pero el numero que **realmente gana** sale de una SEGUNDA lectura, en `extractSingleProduct`:
+
+    const precioBloque = precioDelBloqueCompra(bloque.texto);
+    const precioVisto = precioBloque ?? precioFinal;   // <- la puerta que quedo abierta
+
+`leerBloqueCompra` es otro `page.evaluate`, posterior, por selector y **envuelto en `.catch(() => null)`**. Cuando esa lectura falla, el `??` cae directo a `precioFinal`, que con la ficha ya pintada es el **TACHADO** — el numero exacto al que saltaba el vaiven historico. Y encima:
+
+- `precioTachado` NO se escribia en ese caso (su guarda exigia `Number.isFinite(precioBloque)`), asi que la amnistia de la migracion tampoco podia taparlo;
+- `precioIlegible` quedaba en `false`, asi que `corridasSinPrecio`, `sinPrecioVisible` y `marcarSinPrecioProlongado` — toda la instrumentacion de la contracara — estaban **ciegos**. El operador veria `sinPrecioVisible: 0` mientras los avisos falsos salen.
+
+Y las 274 pruebas no lo veian porque el doble `fichaQuePintaTarde` manejaba las dos lecturas del DOM con UNA sola bandera `pintado`: solo podia producir "las dos pintadas" o "ninguna". El estado que fallaba — **body pintado con el tachado + bloque ilegible** — era inexpresable.
+
+**Medido cabeza a cabeza** (mismo script, dos copias del arbol, sin red; `scratchpad/probe.mjs`): 5 corridas alternando solo la legibilidad del bloque, con el body identico y pintado en todas.
+
+| Ficha | antes | ahora |
+|---|---|---|
+| SM-X520NLBACHO (con "Precio original" escrito) | **4 avisos falsos** | 0 |
+| SM-X620NZAACHO (sin esa etiqueta) | **4 avisos falsos** | 0 |
+
+**El arreglo** es `precioAdoptable` (src/extract.mjs), que distingue los tres estados que antes se confundian en un solo `null`:
+
+- **(a) el bloque no se pudo leer** (evaluate fallido, o bloque todavia sin texto) -> no se sabe: no hay precio. `leerBloqueCompra` devuelve ahora una senal explicita, `legible`.
+- **(b) el bloque se leyo y no publica monto** ("Dónde comprar", "no está a la venta") -> eso es una propiedad ESTABLE de la pagina, no una carrera: el numero escrito vale.
+- **(c) el bloque publica el monto** -> ese manda, siempre.
+
+Con dos reglas que cruzan las tres: un monto que la propia pagina marca como **"Precio original"** no se adopta nunca (`esPrecioOriginalEscrito`), y cuando digitalData publica **un solo candidato** (list_price invalido o igual al model_price) el bloque ilegible no bloquea nada, porque sin dos numeros distintos no hay carrera posible.
+
+### Una medicion que faltaba: el tope de espera del precio NUNCA se aplico
+
+`page.waitForFunction(fn, { timeout: PRECIO_TIMEOUT_MS })`. La firma de Playwright es `waitForFunction(pageFunction, arg, options)`: ese objeto entraba como **`arg`**, no como opciones. Medido contra el Chromium real, sin red (una pagina en blanco escrita con `setContent`):
+
+    waitForFunction(fn, { timeout: 500 })             -> 30.017 ms
+    waitForFunction(fn, undefined, { timeout: 500 })  ->    518 ms
+
+Esta mal desde el 2026-08-01 (`62e52ea`), o sea que **ni los 8 s ni los 3 s existieron nunca**: la espera siempre corrio con el default de 30 s de Playwright. Consecuencias:
+
+- Las ~150 paginas que legitimamente no publican precio pagan **30 s cada una**, no 3. Son ~75 min de una corrida de 169-210 min.
+- El incidente del 2026-08-02 **no lo causo el valor de la constante** (8000 tampoco se aplicaba nunca): lo arreglo el `throw` selectivo del mismo commit, que dejo de mandar esas paginas al reintento. La nota anterior de esta bitacora atribuia el arreglo al numero y queda corregida.
+- La espera de pintado de la tarde recibia `PRECIO_TIMEOUT_MS - (Date.now() - t0)`. Con t0 llevando 30 s consumidos, la resta quedaba **negativa** y la defensa central del arreglo se auto-descartaba justo en las paginas lentas, que son las que corren la carrera.
+
+Arreglado: el timeout va en la posicion de opciones, `PRECIO_TIMEOUT_MS` sube a **8 s** (ahora si es un tope real: ~4,7 veces la peor espera medida de digitalData, y 22 s menos por pagina que hoy) y `esperarMontoPintado` recibe **presupuesto propio**, `RENDER_TIMEOUT_MS = 1500`, en vez de las sobras.
+
+### Las otras piezas
+
+**3. `versionPrecio` solo se compromete con lectura util** (src/comparar.mjs). Salia de `{...ant, ...obs}` y `extract.mjs` lo estampa en TODA lectura, incluida la que no leyo precio: bastaba que una ficha no pintara UNA vez para que la ventana de migracion quedara cerrada para siempre en ese SKU, y la primera lectura buena saliera anunciada como "subio/bajo 20-40%". **Es el mismo bug que ya estaba arreglado para `versionStock` doce lineas mas abajo.** Medido sobre una copia del catalogo real: corrida ciega + corrida buena daba **931 avisos falsos** contra **0** del control; ahora da **0 y 0**.
+
+**4. `conservaPrecio` exige el MISMO rango** (src/catalogo.mjs) — que es lo que su propio comentario ya prometia. Sin eso, con la pagina familia integrada antes que la ficha propia lenta (el reintento del final de `run.mjs` corre DESPUES de todas las entradas), el precio de LISTA del JSON-LD se copiaba al registro firmado `rango: 3, paginaOrigen: <ficha propia>`; con ese disfraz `mismaFuenteDePrecio` lo veia como "misma fuente" y avisaba al tiro. Medido: **1 aviso falso -> 0**, y el resultado deja de depender del orden de llegada de las paginas.
+
+**5. La fuente DEL PRECIO se guarda aparte** (`fuentePrecio`). Antes se deducia del `rango`/`paginaOrigen` del registro, que `{...ant, ...obs}` ya habia reemplazado por los de la lectura de hoy: el registro mentia sobre de donde salio su precio. Con una ficha propia que caia una corrida si y otra no, el pendiente se pisaba en cada corrida, nunca se corroboraba y el precio quedaba **congelado indefinidamente** (el verificador midio 21 corridas sin un solo aviso mientras Samsung bajaba de verdad). El campo solo se escribe cuando NO coincide con el origen del registro, y una lectura que confirma el precio se lo apropia: medido sobre el catalogo real, una corrida normal le agrega el campo a **0 de 1031** registros.
+
+**6. Un rango menor no le pisa el precio a uno mayor, pero con TOPE.** La pagina familia publica el precio de lista; si la ficha propia fallaba dos corridas seguidas, la regla anterior corroboraba el tachado y cobraba **dos** avisos falsos (el "sube" al adoptarlo y el "baja" al volver la ficha). Ahora una fuente de menos rango no adopta ni avisa — pero si la ficha propia no vuelve en `UMBRAL_PRECIO_OTRA_FUENTE` = 3 corridas (~9 h), se adopta igual y se avisa, marcado como "precio leido desde otra pagina del sitio": nada queda congelado para siempre. La corroboracion, ademas, ahora exige que quien repite el valor sea **la misma pagina que lo propuso** (antes dos paginas distintas publicando el mismo numero equivocado se confirmaban entre si).
+
+**7. La correccion de la migracion sale por el canal TECNICO, no en silencio.** Desde una sola lectura no hay forma de distinguir "el guardado estaba mal" de "este producto estreno oferta hoy y su precio de ayer es el tachado de hoy": los dos casos se ven identicos. Callarse del todo se tragaba **bajas reales enteras y sin segunda oportunidad** (`versionPrecio` queda sellado y el cambio ya adoptado; el verificador midio una baja real del 18% que desaparecia). Ahora `mensajeCorreccionesDePrecio` (src/discord.mjs) las manda por el canal tecnico, con los dos numeros y las bajas primero. Medido sobre el catalogo real: **420 SKU** se corrigen y salen **0 avisos de precio** al operador.
+
+**8. Y ademas:** un producto NUEVO a la venta sin precio publicado se anuncia igual ("la pagina todavia no publica precio") en vez de quedar invisible por tiempo indefinido; `corridasSinPrecio` cuenta tambien cuando nunca hubo precio (antes exigia un precio previo, asi que esos productos no llegaban jamas al aviso tecnico); el aviso tecnico de precios congelados incluye a los **agotados** (Samsung los vende, solo que sin unidades); y un precio que lleva corridas sin comprobarse viaja marcado dentro de los avisos de stock: "ultimo precio conocido: la pagina no lo publica hace N revisiones".
+
+**9. `DELAY_MS` 2000 -> 2500 ms** (src/config.mjs): el sistema estaba fuera de su propia politica de scraping, que pide >= 2,5 s entre requests al mismo host. Cuesta ~10 min sobre 1.183 paginas y cabe de sobra (corridas de 169-210 min, el job corta a 330); ademas queda mas que compensado por el arreglo del tope de espera.
+
+**Balance de tiempo estimado por corrida:** **-55 min** por el tope que por fin existe, **+10 min** por la espera de pintado, **+10 min** por `DELAY_MS`. Son cuentas de papel (paginas x segundos), no de reloj: hay que medirlas en la primera corrida real.
+
+### Verificacion
+
+- `npm test`: **274 -> 308 verdes, 0 fallas.** Linea base 257, nunca baja. Archivo nuevo: `test/precio-sin-carrera.test.mjs` (28 pruebas).
+- **Mutantes: 24 de 24 mueren.** Se deshizo cada pieza, una por vez, en una copia fuera del arbol (`scratchpad/mutantes.mjs`), se corrio la suite entera y se restauro. Los dos primeros intentos **sobrevivieron**: la ficha de prueba tenia la etiqueta "Precio original" escrita, asi que la segunda defensa tapaba el agujero de la primera. Por eso se agrego `SIN_ETIQUETA` (SM-X620NZAACHO), una ficha sin esa etiqueta — y ahi mueren los dos.
+- **El doble de pruebas se rehizo:** las dos lecturas del DOM (`body` y `bloque`) se controlan ahora por separado, con los cuatro estados posibles. Sin eso, el defecto principal seguia siendo inexpresable y las pruebas verdes no significaban nada sobre el.
+- **Dos dobles viejos cambiaron de firma, no de exigencia:** los de `test/precio-tardio.test.mjs` declaraban `waitForFunction(fn, { timeout })`, copiando la llamada equivocada del codigo. Un doble que copia el error del codigo no puede detectarlo.
+- **Replay del pipeline contra una COPIA del catalogo real** (1031 SKU, sin red, sin webhook; `scratchpad/replay.mjs` y `replay2.mjs`): corrida ciega -> 0 eventos de precio, 931/931 precios conservados y **0 registros con `versionPrecio` sellada sin lectura util**; migracion realista -> 0 avisos de precio y 420 correcciones tecnicas, **identico con y sin una corrida ciega de por medio**; corrida normal -> 0 eventos; una baja real del 30% -> sale en la PRIMERA corrida; ningun campo de diagnostico sobrevive al catalogo guardado.
+- **Medicion propia del historial**, independiente de la del implementador: 790 avisos de precio en 30 dias, 68 SKU con el precio volviendo a un valor ya visto, 366 avisos (46%). Coincide con lo declarado (68 / 361 / 46%).
+- **El patron horario del encargo queda descartado, medido:** sobre los 1490 eventos de precio de `history.jsonl` no hay ningun corte limpio por hora (hora 16 UTC: 68 "sube" / 225 "baja"; hora 19: 193 / 51; hora 22: 96 / 65). "Sube a las 16:49 y baja a las 05:19" era un artefacto de muestra chica de un SKU y no contradice la teoria de la carrera de render.
+- **Cero requests a samsung.com.** Todas las paginas son dobles; la unica vez que se abrio Chromium fue para medir el timeout de `waitForFunction` sobre una pagina en blanco escrita con `setContent`. Jamas el webhook real. `data/` del repo intacta.
+
+### Pendientes
+
+1. **Las 126 paginas /buy/ duplicadas** (sigue abierto). Ya no pueden volcarse el precio, pero descartarlas en `src/discover.mjs` ahorraria ~20 min de corrida y 126 cargas innecesarias a samsung.com.
+2. **El presupuesto de tiempo hay que MEDIRLO en la primera corrida real.** Mirar `duracionMin`, `sinPrecioVisible` y `errores` en `ejecuciones.jsonl`: si `errores` sube, el tope de 8 s quedo corto para alguna pagina lenta y hay que subirlo — ahora que por fin se aplica, subir el numero si tiene efecto.
+3. **`correccionesDePrecio` en `ejecuciones.jsonl` tiene que caer a 0 en pocas corridas.** Si se queda alto, la migracion esta tapando cambios de verdad.
+4. **A vigilar en una semana:** repetir el conteo de "el precio vuelve a un valor ya visto". Hoy 68 SKU y 366 avisos en 30 dias; tiene que caer a cerca de 0.
+5. **Pendiente antiguo que sigue abierto:** una pagina con `model_code` que nunca publica `model_price` no cuenta como pagina fallida, asi que si le pasara a un producto vivo sus SKU acumularian ausencias y en 2 corridas saldria un "desaparecio" falso.
+6. **Menor:** `npm test` todavia intenta alcanzar discord.com en algunas pruebas de transporte (URLs falsas, nunca el webhook real). Seria mas limpio interceptar `globalThis.fetch` tambien ahi.

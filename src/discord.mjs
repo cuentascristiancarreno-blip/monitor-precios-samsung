@@ -65,6 +65,28 @@ function escaparMarkdown(texto) {
   return texto.replace(/([\\*_`~|])/g, "\\$1");
 }
 
+/**
+ * El precio que acompania a un aviso de stock es el ULTIMO CONOCIDO. Si lleva
+ * corridas sin poder leerse, imprimirlo a secas lo presenta como vigente y el
+ * operador puede ir a comprar con un numero viejo. Solo aparece cuando hay algo
+ * que declarar (ver sinComprobar en src/comparar.mjs).
+ */
+function sinComprobar(change) {
+  const n = change?.corridasSinPrecio;
+  return Number.isFinite(n) && n > 0
+    ? ` _(último precio conocido: la página no lo publica hace ${n} ${n === 1 ? "revisión" : "revisiones"})_`
+    : "";
+}
+
+/**
+ * Un cambio que se adopto porque la pagina que escribio el precio guardado no
+ * volvio en varias corridas (ver UMBRAL_PRECIO_OTRA_FUENTE en src/comparar.mjs).
+ * El numero es real, pero lo publica otra pagina del sitio: vale decirlo.
+ */
+function otraFuente(change) {
+  return change?.desdeOtraFuente ? " _(precio leído desde otra página del sitio)_" : "";
+}
+
 function lineFor(change) {
   const icono = iconoPara(change.categoria);
   // el titulo ahora incluye las caracteristicas de la variante (capacidad, RAM,
@@ -75,21 +97,33 @@ function lineFor(change) {
   const link = change.url ? `\n　🔗 ${change.url}` : "";
   switch (change.tipo) {
     case "nuevo":
+      if (!Number.isFinite(change.precio)) {
+        // Un producto puede entrar al catalogo SIN precio publicado: su pagina no
+        // escribe ningun monto y el monitor prefiere callarse antes que inventarlo
+        // (ver precioAdoptable en src/extract.mjs). Se anuncia igual -- un producto
+        // nuevo a la venta es noticia -- pero diciendo la verdad sobre el precio.
+        return `${titulo}\n　🆕 Apareció en el catálogo. **La página todavía no publica precio**; se avisará en cuanto lo publique.${link}`;
+      }
+      // ...y cuando por fin lo publica, el aviso no puede decir "primera vez visto":
+      // el operador ya lo vio aparecer.
+      if (change.yaAnunciadoSinPrecio) {
+        return `${titulo}\n　🆕 Ya publicaron su precio: **${fmt(change.precio)}**${link}`;
+      }
       return `${titulo}\n　🆕 Precio: **${fmt(change.precio)}** (primera vez visto en el catálogo)${link}`;
     case "desaparecido":
       return `${titulo}\n　❌ Ya no aparece en el sitio (confirmado en 2 revisiones seguidas). Último precio: **${fmt(change.precioAnterior)}**${link}`;
     case "recuperado":
-      return `${titulo}\n　✅ Volvió a aparecer en el sitio. Precio actual: **${fmt(change.precio)}**${link}`;
+      return `${titulo}\n　✅ Volvió a aparecer en el sitio. Precio actual: **${fmt(change.precio)}**${sinComprobar(change)}${link}`;
     case "baja":
-      return `${titulo}\n　🟢 Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${variacion(change.precioAnterior, change.precio)}${link}`;
+      return `${titulo}\n　🟢 Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${variacion(change.precioAnterior, change.precio)}${otraFuente(change)}${link}`;
     case "sube":
-      return `${titulo}\n　🔴 Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${variacion(change.precioAnterior, change.precio)}${link}`;
+      return `${titulo}\n　🔴 Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${variacion(change.precioAnterior, change.precio)}${otraFuente(change)}${link}`;
     // El operador puede ver TRES estados, no dos: "no está a la venta" (el
     // producto existe pero Samsung no lo vende) no es lo mismo que "agotado"
     // (se vende, pero no hay unidades). Los eventos viejos de history.jsonl solo
     // traen los booleanos, asi que se cae a ellos cuando faltan los estados.
     case "stock":
-      return `${titulo}\n　📦 Stock antes: **${textoEstado(change.estadoAnterior ?? (change.disponibleAnterior ? ESTADO.DISPONIBLE : ESTADO.AGOTADO))}** → ahora: **${textoEstado(change.estado ?? (change.disponible ? ESTADO.DISPONIBLE : ESTADO.AGOTADO))}**\n　Precio actual: **${fmt(change.precio)}**${link}`;
+      return `${titulo}\n　📦 Stock antes: **${textoEstado(change.estadoAnterior ?? (change.disponibleAnterior ? ESTADO.DISPONIBLE : ESTADO.AGOTADO))}** → ahora: **${textoEstado(change.estado ?? (change.disponible ? ESTADO.DISPONIBLE : ESTADO.AGOTADO))}**\n　Precio actual: **${fmt(change.precio)}**${sinComprobar(change)}${link}`;
     default:
       return titulo + link;
   }
@@ -575,6 +609,39 @@ export async function notifyDiscord(webhookUrl, { changes, errores, totalRevisad
 }
 
 // alerta tecnica (corrida sospechosa, error critico): un solo mensaje simple
+/**
+ * AVISO TECNICO DE PRECIOS CORREGIDOS DE ORIGEN (migracion versionPrecio).
+ *
+ * El precio guardado era el TACHADO o el numero INTERNO de digitalData, no lo
+ * que se cobra, asi que corregirlo NO es un cambio del sitio y no puede salir
+ * como aviso de precio: seria una tanda de "bajo 26%" por productos que nunca
+ * bajaron (medido sobre el catalogo real: 420 SKU).
+ *
+ * PERO TAMPOCO SE CALLA. Desde UNA sola lectura no hay forma de distinguir "el
+ * guardado estaba mal" de "este producto acaba de estrenar oferta y su precio de
+ * ayer es el tachado de hoy": los dos casos se ven identicos. Callarse del todo
+ * se tragaba bajas reales enteras y sin segunda oportunidad (versionPrecio queda
+ * sellado). Aca quedan, con los dos numeros y las bajas primero.
+ */
+export function mensajeCorreccionesDePrecio(correcciones, tope = 15) {
+  const lista = correcciones ?? [];
+  if (lista.length === 0) return null;
+  const esBaja = (c) => Number.isFinite(c.precio) && Number.isFinite(c.precioAnterior) && c.precio < c.precioAnterior;
+  const ordenadas = [...lista].sort((a, b) => Number(esBaja(b)) - Number(esBaja(a)));
+  const lineas = ordenadas
+    .slice(0, tope)
+    .map((c) => `• ${esBaja(c) ? "🟢" : "🔴"} ${c.modelo}: ${fmt(c.precioAnterior)} → ${fmt(c.precio)}`)
+    .join("\n");
+  const resto = ordenadas.length > tope ? `\n…y ${ordenadas.length - tope} más.` : "";
+  return (
+    `🔧 **Monitor Samsung — precios corregidos de origen**\n` +
+    `${lista.length} producto(s) tenían guardado un número que no era el que se cobra (el precio tachado, o un valor interno que la página no muestra). **No bajaron ni subieron**: se estaba leyendo mal, y por eso no salen como aviso de precio.\n` +
+    `${lineas}${resto}\n` +
+    `Si alguno de estos era una oferta de verdad que estrenó hoy, acá se ve: desde una sola lectura el monitor no puede distinguir los dos casos.\n` +
+    `Sale una sola vez por producto.`
+  );
+}
+
 export async function notifyTecnico(webhookUrl, texto) {
   if (!webhookUrl) {
     console.log("DISCORD_WEBHOOK_URL no configurado, no se envia alerta tecnica.");

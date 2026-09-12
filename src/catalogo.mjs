@@ -89,6 +89,28 @@ export function integrarVariantes(observado, entry, variants, { via = "individua
       existente.estadoStock &&
       existente.estadoStock !== ESTADO.DESCONOCIDO;
 
+    // LO MISMO PARA EL PRECIO (2026-09-12). Desde que una pagina que no alcanzo
+    // a pintar el monto devuelve la observacion SIN precio (ver
+    // precioVisiblePreferido en src/extract.mjs), dos paginas del mismo rango que
+    // ven el mismo SKU pueden traer una el precio y la otra nada. Son 135 SKU que
+    // se scrapean dos veces por corrida (su ficha plana del seed y su propia
+    // pagina /buy/ descubierta por sitemap, ambas rango PROPIA): sin esto, la que
+    // llegara ultima borraba el unico precio que se habia podido leer.
+    //
+    // Y SOLO ENTRE PAGINAS DEL MISMO RANGO, que es lo que dice el parrafo de
+    // arriba y lo que el codigo no comprobaba (2026-09-12, defecto medido por
+    // los tres verificadores). Sin la comprobacion, cuando la pagina FAMILIA se
+    // integraba primero y la ficha propia llegaba sin precio (el reintento del
+    // final de run.mjs procesa las paginas lentas DESPUES de todas las demas),
+    // el precio de LISTA de la familia -- el tachado del JSON-LD -- se copiaba
+    // al registro y quedaba firmado con `rango: 3` y `paginaOrigen: <ficha
+    // propia>`. Con ese disfraz, la guarda de fuente de comparar.mjs lo veia como "misma
+    // fuente" y avisaba al tiro: el lado "sube" del vaiven, blanqueado y
+    // esquivando la guardia que deberia detenerlo. Medido: el mismo insumo daba
+    // dos resultados distintos segun el ORDEN de llegada de las paginas.
+    const conservaPrecio =
+      existente && !Number.isFinite(v.precio) && Number.isFinite(existente.precio) && rangoExistente === rangoNuevo;
+
     observado[v.modelo] = {
       ...v,
       rango: rangoNuevo,
@@ -116,6 +138,9 @@ export function integrarVariantes(observado, entry, variants, { via = "individua
       paginaOrigen: entry.url,
       ultimaRevision: timestamp,
     };
+    // el precio se conserva DESPUES del spread para no dejar `precio: undefined`
+    // en el registro: comparar() distingue el campo ausente del campo en null
+    if (conservaPrecio) observado[v.modelo].precio = existente.precio;
     escritos?.push(v.modelo);
   }
   return observado;

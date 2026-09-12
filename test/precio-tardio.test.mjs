@@ -14,7 +14,13 @@ function paginaFalsa({ precios, model_code = "NP750QFG-KB2CL", displayName = "Ga
   const estado = () => ({ model_price: precios[Math.min(i, precios.length - 1)], model_code, displayName });
   return {
     evaluaciones: 0,
-    async waitForFunction(fn, { timeout }) {
+    // MISMA FIRMA QUE PLAYWRIGHT: (pageFunction, arg, options). El doble la
+    // tenia como (fn, options) -- copiando la llamada equivocada del codigo, que
+    // metia el timeout en la posicion de `arg` y por eso la espera corria con el
+    // default de 30 s en vez de con el tope declarado (medido el 2026-09-12
+    // contra el Chromium real: 30.017 ms vs 518 ms). Un doble que copia el error
+    // del codigo no puede detectarlo.
+    async waitForFunction(fn, _arg, { timeout } = {}) {
       // emula el sondeo del navegador: avanza el reloj falso hasta que el precio
       // sea valido, o se agota el tiempo
       for (let intento = 0; intento < precios.length; intento++) {
@@ -40,7 +46,7 @@ function paginaConPrecio(precios, extra = {}) {
   let llamadas = 0;
   const actual = () => precios[Math.min(i, precios.length - 1)];
   return {
-    async waitForFunction(_fn, { timeout }) {
+    async waitForFunction(_fn, _arg, { timeout } = {}) {
       for (let k = 0; k < precios.length; k++) {
         const n = Number(String(actual() ?? "").replace(",", "."));
         if (Number.isFinite(n) && n > 0) return;

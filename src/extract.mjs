@@ -257,11 +257,23 @@ async function leerBloqueCompra(page) {
       // FUERA de [class*='buying']. Sin ella ese SKU se guardaba como "agotado"
       // por la API, que es un estado distinto del que ve el cliente.
       const barra = [...document.querySelectorAll("[class*='price-bar']")].map(botonesDe).flat();
-      if (!el && barra.length === 0) return null;
+      if (!el && barra.length === 0) return { texto: null, ctas: [], ctasBarra: [] };
       return { texto: el && typeof el.innerText === "string" ? el.innerText : null, ctas: botonesDe(el), ctasBarra: barra.slice(0, 12) };
     })
     .catch(() => null);
-  return { texto: datos?.texto ?? null, ctas: datos?.ctas ?? [], ctasBarra: datos?.ctasBarra ?? [] };
+  return {
+    texto: datos?.texto ?? null,
+    ctas: datos?.ctas ?? [],
+    ctasBarra: datos?.ctasBarra ?? [],
+    // "NO PUDE LEER" NO ES LO MISMO QUE "LEI Y NO DICE PRECIO" (2026-09-12,
+    // defecto medido por los tres verificadores). Este evaluate va envuelto en
+    // `.catch(() => null)` y hasta hoy los dos casos salian identicos: `texto:
+    // null`. Un piso mas abajo eso hacia que el precio cayera al TACHADO -- el
+    // numero exacto al que saltaba el vaiven -- sin ninguna marca de que la
+    // lectura habia fallado. Un bloque con texto VACIO tambien cuenta como
+    // ilegible: es la firma de un bloque que todavia no se pinto.
+    legible: typeof datos?.texto === "string" && datos.texto.trim().length > 0,
+  };
 }
 
 // Samsung NO trae el precio en el HTML: la pagina se lo pide a
@@ -271,22 +283,106 @@ async function leerBloqueCompra(page) {
 // tarde. Leer sin esperar hacia que el producto se diera por inexistente, y a
 // las 2 corridas se anunciaba "desaparecido" (el ciclo del Book3: 48 avisos
 // falsos). El numero tambien puede venir con coma decimal.
-// 3 s es 34 veces la carrera medida (88 ms) y mantiene la corrida bajo el limite
-// de 4 h del job. Con 8 s la corrida se pasaba de las 4 h y GitHub la mataba
-// SIN dejar datos ni avisos: hay ~150 paginas que legitimamente no publican
-// precio (accesorios, kits) y cada una pagaba la espera completa DOS veces, por
-// la espera mas el reintento. Incidente del 2026-08-02, ver BITACORA.md.
-const PRECIO_TIMEOUT_MS = 3000;
+//
+// ESTE TOPE NUNCA SE APLICO, medido hoy (2026-09-12). La llamada de mas abajo
+// estaba escrita `page.waitForFunction(fn, { timeout: PRECIO_TIMEOUT_MS })` y la
+// firma de Playwright es `waitForFunction(pageFunction, arg, options)`: ese
+// objeto entraba como ARG y la espera corria con el default de Playwright.
+// Medido sin red (una pagina escrita con setContent, ver BITACORA.md):
+//   waitForFunction(fn, { timeout: 500 })            -> 30.017 ms
+//   waitForFunction(fn, undefined, { timeout: 500 }) ->    518 ms
+// O sea que las ~150 paginas que legitimamente no publican precio pagaban 30 s
+// cada una, no 3. Con la firma corregida el tope por fin existe, asi que se
+// vuelve a un presupuesto holgado: 8 s es ~4,7 veces la peor espera medida de
+// digitalData (1.718 ms) y sigue siendo 22 s MENOS por pagina que hoy. Estimado
+// sobre las ~150 paginas sin precio: ~55 min menos por corrida (hoy 169-210 min,
+// tope del job 330).
+//
+// Y el incidente del 2026-08-02 no fue por este numero (8000 tampoco se
+// aplicaba nunca): lo arreglo el `throw` selectivo de mas abajo, que dejo de
+// mandar esas paginas al reintento. Ver BITACORA.md.
+const PRECIO_TIMEOUT_MS = 8000;
+
+/**
+ * PRESUPUESTO PROPIO DE LA ESPERA DE PINTADO (2026-09-12, defecto medido).
+ *
+ * Antes esta espera recibia "las sobras": `PRECIO_TIMEOUT_MS - (Date.now() -
+ * t0)`. Como el tope de la espera de digitalData no se aplicaba (ver arriba),
+ * en una pagina lenta t0 podia llevar 30 s consumidos y la resta quedaba
+ * NEGATIVA: la defensa central del arreglo del vaiven se auto-descartaba justo
+ * en las paginas para las que se escribio. Ahora tiene su propio presupuesto,
+ * chico y fijo, que no depende de lo que haya tardado nadie antes.
+ *
+ * 1,5 s cubre con holgura el render medido (7 ms cuando la pagina ya pinto) y
+ * acota el peor caso: una ficha que nunca escribe un monto paga 1,5 s. Cota
+ * alta si las ~400 paginas que no publican precio visible se comportaran asi:
+ * ~10 min por corrida, contra los ~55 min que libera el arreglo del tope de
+ * arriba.
+ */
+const RENDER_TIMEOUT_MS = 1500;
 
 function aNumero(valor) {
   return Number(String(valor ?? "").replace(",", "."));
 }
 
+// Formato chileno del monto, tal como lo escribe la pagina ("974.980").
+function montoFormateado(monto) {
+  if (!Number.isFinite(monto) || monto <= 0) return null;
+  return new Intl.NumberFormat("es-CL").format(Math.round(monto));
+}
+
 // ¿Esta este monto escrito en la pagina, con el formato chileno ($ 974.980)?
 function montoVisible(monto, texto) {
-  if (!Number.isFinite(monto) || monto <= 0 || !texto) return false;
-  const formateado = new Intl.NumberFormat("es-CL").format(Math.round(monto));
+  const formateado = montoFormateado(monto);
+  if (!formateado || !texto) return false;
   return texto.replace(/\s/g, "").includes(formateado);
+}
+
+/**
+ * ESPERA A QUE EL PRECIO SE PINTE, no a que exista la variable (2026-09-12).
+ *
+ * LA CARRERA MEDIDA. El waitForFunction de mas abajo espera a que la VARIABLE
+ * window.digitalData.product.model_price sea > 0, y digitalData se llena apenas
+ * responde api.shop.samsung.com (medido: 1.718 ms); el bloque de compra se
+ * re-renderiza DESPUES. Entremedio, document.body.innerText todavia no tiene
+ * ningun monto escrito, y quien lee ese texto es precioVisiblePreferido para
+ * decidir cual de los dos numeros de digitalData es el de verdad. O sea: la
+ * MISMA pagina devolvia dos precios estables segun quien ganara la carrera, y
+ * cada cambio de ganador mandaba un "subio" o un "bajo" que no correspondia a
+ * ningun cambio en Samsung.
+ *
+ * Medido sobre data/history.jsonl (30 dias): 68 SKU con el precio volviendo
+ * exactamente a un valor ya visto, 361 avisos de precio de esos SKU sobre 784
+ * totales (46%). El peor, el monitor LS32DG300ELXZS, con 56 avisos rebotando
+ * entre $199.990 (model_price, que NO esta escrito en su ficha) y $279.990
+ * (list_price, que si lo esta).
+ *
+ * La espera es por los MONTOS de digitalData, no por un selector: es exactamente
+ * el criterio que usara montoVisible dos lineas despues, asi que cuando esta
+ * espera se cumple la decision ya no depende del instante en que se lea.
+ *
+ * PRESUPUESTO: el suyo, RENDER_TIMEOUT_MS, no las sobras de la espera anterior
+ * (ver la nota de esa constante: con las sobras la espera se auto-descartaba en
+ * las paginas lentas, que son justo las que corren la carrera).
+ */
+async function esperarMontoPintado(page, montos, presupuestoMs = RENDER_TIMEOUT_MS) {
+  const buscados = montos.map(montoFormateado).filter(Boolean);
+  if (buscados.length === 0 || !(presupuestoMs > 0)) return;
+  if (typeof page.waitForFunction !== "function") return;
+  await page
+    .waitForFunction(
+      (lista) => {
+        const t = (document.body?.innerText ?? "").replace(/\s/g, "");
+        return lista.some((m) => t.includes(m));
+      },
+      buscados,
+      { timeout: presupuestoMs },
+    )
+    .catch(() => {
+      // no se pinto ningun monto dentro del presupuesto: no se espera mas y la
+      // pagina se lee igual. El que decide es precioVisiblePreferido, que sin
+      // monto escrito devuelve null (no hay precio) en vez de inventar uno.
+    });
 }
 
 /**
@@ -315,12 +411,15 @@ function montoVisible(monto, texto) {
 /**
  * Version de la FUENTE del precio. Viaja en cada observacion y se guarda en el
  * catalogo; comparar() la usa para adoptar en silencio, UNA vez por SKU, la
- * correccion del precio tachado (ver "correccion del precio tachado" en
- * src/comparar.mjs). Misma mecanica que VERSION_STOCK.
+ * correccion de la fuente del precio (ver "correccion de la fuente del precio"
+ * en src/comparar.mjs). Misma mecanica que VERSION_STOCK.
  *   1 = digitalData (model_price / list_price), hasta 2026-09-12
  *   2 = el monto escrito en el bloque de compra cuando esta (este archivo)
+ *   3 = ademas, ningun precio que no este ESCRITO en la pagina (2026-09-12
+ *       tarde): se espera a que el monto se pinte y, si no se pinta, no hay
+ *       precio. Ver precioVisiblePreferido y esperarMontoPintado.
  */
-export const VERSION_PRECIO = 2;
+export const VERSION_PRECIO = 3;
 
 export function precioDelBloqueCompra(texto) {
   const t = String(texto ?? "").replace(/\s+/g, " ");
@@ -336,12 +435,99 @@ export function precioDelBloqueCompra(texto) {
  * Elige el precio que el cliente realmente ve. Ver el comentario largo en
  * extractSingleProduct: hay productos donde model_price es un numero interno que
  * no aparece en la ficha y el precio de venta esta en list_price.
+ *
+ * SI NINGUNO DE LOS DOS ESTA ESCRITO, NO HAY PRECIO (2026-09-12). Antes se
+ * devolvia model_price, o sea: "no pude verificar nada, invento con el numero
+ * interno". Ese era el lado "bajo" de la moneda al aire. Medido en las 5 fichas
+ * que mas avisos falsos generaron, model_price NO aparece en ninguna parte de la
+ * pagina:
+ *   SM-X520NLBACHO model_price 479.990 · list_price 729.990 · el cliente paga 656.990
+ *   SM-X520NLBECHO            539.990              839.990                    579.990
+ *   SM-X620NZAACHO            689.990              899.990                    809.990
+ *   SM-X930NZAHCHO          1.599.990            1.999.990                  1.799.990
+ *   LS32DG300ELXZS            199.990              279.990   (su bloque dice "Donde comprar")
+ * Los montos "bajos" de esas fichas son exactamente esos model_price invisibles,
+ * y los "altos" los list_price: el baile no era Samsung cambiando de precio, era
+ * esta funcion cambiando de respuesta. Devolver null es la regla de oro del
+ * proyecto aplicada al precio -- mas vale callarse --, y quien la recibe
+ * (extractSingleProduct) omite el campo para que comparar() conserve el ultimo
+ * precio bueno sin avisar nada.
+ *
+ * LA PRIMERA LINEA SE QUEDA COMO ESTABA, A PROPOSITO. Sin list_price valido no
+ * hay segundo candidato, asi que no hay carrera posible: la funcion devuelve
+ * siempre lo mismo para la misma pagina. Medido: LS32DG300ELXZS estuvo clavado
+ * en un precio ~75 corridas (2026-07-20 a 2026-08-08) y empezo a bailar el dia
+ * que su ficha estreno precio tachado. Exigir visibilidad tambien ahi congelaria
+ * fichas que hoy no producen ni un aviso falso.
  */
 export function precioVisiblePreferido(modelPrice, listPrice, texto) {
   if (!Number.isFinite(listPrice) || listPrice <= 0) return modelPrice;
   if (montoVisible(modelPrice, texto)) return modelPrice;
   if (montoVisible(listPrice, texto)) return listPrice;
-  return modelPrice;
+  return null;
+}
+
+/**
+ * ¿LA PROPIA PAGINA MARCA ESTE MONTO COMO EL PRECIO TACHADO? (2026-09-12)
+ *
+ * Samsung lo escribe con todas sus letras. La ficha del Galaxy Tab S10 FE
+ * 128GB azul, literal y medida el 2026-09-12:
+ *   "Desde $ 54.749 en 12 cuotas sin intereses* o $656.990 /
+ *    Precio original: $729.990 / Ahorra $ 73.000"
+ * El 729.990 esta ESCRITO en la pagina -- asi que montoVisible dice que si --
+ * pero no es lo que paga el cliente: es el precio de antes. Cada vez que el
+ * monitor lo adoptaba mandaba un "subio" que no correspondia a ningun cambio.
+ *
+ * Se compara contra el texto sin espacios, igual que montoVisible, porque
+ * Samsung mete saltos de linea entre la etiqueta y el numero.
+ */
+export function esPrecioOriginalEscrito(monto, texto) {
+  const formateado = montoFormateado(monto);
+  if (!formateado || !texto) return false;
+  const t = String(texto).replace(/\s/g, "");
+  for (const m of t.matchAll(/preciooriginal:?\$?([\d.]{4,})/gi)) {
+    if (m[1].replace(/\.$/, "") === formateado) return true;
+  }
+  return false;
+}
+
+/**
+ * EL PRECIO QUE SE ADOPTA, Y CUANDO NO SE ADOPTA NINGUNO (2026-09-12).
+ *
+ * Esta funcion existe porque el arreglo anterior dejo la regla a medias: aplico
+ * "no inventar un precio" a `precioVisiblePreferido` (que lee el texto de la
+ * pagina) pero el numero que realmente ganaba salia una linea mas abajo, de
+ * `precioBloque ?? precioFinal`. Cuando la lectura del bloque de compra fallaba
+ * -- va envuelta en `.catch(() => null)` -- ese `??` caia directo al TACHADO,
+ * que es el numero exacto al que saltaba el vaiven historico de SM-X520NLBACHO
+ * ($656.990 <-> $729.990). Reproducido extremo a extremo por los verificadores:
+ * un aviso falso por corrida, con el body IDENTICO y ya pintado en todas.
+ *
+ * Los TRES estados que antes se confundian en un solo `null`:
+ *  (a) el bloque de compra NO se pudo leer (evaluate fallido, o bloque todavia
+ *      sin texto): no se sabe cuanto cobra la pagina -> no hay precio, y
+ *      comparar() conserva el ultimo bueno sin avisar nada.
+ *  (b) el bloque SI se leyo y no publica monto (medido en AR-KH00E y en el
+ *      monitor LS32DG300ELXZS: dicen "Dónde comprar" / "no está a la venta"):
+ *      ahi el numero escrito en la pagina es el unico que hay, y vale.
+ *  (c) el bloque publica el monto: ese manda, siempre.
+ *
+ * Con una excepcion que cruza los tres: un monto que la pagina marca como
+ * "Precio original" NUNCA se adopta (ver esPrecioOriginalEscrito).
+ *
+ * Y una concesion medida, para no congelar fichas que hoy no producen ni un
+ * aviso falso: si digitalData publica UN SOLO candidato (list_price invalido, o
+ * igual al model_price) no hay carrera posible -- la pagina devuelve siempre lo
+ * mismo --, asi que el bloque ilegible no bloquea la lectura. El vaiven
+ * necesita dos numeros distintos para bailar.
+ */
+export function precioAdoptable({ precioBloque, precioFinal, modelPrice, listPrice, bloqueLegible, bodyText }) {
+  if (Number.isFinite(precioBloque) && precioBloque > 0) return precioBloque;
+  const dosCandidatos =
+    Number.isFinite(modelPrice) && Number.isFinite(listPrice) && listPrice > 0 && modelPrice !== listPrice;
+  if (!bloqueLegible && dosCandidatos) return null;
+  if (esPrecioOriginalEscrito(precioFinal, bodyText)) return null;
+  return precioFinal;
 }
 
 // Hay paginas que exponen VARIOS productos a la vez. En esas,
@@ -426,6 +612,10 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
         const n = Number(String(p ?? "").replace(",", "."));
         return Number.isFinite(n) && n > 0;
       },
+      // el 3er argumento son las OPCIONES. Hasta hoy este objeto iba en el 2o,
+      // que es `arg`, y por eso el tope no se aplicaba nunca (medido: 30 s en
+      // vez de los 3 s que decia la constante). Ver la nota de PRECIO_TIMEOUT_MS.
+      undefined,
       { timeout: PRECIO_TIMEOUT_MS },
     );
   } catch {
@@ -461,6 +651,12 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
     return null;
   }
 
+  // Antes de leer el texto de la pagina se espera a que el precio este PINTADO.
+  // Sin esto la lectura corria una carrera contra el render y la misma pagina
+  // devolvia dos precios distintos segun quien ganara (ver esperarMontoPintado).
+  const precioLista = aNumero(digitalData.list_price);
+  await esperarMontoPintado(page, [precio, precioLista]);
+
   const bodyText = await page.evaluate(() => document.body.innerText).catch(() => "");
 
   // El precio que se vigila tiene que ser el que el cliente VE. Medido el
@@ -472,8 +668,10 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
   // gana el list_price. Verificado sobre 8 paginas (4 packs y 4 productos
   // normales): solo ese pack cae en la excepcion; en los otros 7 el model_price
   // es el visible y no se toca nada. Si NINGUNO de los dos esta visible (pagina
-  // a medio renderizar) no se cambia nada, para no inventar un precio.
-  const precioFinal = precioVisiblePreferido(precio, aNumero(digitalData.list_price), bodyText);
+  // que no alcanzo a pintar el precio) NO HAY PRECIO: null, y mas abajo el campo
+  // se omite. Inventarlo con el model_price invisible era el lado "bajo" del
+  // vaiven (ver precioVisiblePreferido).
+  const precioFinal = precioVisiblePreferido(precio, precioLista, bodyText);
 
   const modelo = digitalData.model_code || null;
   const codigos = String(modelo ?? "")
@@ -573,15 +771,24 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
   // numero que el cliente lee antes de apretar el boton. Manda sobre digitalData
   // cuando esta escrito (ver precioDelBloqueCompra); si no esta, no cambia nada.
   const precioBloque = precioDelBloqueCompra(bloque.texto);
-  const precioVisto = precioBloque ?? precioFinal;
+  // NO es `precioBloque ?? precioFinal`: ese `??` era la puerta por la que el
+  // vaiven seguia entrando (ver precioAdoptable, que distingue "no pude leer el
+  // bloque" de "lo lei y no publica monto").
+  const precioVisto = precioAdoptable({
+    precioBloque,
+    precioFinal,
+    modelPrice: precio,
+    listPrice: precioLista,
+    bloqueLegible: bloque.legible,
+    bodyText,
+  });
   const precioElegido =
     varios && Number.isFinite(precioApi) && !montoVisible(precioVisto, bodyText) ? precioApi : precioVisto;
 
   const salidaPropia = {
     modelo: propio,
-    nombre: (varios ? nombres[codigos.indexOf(propio)] : digitalData.displayName) || null,
-    precio: precioElegido,
     moneda: "CLP",
+    nombre: (varios ? nombres[codigos.indexOf(propio)] : digitalData.displayName) || null,
     estadoStock: estado,
     disponible: disponibleDe(estado),
     versionStock: VERSION_STOCK,
@@ -590,13 +797,43 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
     especificaciones: filtrarEspecificacionesUtiles(especCrudas),
     versionPrecio: VERSION_PRECIO,
   };
+
+  // EL CAMPO SE OMITE, NO SE PONE EN null (medido). Un `precio: null` PISA el
+  // precio guardado (`{...ant, ...obs}` en comparar.mjs) y lo deja en null sin
+  // emitir nada; la corrida siguiente lee "antes no habia precio" y anuncia
+  // "nuevo". Con el campo AUSENTE, el precio bueno se conserva y nadie se entera
+  // de nada, que es justo lo que tiene que pasar cuando la pagina no se dejo
+  // leer. Mismo criterio que ESTADO.DESCONOCIDO para el stock: "no lo se" no es
+  // un valor, es la ausencia de uno.
+  if (Number.isFinite(precioElegido) && precioElegido > 0) {
+    salidaPropia.precio = precioElegido;
+  } else {
+    // diagnostico de ESTA lectura (no del producto): run.mjs lo cuenta en el
+    // resumen y comparar.mjs lo borra antes de guardar el registro
+    salidaPropia.precioIlegible = true;
+  }
+
   // Rastro para que comparar() pueda distinguir una CORRECCION de fuente de una
-  // baja de verdad: cuando el bloque manda y el numero que habria elegido la
-  // regla anterior es otro, ese otro numero es el precio TACHADO. Solo se
-  // escribe en ese caso (medido: ~4% de las fichas), asi que no engorda
-  // data/latest.json ni el historial.
-  if (Number.isFinite(precioBloque) && Number.isFinite(precioFinal) && precioBloque !== precioFinal) {
-    salidaPropia.precioTachado = precioFinal;
+  // baja de verdad: los dos numeros que la pagina publica y que este arreglo YA
+  // NO elige. Solo se escriben cuando difieren del elegido (medido: ~4% de las
+  // fichas para el tachado), asi que no engordan data/latest.json ni el
+  // historial, y comparar() los borra del registro.
+  //  - precioTachado: el "Precio original" (list_price visible).
+  //  - precioInterno: el model_price, que en las fichas con descuento es un
+  //    numero que NO aparece en la pagina (medido: 479.990 en SM-X520NLBACHO,
+  //    199.990 en LS32DG300ELXZS). Sin este rastro, la primera corrida con el
+  //    arreglo avisaria como "subio" cada SKU que hoy tiene guardado ese numero.
+  //
+  // EL TACHADO SE ANOTA SIEMPRE QUE EXISTA Y NO SEA EL ADOPTADO, no solo cuando
+  // el bloque de compra se dejo leer (2026-09-12, defecto medido). La guarda
+  // anterior exigia `Number.isFinite(precioBloque)`, asi que justo en el caso
+  // que produce el aviso falso -- bloque ilegible -- el rastro NO se escribia y
+  // la amnistia de la migracion no podia taparlo.
+  if (Number.isFinite(precioLista) && precioLista > 0 && precioLista !== salidaPropia.precio) {
+    salidaPropia.precioTachado = precioLista;
+  }
+  if (Number.isFinite(precio) && precio !== salidaPropia.precio) {
+    salidaPropia.precioInterno = precio;
   }
   return salidaPropia;
 }

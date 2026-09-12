@@ -27,17 +27,31 @@ test("sin list_price valido no se toca nada", () => {
   }
 });
 
-test("si la pagina no muestra NINGUNO de los dos, no se inventa un precio", () => {
-  // pagina a medio renderizar: se conserva el model_price de siempre
-  assert.equal(precioVisiblePreferido(555980, 974980, "cargando..."), 555980);
-  assert.equal(precioVisiblePreferido(555980, 974980, ""), 555980);
-  assert.equal(precioVisiblePreferido(555980, 974980, null), 555980);
+// CAMBIO DE EXPECTATIVA (2026-09-12). Esta prueba fijaba el comportamiento
+// EQUIVOCADO: se llamaba "no se inventa un precio" pero exigia que, con la
+// pagina a medio renderizar, la funcion devolviera el model_price -- que es
+// exactamente inventarlo. Medido en las 5 fichas que mas avisos falsos
+// generaron, el model_price NO esta escrito en ninguna parte de la pagina
+// (479.990 en SM-X520NLBACHO contra los $656.990 que cobra, 199.990 en
+// LS32DG300ELXZS contra los $279.990 que muestra), asi que devolverlo cuando el
+// texto no se dejo leer era el lado "bajo" del vaiven: 68 SKU y 361 avisos de
+// precio en 30 dias. Ahora devuelve null y el campo se omite: la pagina no dijo
+// nada, asi que no cambia nada.
+test("si la pagina no muestra NINGUNO de los dos, NO hay precio (null)", () => {
+  assert.equal(precioVisiblePreferido(555980, 974980, "cargando..."), null);
+  assert.equal(precioVisiblePreferido(555980, 974980, ""), null);
+  assert.equal(precioVisiblePreferido(555980, 974980, null), null);
+  // el caso medido: el par que bailaba en la ficha del Tab S10 FE 128GB
+  assert.equal(precioVisiblePreferido(479990, 729990, ""), null, "el model_price invisible no es un precio");
 });
 
 test("el monto se busca con formato chileno y tolera los espacios de la pagina", () => {
   assert.equal(precioVisiblePreferido(999, 974980, "precio $ 974.980 hoy"), 974980, "acepta espacio despues del $");
   assert.equal(precioVisiblePreferido(999, 974980, "precio $974.980"), 974980, "acepta sin espacio");
-  assert.equal(precioVisiblePreferido(999, 974980, "precio 974980 sin puntos"), 999, "no confunde un numero sin formato");
+  // un numero sin formato no cuenta como escrito: ninguno de los dos esta
+  // visible y entonces no hay precio (antes esta misma linea esperaba 999, el
+  // model_price invisible -- ver la nota de cambio de expectativa mas arriba)
+  assert.equal(precioVisiblePreferido(999, 974980, "precio 974980 sin puntos"), null, "no confunde un numero sin formato");
 });
 
 test("no se cambia el precio cuando ambos montos son iguales", () => {
