@@ -50,8 +50,18 @@ const MONITOR = {
   listPrice: "279990",
   // su bloque de compra NO trae monto: Samsung no lo vende online
   bloque: "Dónde comprar",
-  body: "Odyssey G3 32''\n$279.990\nProductos relacionados $249.990 $949.990 $1.099.990\nDónde comprar",
-  cobra: 279990,
+  ctas: ["Dónde comprar"],
+  // EL 279.990 ES EL PRECIO DE LISTA DE ESTE MISMO SKU, no el de otro producto
+  // (medido el 2026-09-13 en la respuesta que la propia pagina le pide a la API:
+  // price = "$279.990" priceType "BUY" · promotionPrice = "$199.990"). Aparece en
+  // el body pegado a la tarjeta del "27\" Odyssey G4 G40H" del carrusel, pero esa
+  // coincidencia es casualidad. Lo que NO esta escrito en ninguna parte es el
+  // 199.990 que se cobra. Por eso `cobra` bajo de 279.990 a 199.990: la cifra
+  // vieja era la de lista, que es justo la que el cliente no paga.
+  // (Una version anterior de este comentario decia "es el precio del monitor de
+  // al lado". Era falso; la asercion numerica no cambia, la razon si.)
+  body: "Odyssey G3 32''\nDónde comprar\nProductos relacionados 27\" Odyssey G4 G40H FHD 300Hz Monitor Gamer $279.990 $949.990 $1.099.990",
+  cobra: 199990,
 };
 
 /**
@@ -75,18 +85,35 @@ const MONITOR = {
  *   "ilegible" el evaluate revienta -> el `.catch(() => null)` del codigo real
  *   "vacio"    el elemento existe pero todavia no tiene texto
  *   <string>   un texto propio (p.ej. la barra pegajosa, sin la frase de cuotas)
+ *
+ * Y DECLARA DE QUE ELEMENTO SALIO EL TEXTO (2026-09-13 tarde). Las fichas de
+ * este archivo son todas fichas PLANAS de producto, y en vivo el selector que
+ * gana ahi es `pd-buying-price`: la barra de precio de ESE producto, cuyo
+ * innerText es exactamente precio + CTA. Es distinto del Buying Tool de una
+ * /buy/ hubble, que habla de todas las variantes a la vez (ver
+ * test/vaiven-bloque-de-compra.test.mjs). Sin declararlo, el doble no podia
+ * expresar la diferencia de la que depende si un monto solitario manda.
  */
+// el selector que gana en una ficha plana, medido en vivo (TV, notebook,
+// accesorio, monitor): la barra de precio de este producto
+const BARRA_DE_PRECIO = "[class*='pd-buying-price']";
+
 function fichaQuePintaTarde(ficha, { pintaEnLaEspera = true, bloque = "auto" } = {}) {
   let pintado = false;
   let evaluaciones = 0;
   let esperas = 0;
   const bloqueLeido = () => {
     if (bloque === "ilegible") throw new Error("evaluate fallido");
-    if (bloque === "vacio") return { texto: "", ctas: [], ctasBarra: [] };
+    if (bloque === "vacio") return { texto: "", ctas: [], ctasBarra: [], selector: BARRA_DE_PRECIO };
+    // Los CTA son de la ficha: el bloque del monitor dice "Dónde comprar", no
+    // "Comprar" (medido en vivo el 2026-09-13), y de ese veredicto depende que su
+    // numero se pueda adoptar. Con "Comprar" para todas, esa diferencia -- que es
+    // la llave del arreglo -- era inexpresable.
+    const ctas = ficha.ctas ?? ["Comprar"];
     if (bloque === "auto") {
-      return { texto: pintado ? ficha.bloque : null, ctas: pintado ? ["Comprar"] : [], ctasBarra: [] };
+      return { texto: pintado ? ficha.bloque : null, ctas: pintado ? ctas : [], ctasBarra: [], selector: BARRA_DE_PRECIO };
     }
-    return { texto: bloque, ctas: ["Comprar"], ctasBarra: [] };
+    return { texto: bloque, ctas, ctasBarra: [], selector: BARRA_DE_PRECIO };
   };
   return {
     get esperas() {
@@ -153,13 +180,24 @@ test("una pagina que no alcanza a pintar el precio NO devuelve un precio inventa
   assert.equal(r.precioInterno, 479990);
 });
 
-test("la ficha del monitor: gana el monto escrito, nunca el interno", async () => {
-  // su bloque de compra no trae monto ("Dónde comprar"), asi que decide
-  // precioVisiblePreferido: el list_price esta escrito y el model_price no
+test("la ficha del monitor: su model_price, y el tachado NUNCA, pinte o no pinte", async () => {
+  // Su bloque de compra no trae monto y DECLARA que Samsung no lo vende online
+  // ("Dónde comprar"). Eso es una propiedad estable de la ficha, no una carrera:
+  // esa pagina no va a pintar un precio de venta mas tarde, asi que su
+  // model_price vale. Lo que ninguna de las dos lecturas puede devolver es el
+  // 279.990: es el list_price de este SKU -- el precio de lista, el que el
+  // cliente NO paga (medido el 2026-09-13 contra la API de la propia pagina).
   const pintada = await extractSingleProduct(fichaQuePintaTarde(MONITOR), MONITOR.url);
-  assert.equal(pintada.precio, MONITOR.cobra);
+  assert.equal(pintada.precio, MONITOR.cobra, "199.990: el numero que la propia ficha publica");
+  assert.notEqual(pintada.precio, 279990, "el precio de LISTA no es el que se cobra");
+
+  // y con el bloque todavia sin leer no se adivina: no hay precio, que es
+  // "conserva el ultimo bueno" y por lo tanto tampoco es un aviso. Las dos
+  // salidas posibles de esta ficha son 199.990 y "no se": ninguna es 279.990, y
+  // por eso el vaiven se queda sin sus dos valores.
   const aMedias = await extractSingleProduct(fichaQuePintaTarde(MONITOR, { pintaEnLaEspera: false }), MONITOR.url);
-  assert.equal("precio" in aMedias, false, "sin texto pintado, 199.990 NO es un precio");
+  assert.equal("precio" in aMedias, false, "sin bloque legible no se sabe que declara la pagina");
+  assert.equal(aMedias.precioIlegible, true);
 });
 
 // --- 2. corrida a corrida: el vaiven completo, extremo a extremo --------------

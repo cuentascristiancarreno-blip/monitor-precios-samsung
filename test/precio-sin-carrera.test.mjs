@@ -65,6 +65,13 @@ const SIN_ETIQUETA = {
   tachado: 899990,
 };
 
+// DE QUE ELEMENTO SALIO EL BLOQUE (2026-09-13 tarde). Todas las fichas de este
+// archivo son fichas PLANAS de producto y en vivo el selector que gana ahi es
+// `pd-buying-price`: la barra de precio de ESE producto. El Buying Tool de una
+// /buy/ hubble es otra cosa -- habla de todas las variantes -- y de esa
+// diferencia depende si un monto solitario puede mandar sin comprobar nada.
+const BARRA_DE_PRECIO = "[class*='pd-buying-price']";
+
 /**
  * Doble de pagina con las DOS lecturas del DOM separadas. `bloque` puede ser:
  *   "auto"     acompana al body
@@ -76,11 +83,16 @@ const SIN_ETIQUETA = {
 function pagina(ficha, { bloque = "auto", bodyPintado = true } = {}) {
   let evaluaciones = 0;
   const llamadas = [];
+  // Los CTA son parte de la ficha: el bloque del monitor no dice "Comprar", dice
+  // "Dónde comprar" (medido en vivo el 2026-09-13), y de ahi sale el veredicto
+  // "no-a-la-venta" que decide si su numero se puede adoptar. Un doble que le
+  // ponga "Comprar" a todas las fichas no puede expresar esa diferencia.
+  const ctas = ficha.ctas ?? ["Comprar"];
   const bloqueLeido = () => {
     if (bloque === "ilegible") throw new Error("evaluate fallido");
-    if (bloque === "vacio") return { texto: "", ctas: [], ctasBarra: [] };
-    if (bloque === "auto") return { texto: ficha.bloque, ctas: ["Comprar"], ctasBarra: [] };
-    return { texto: bloque, ctas: ["Comprar"], ctasBarra: [] };
+    if (bloque === "vacio") return { texto: "", ctas: [], ctasBarra: [], selector: BARRA_DE_PRECIO };
+    if (bloque === "auto") return { texto: ficha.bloque, ctas, ctasBarra: [], selector: BARRA_DE_PRECIO };
+    return { texto: bloque, ctas, ctasBarra: [], selector: BARRA_DE_PRECIO };
   };
   return {
     llamadas,
@@ -195,19 +207,42 @@ test("el vaiven completo: 5 corridas alternando la legibilidad del bloque, CERO 
   assert.equal(catalogo[TAB.sku].precio, TAB.cobra, "y el precio bueno queda intacto");
 });
 
-test("un bloque LEGIBLE sin monto si deja adoptar lo escrito: no se congela nada", async () => {
+test("un bloque LEGIBLE sin monto si deja adoptar: pero el model_price, nunca el tachado", async () => {
   // el otro lado de la moneda. El monitor LS32DG300ELXZS y el control remoto
   // AR-KH00E no se venden online y su bloque dice "Dónde comprar": eso es una
-  // propiedad ESTABLE de la pagina, no una carrera. Ahi el numero escrito vale.
+  // propiedad ESTABLE de la pagina, no una carrera. Ahi el numero de digitalData
+  // vale y no hay que congelar nada.
+  //
+  // ESTA ASERCION CAMBIO EL 2026-09-13, Y FIJABA EL COMPORTAMIENTO EQUIVOCADO.
+  // Decia `precio === 279990` con el argumento "lo unico escrito en la pagina es
+  // el precio de la pagina". Cargada la ficha real ese dia, el argumento es
+  // falso: el model_price (199.990) NO esta escrito en ninguna parte del body y
+  // el list_price (279.990) SI.
+  // QUE SON ESOS DOS NUMEROS, medido el 2026-09-13 en la respuesta que la PROPIA
+  // pagina le pide a api.shop.samsung.com (capturada del trafico, cero requests
+  // extra):   price = {"$279.990", priceType "BUY"} · promotionPrice = "$199.990".
+  // O sea: model_price = el precio CON promocion (lo que se cobra) y list_price =
+  // el de lista. Identico en el A36 (price $539.990 BUY / promotionPrice
+  // $369.990). Con el bloque mudo, el unico deterministico es el primero.
+  //
+  // CORREGIDO: una version anterior de este comentario decia que el 279.990 "es
+  // el precio de OTRO PRODUCTO" (la tarjeta del Odyssey G4 del carrusel). Es
+  // falso -- el numero SI aparece al lado del G4 en el body, pero es tambien el
+  // precio de lista de ESTE monitor. La asercion numerica no cambia; la razon si.
   const MONITOR = {
     sku: "LS32DG300ELXZS",
     modelPrice: "199990",
     listPrice: "279990",
     bloque: "Dónde comprar",
-    body: "Odyssey G3 32''\n$279.990\nDónde comprar",
+    ctas: ["Dónde comprar"],
+    // body literal medido: el 279.990 aparece pegado a la tarjeta del Odyssey G4
+    // del carrusel, pero es ademas el precio de LISTA de este mismo SKU (ver
+    // arriba). Lo que no aparece en ninguna parte es el 199.990 que se cobra.
+    body: "Odyssey G3 32''\nDónde comprar\n27\" Odyssey G4 G40H FHD 300Hz Monitor Gamer $279.990",
   };
   const r = await extractSingleProduct(pagina(MONITOR, {}), "https://x/monitor");
-  assert.equal(r.precio, 279990, "lo unico escrito en la pagina es el precio de la pagina");
+  assert.equal(r.precio, 199990, "el list_price es el de lista, y ademas esta escrito por otro producto");
+  assert.notEqual(r.precio, 279990, "el precio del vecino no puede ser el precio de este SKU");
 });
 
 test("con UN solo candidato el bloque ilegible no bloquea la lectura", async () => {
@@ -462,15 +497,35 @@ test("el aviso tecnico de correcciones dice los dos numeros y pone las bajas pri
 });
 
 test("el aviso tecnico corta la lista larga y dice cuantos quedaron fuera", () => {
+  // EL TOPE ES EL PRESUPUESTO, NO UN NUMERO FIJO (2026-09-13 tarde). Con 15
+  // lineas, la mayor ola simultanea medida en data/history.jsonl -- 206 bajas en
+  // UNA corrida, 2026-09-09T16:56 -- se veia como "…y 191 mas", y este mensaje es
+  // la unica forma que tiene el operador de enterarse de que una oferta REAL que
+  // estreno hoy se fue por el canal tecnico.
   const muchos = Array.from({ length: 420 }, (_, i) => ({ modelo: `SKU-${i}`, precioAnterior: 100000, precio: 90000 }));
   const texto = mensajeCorreccionesDePrecio(muchos);
   assert.match(texto, /420 producto\(s\)/);
-  assert.match(texto, /…y 405 más\./);
+  assert.match(texto, /…y \d+ más\./);
+  assert.ok((texto.match(/^• /gm) ?? []).length > 15, "tienen que verse mas de las 15 de antes");
   assert.ok(texto.length < 1900, "tiene que caber en un mensaje de Discord sin que notifyTecnico lo corte");
+
+  // EL PEOR CASO REAL: 206 correcciones con modelos y montos del largo que usa de
+  // verdad el catalogo. Un tope fijo de 40 se pasaba del limite, y notifyTecnico
+  // corta con slice: se perderia el "…y N más" y el pie, o sea que el mensaje
+  // mentiria por omision sin decirlo.
+  const ola = Array.from({ length: 206 }, (_, i) => ({
+    modelo: `SM-X520NLBACHO-${i}`,
+    precioAnterior: 1999990,
+    precio: 1799990,
+  }));
+  const textoOla = mensajeCorreccionesDePrecio(ola);
+  assert.ok(textoOla.length < 1900, "el presupuesto se respeta con los modelos mas largos");
+  assert.match(textoOla, /…y \d+ más\./, "y siempre dice cuantos quedaron fuera");
+  assert.match(textoOla, /Sale una sola vez por producto\.$/, "el pie tiene que sobrevivir: es lo que se perdia al cortar");
 });
 
-test("CUALES 15 se muestran no depende del orden en que se recorrieron las paginas", () => {
-  // El mensaje corta en 15. Antes, entre correcciones del mismo tipo mandaba el
+test("CUALES se muestran no depende del orden en que se recorrieron las paginas", () => {
+  // El mensaje corta en 40 (antes 15). Antes, entre correcciones del mismo tipo mandaba el
   // orden de llegada -- o sea el orden del recorrido --, asi que reordenar las
   // paginas cambiaba la seleccion sin que nadie lo hubiera decidido.
   const unas = Array.from({ length: 40 }, (_, i) => ({ modelo: `SKU-${String(i).padStart(2, "0")}`, precioAnterior: 100000, precio: 90000 }));

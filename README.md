@@ -219,6 +219,58 @@ Medido con el código real, 5 revisiones seguidas alternando solo si el bloque s
 
 ---
 
+## El vaivén, tercera y última parte: el precio se leía de toda la página (2026-09-13)
+
+Después del arreglo del 12 de septiembre quedaron **dos** productos bailando — no cuarenta, dos, y están contados uno por uno en el historial de git:
+
+| Producto | Rebotaba entre |
+|---|---|
+| Galaxy A36 256GB Violeta | $369.990 y $539.990 |
+| Monitor gamer Odyssey G3 32" | $199.990 y $279.990 |
+
+En los dos, la página de origen era **siempre la misma**. No eran dos páginas peleando: era **una sola página entregando dos precios distintos** según la revisión.
+
+**Qué pasaba, en una frase:** cuando el recuadro de compra no alcanza a mostrar el monto, el monitor caía a buscar el precio **en el texto de toda la página** — y toda la página está llena de precios que no son de ese producto.
+
+Cargué las dos fichas y ahí está, con todas sus letras:
+
+- **El monitor Odyssey G3** Samsung no lo vende online: su recuadro de compra dice solo *"Dónde comprar"*, sin precio. Los dos números que publica la página son el precio **con promoción** ($199.990, el que se cobra) y el **de lista** ($279.990, el que no se paga); el monitor venía guardando el de lista. Lo confirmé contra los datos que la propia página le pide al servidor de Samsung: ahí uno figura como `promotionPrice` y el otro como precio de lista.
+- **El Galaxy A36** se captura desde una página de esas que dejan elegir capacidad y color, y ahí hay algo que no habíamos visto: **durante el primer segundo la página publica el precio tachado en el lugar del precio de venta.** Lo medí mirando la página cada cuarto de segundo mientras carga:
+
+  | momento | lo que la página dice que vale | lo que dice que es su precio de lista |
+  |---|---|---|
+  | 0,9 s | $539.990 ← el tachado | *(todavía nada)* |
+  | 1,3 s | $369.990 ← el que se cobra | $539.990 |
+
+  El monitor leía dentro de esa ventana de 400 milisegundos cada vez que le tocaba, y guardaba $539.990. **Ese era el mecanismo del baile del A36**, el producto de 3 de los 5 avisos falsos. Ahora el sistema espera a que la página termine de cargar sus dos números antes de leer nada, y si no lo logra prefiere no guardar precio.
+
+**Es exactamente la misma trampa que el proyecto ya había resuelto con el stock.** El televisor F6000 decía "Avísame" dos veces en su carrusel de alternativas, y por eso la lectura de stock se acotó al recuadro de compra en vez de leer la página entera. El precio nunca se acotó. Ahora sí.
+
+**La regla nueva:** el precio sale del recuadro de compra de **ese** producto, o de una página que declara que no tiene precio de venta, o de ningún lado.
+
+- Si el recuadro publica el monto, manda ese, como hasta ahora.
+- Si el recuadro es un **selector** que muestra los precios de varias variantes, se toma el que corresponde a este producto, y si no se puede distinguir, no se toma ninguno.
+- Si el recuadro dice *"Dónde comprar"* / *"No está a la venta"*, la página está diciendo que no hay precio de venta que leer: ahí vale el precio que Samsung publica para ese código, **nunca el de lista**.
+- Si el recuadro no dice nada y hay dos números en disputa, **no hay precio**: se conserva el último bueno y queda contado en el resumen de la revisión.
+
+**Lo que vas a ver, y por qué no son avisos falsos.** Los dos productos tienen hoy guardado el número equivocado (el A36 está en $539.990, que es su precio **tachado**). La primera revisión con este arreglo los corrige a $369.990 y $199.990 — pero **no como avisos de "bajó"**, que serían falsos, sino por el **canal técnico**, con los dos números a la vista. Comprobado corriendo el sistema completo contra una copia del catálogo real: **0 avisos de precio y 2 correcciones técnicas**, y las revisiones siguientes no mandan nada.
+
+**Y sigue avisando lo que importa.** Con el mismo material, una baja de verdad del A36 se avisa **en la primera revisión**. Medido cabeza a cabeza, seis revisiones alternando si la página alcanza a cargar sus números a tiempo:
+
+| | antes | ahora |
+|---|---|---|
+| Avisos falsos del A36 | **4** (bajó/subió/bajó/subió) | **0** |
+| Precio con el que queda | $539.990 (el tachado) | $369.990 (el que se cobra) |
+| Una baja real, ¿se avisa? | **no** (se la tragaba entera) | **sí, en la primera revisión** |
+
+Ese "no" de la columna vieja es lo que apareció al medir bien: cuando el sistema leía dentro de la ventana mala, no solo inventaba un precio — **se comía la baja de verdad**, porque volvía a guardar el tachado encima.
+
+Y después lo comprobé contra las dos páginas de verdad, cargándolas con el sistema completo: el A36 pasa de $539.990 a **$369.990** y el monitor de $279.990 a **$199.990**, los dos con **cero avisos** al operador y la corrección por el canal técnico.
+
+**Una cosa que vas a ver una sola vez, y conviene que la sepas antes.** Cuando el número guardado es exactamente el precio tachado de hoy, el sistema no puede distinguir dos situaciones: "lo estábamos leyendo mal" y "este producto estrenó oferta hoy". Se ven idénticas. Por eso esa primera corrección va por el canal técnico y no como aviso de baja — y por eso conviene **desplegar esto antes del Cyber y dejar correr una revisión completa**: pasadas 24 horas esa amnistía se apaga sola y una baja de verdad vuelve a ser una baja. Si no se despliega antes, el riesgo es justo el contrario: que una oferta real de Cyber salga por el canal técnico.
+
+---
+
 ## Dos tipos de revisión: completa y liviana (2026-09-12)
 
 Pediste que el recorrido entero se hiciera **dos veces al día** y que el resto de las veces, lo más seguido posible, se revisaran **solo las 5 categorías principales**, porque son las que te importan y ese recorrido es mucho más corto.

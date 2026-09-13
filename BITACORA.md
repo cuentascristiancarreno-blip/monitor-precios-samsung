@@ -1709,3 +1709,702 @@ avisos las dos: sin ella, "0 avisos" no distingue "no hubo cambios" de "el canal
    cuarta tanda del 12-09, que todavia no corrio en produccion). No rompe nada y se corrige solo en la
    primera corrida con el codigo de hoy.
 5. Siguen los 7 pendientes de la entrada anterior.
+
+---
+
+# 2026-09-13 (tarde) — El ultimo tramo del vaiven: el precio se elegia mirando TODA la pagina
+
+Encargo del operador: cerrar el vaiven que quedo. Desde el arreglo del 2026-09-12
+salieron 5 avisos de precio y los 5 son vaiven. Se viene el Cyber y un aviso de
+baja tiene que ser una baja.
+
+## Lo medido ANTES de tocar nada (sin red, sobre el repo)
+
+**1. ¿Cuantos SKU estan en la situacion del A36?** Sobre `data/latest.json`
+(1.031 registros, 929 vivos) y `src/seed.json`:
+
+```
+SKU firmados hoy por una pagina /buy/                          160
+  ...cuyo slug NOMBRA al SKU (son su propia ficha)             133
+  ...cuyo slug NO lo nombra (la /buy/ es un SELECTOR)           27
+de esos 27, por rango:   rango 3 (PROPIA) 11 · rango 2: 2 · rango 1: 14
+de esos 27, con ficha plana propia en seed.json                  5
+de esos 27, que SOLO existen en la /buy/                        22
+```
+
+Los **11 de rango 3** son exactamente los que entran por el camino "una sola
+variante = es su ficha propia" (2026-09-11). De esos 11, **solo 2 tienen ficha
+plana** (SM-A366ELVGLTL y SM-G990EZAKLTL); los **9 restantes no la tienen** y son
+Z Flip3/6/7/7FE, Z Fold3/6, A56, Watch Ultra y S23 FE. Ninguna de las 18 paginas
+/buy/ involucradas esta en `seed.json`: las descubre el sitemap.
+
+**2. ¿Cuantos SKU tienen guardado su list_price y no su model_price?** El catalogo
+**no guarda** `model_price`/`list_price` (comparar.mjs borra `precioTachado` y
+`precioInterno` antes de escribir el registro), asi que la pregunta no se puede
+responder directo y se responde por su firma observable: el SKU rebota A->B->A en
+<= 24 h (un precio de verdad no vuelve al valor anterior en menos de un dia) y hoy
+esta parqueado en el valor alto del par.
+
+```
+SKU vivos con firma de carrera de render en todo el historial   43  (37 notificables)
+  ...que siguen bailando DESPUES del 2026-09-12 14:00Z            2
+SKU vivos parqueados HOY en el valor alto de su par               8
+SKU vivos que nunca se releyeron con el codigo nuevo (vP < 3)    71  (36 notificables)
+```
+
+Los 8 parqueados en el valor alto, los 8 notificables:
+SM-A366ELVGLTL, LS32DG300ELXZS, NP960UJH-XG2CL, NP740VJG-KA2CL, QN48S85HAEXZS,
+QN77S85HAEXZS, QN55LS01DAGXZS, F-SML330SMR39. **De los 8, solo los 2 primeros
+siguen bailando**; en los otros 6 el par tiene forma de movimiento real de precio
+(saltos que no se repiten) y su ultimo rebote es de agosto. La medicion mas amplia
+— "vuelve a un valor ya visto" en 54 dias, sin exigir que el rebote sea rapido —
+da 151 SKU y 40 parqueados en el alto, pero ahi entran las promociones que van y
+vienen: no sirve como firma.
+
+**3. ¿Cuantos siguen bailando despues del arreglo del 2026-09-12 14:00Z?**
+Reconstruido de los **22 snapshots de `data/latest.json`** en git (2026-09-10
+12:21Z a 2026-09-13 01:52Z) y cruzado con `data/history.jsonl`:
+
+```
+ventana de 22 snapshots:  24 SKU cambiaron de precio · 17 volvieron a un valor ya visto
+solo los 5 snapshots POSTERIORES al arreglo:  2 SKU cambiaron · 2 volvieron
+history.jsonl despues del corte:  5 eventos, 2 SKU
+```
+
+**Son 2, no 40**, y son los dos del encargo. El control del metodo reproduce las
+cifras de la entrada anterior sobre 30 dias (68 SKU / 365 avisos; declarado
+68 / 361-366).
+
+## Las dos fichas, cargadas en vivo el 2026-09-13
+
+UA `CazadorBot/1.0`, **5 s entre cargas** (habia una revision de produccion en
+curso, verificado con `gh run list`), **8 paginas en todo el encargo**, cero
+requests extra, jamas el webhook real.
+
+| ficha | model_price | list_price | bloque de compra | `precioDelBloqueCompra` |
+|---|---|---|---|---|
+| `galaxy-a36/buy/` | 369.990 | 539.990 | Buying Tool hubble, **pintado entero esta vez** | 369.990 (el 1º de 8 montos) |
+| ficha plana del A36 | 369.990 | 539.990 | `pd-buying-price`: "…o $369.990 **Precio original: $539.990**…" | 369.990 |
+| `odyssey-g3-…-ls32dg300elxzs/` | 199.990 | 279.990 | `pd-buying-price`: **"Dónde comprar"**, sin monto | null |
+| `galaxy-z-flip7/buy/` | 1.169.990 | 1.269.989 | Buying Tool: montos {1.169.990, 1.299.990} | 1.169.990 |
+| `galaxy-a56/buy/` | 529.990 | 529.990 | Buying Tool: montos {529.990, 569.990} | 529.990 |
+| `galaxy-watch-ultra/buy/` | 699.990 | 699.990 | Buying Tool sin " o $" | null |
+
+Dos hallazgos que deciden el arreglo:
+
+**(a) El 279.990 del monitor es su precio de LISTA.** Su `model_price` (199.990)
+**no esta escrito en ninguna parte** del body; su `list_price` (279.990) si, y su
+contexto literal es:
+
+    …torGamerCurvo$1.099.99027"OdysseyG4G40HFHD300HzMonitorGamer$279.990Previous…
+
+> ⚠️ **CORREGIDO EL MISMO DIA (tarde-noche) — aca decia una causa FALSA.** La
+> version original de este parrafo concluia de ese contexto que "el 279.990 es el
+> precio de OTRO PRODUCTO, el Odyssey G4 del carrusel", y sobre esa causa se
+> reescribieron dos aserciones de prueba. **Es falso, y lo desmiente la respuesta
+> que la PROPIA pagina le pide a `api.shop.samsung.com`** (capturada del trafico,
+> cero requests extra, 2026-09-13):
+>
+>     LS32DG300ELXZS   price = {"$279.990", priceType "BUY"}   promotionPrice = "$199.990"
+>     SM-A366ELVGLTL   price = {"$539.990", priceType "BUY"}   promotionPrice = "$369.990"
+>
+> O sea: **`model_price` es el precio CON la promocion aplicada (lo que se cobra) y
+> `list_price` es el de lista.** El 279.990 SI es un numero propio del G3 — su
+> precio de lista — y que ademas aparezca pegado a la tarjeta del G4 es una
+> coincidencia. La conducta elegida (adoptar el `model_price`) se sostiene igual,
+> pero por esta razon y no por la otra. Dejar escrita una causa falsa es caro aca:
+> el proximo que lea "el body esta contaminado por el carrusel" va a construir un
+> filtro de carrusel que no arregla nada. Las aserciones numericas no cambian.
+
+Lo que si es cierto, y es lo que justifica acotar la lectura, es que el precio
+salia de `document.body.innerText` entero — un texto que incluye el carrusel de
+alternativas y, en las /buy/, los montos de todas las variantes del selector.
+
+**(b) El Buying Tool de una /buy/ hubble publica el monto de CADA variante.** El
+del A36, pintado, deja 8 montos en el bloque:
+`["369.990","429.990","369.990","7.915","94.991","49.990","45.990","40.990"]`.
+`precioDelBloqueCompra` tomaba **el primero**, que es el de la opcion que el
+selector trae elegida por omision — no el de este SKU. Hoy acierta por suerte. Y
+el encargo midio esa misma pagina **cortada** en "Galaxy A36 Desde", sin ningun
+monto: ahi la decision caia al body y empezaba la carrera.
+
+## La causa, en una frase
+
+**Cuando el bloque de compra no entrega un monto, la eleccion entre model_price y
+list_price la hacia `precioVisiblePreferido` mirando el texto de la PAGINA ENTERA
+— y la pagina entera trae los precios del carrusel de alternativas y, en las
+/buy/, los de todas las variantes del selector.** Cual alcanza a aparecer cambia
+de una carga a otra, y con el cambia el precio guardado.
+
+## El arreglo (3 piezas, todas en `src/extract.mjs`)
+
+**1. `precioAdoptable`: con el bloque mudo y DOS candidatos, el body deja de
+arbitrar.** Quedan dos salidas y ninguna es el list_price:
+
+- la pagina **declara** que no la vende online (`estadoDesdeBloqueCompra` ==
+  NO_A_LA_VENTA, vocabulario cerrado de `src/stock.mjs`) -> `model_price`. Es una
+  propiedad ESTABLE de la ficha: no va a pintar un precio de venta mas tarde, asi
+  que no queda carrera que perder. Cierra el monitor -> 199.990.
+- cualquier otro caso -> **no hay precio**. Cierra la /buy/ cortada del A36. Las
+  defensas medidas el 2026-09-12 (E9/E9b/E9c: un bloque legible sin monto que no
+  declara nada es indistinguible de uno que no lo va a escribir nunca) quedan
+  intactas, porque esos bloques no producen NO_A_LA_VENTA.
+
+**Esto afloja el `!dosCandidatos` de la concesion del 2026-09-13 (manana), y esa
+es una decision con su argumento:** aquella concesion heredaba el resultado de
+`precioVisiblePreferido`, que SI depende del render, y por eso exigir un solo
+candidato era lo unico seguro. La de hoy no hereda nada: elige un numero FIJO y
+jamas el de lista. El control de aquella entrada (el pack F-UN85MHWB450, model
+1.099.990 contra list 1.659.980 = la suma de las partes) se destraba en
+**1.099.990, que es exactamente el numero que ya tenia guardado**: cero pesos de
+diferencia, cero avisos, y a partir de ahora puede enterarse si Samsung se lo
+cambia. Era el pendiente nº 1 de esa entrada.
+
+**2. `precioDelBloqueCompra(texto, candidatos)`: un bloque con VARIOS montos es un
+selector.** Un monto -> manda, como desde el 2026-09-12 (y vale aunque no coincida
+con digitalData: SM-X400NZRDCHO cobra 494.990 mientras digitalData publica 379.990
+y 549.989). Varios montos -> solo decide si **exactamente uno** es un candidato de
+digitalData. Medido: A36 /buy/ {369.990, 429.990, …} contra {369.990, 539.990} = 1
+-> 369.990 (el correcto, y ya no "el primero"); Z Flip7 {1.169.990, 1.299.990}
+contra {1.169.990, 1.269.989} = 1 -> igual que hoy; A56 {529.990, 569.990} contra
+{529.990} = 1 -> igual que hoy. **Ninguna de las tres pierde su precio.**
+
+**3. `VERSION_PRECIO` 3 -> 4.** Los dos SKU tienen guardado el numero equivocado y
+`versionPrecio: 3`, o sea la amnistia anterior ya esta gastada. Sin esta, la
+primera corrida manda "bajo 31%" y "bajo 29%" a dias del Cyber por productos que
+nunca bajaron. `corrigeFuenteDePrecio` los adopta sin aviso de precio y los saca
+por el **canal tecnico**, con los dos numeros.
+
+## Lo que se descarto, con la medicion
+
+**La direccion (b) del encargo — que una /buy/ con bloque selector deje de valer
+como ficha propia (rango) — NO se aplico.** Tres razones medidas:
+
+1. **No arregla el monitor**, que es la mitad del problema: su pagina no es una
+   /buy/, es su propia ficha plana. (b) a secas deja vivo uno de los dos sintomas.
+2. **Le cobra a 9 SKU vivos que no tienen otra pagina.** Bajarlos a rango FAMILIA
+   los deja permanentemente como "fuente de menos rango" frente a su propio
+   registro guardado (rango 3): `rangoMenor` en `comparar.mjs` impide avisar, y
+   cada cambio de precio esperaria `UMBRAL_PRECIO_OTRA_FUENTE` = 3 corridas **mas**
+   6 h antes de salir, marcado "leido desde otra pagina". Son Z Flip7, Z Fold6,
+   Watch Ultra, S23 FE y compania: atrasar 6 h una baja de esos productos en Cyber
+   es justo lo contrario de lo que el operador pidio.
+3. **No hace falta para el A36.** Medido en vivo: su ficha plana publica 369.990 en
+   su propia barra de precio. Con la pieza 1, la /buy/ muda ya no entrega precio, y
+   `conservaPrecio` (`src/catalogo.mjs`, ya existente y ya probado) deja pasar el
+   unico precio que se pudo leer entre dos paginas del MISMO rango. Hay una prueba
+   nueva que lo fija.
+
+**La direccion (a) a secas tambien se descarto**, por lo que advertia el encargo:
+dejaria al A36 congelado en 539.990 (su tachado) y al monitor en 279.990 (el precio
+del vecino). El arreglo es (a) **mas** la salida deterministica para la pagina que
+declara que no vende online, que es lo que desatasca los dos en el numero correcto.
+
+**"Preferir siempre el model_price cuando el bloque esta mudo"** — la version
+general y mas simple — esta refutada por la medicion del 2026-09-12: un bloque
+legible que todavia no pinto su monto es indistinguible de uno que no lo va a
+pintar nunca, y adoptar ahi daba 3 a 5 avisos falsos (E9, E9b, E9c). Por eso la
+llave es lo que la pagina DECLARA, no el estado del bloque.
+
+## Verificacion
+
+- **`npm test`: 466 -> 482 verdes, 0 fallas.** Linea base 466, nunca baja. Archivo
+  nuevo `test/vaiven-bloque-de-compra.test.mjs` (16 pruebas).
+- **Siete aserciones viejas cambiaron, y las siete fijaban el comportamiento
+  equivocado o una pagina que no existe.** Queda escrito en cada archivo:
+  - `test/precio-sin-carrera.test.mjs` y `test/vaiven-precio.test.mjs` exigian que
+    el monitor guardara **279.990**, con el argumento "lo unico escrito en la
+    pagina es el precio de la pagina". La carga en vivo lo refuta: el model_price
+    (199.990) no esta escrito en ninguna parte. (El comentario que acompañaba el
+    cambio decia ademas que el 279.990 era "de otro producto"; **eso es falso y
+    quedo corregido el mismo dia** — ver el recuadro de mas arriba. La asercion
+    numerica no cambio.)
+  - `test/precio-congelado.test.mjs`: el control del pack pasa de "sigue congelado"
+    a "se destraba en su model_price", con el argumento de mas arriba.
+  - `test/atribucion.test.mjs`: dos dobles daban un bloque de compra que ninguna
+    ficha real publica ("*Aplican condiciones Comprar" a secas) mientras su body
+    escribia "o $ 579.990 Precio original: $ 829.990" — y el body ES el bloque mas
+    el resto de la pagina. **Es la misma reparacion de fixture que ya se hizo el
+    2026-09-12**; quedaban dos sin corregir. Lo que las pruebas afirman no cambio.
+  - Los dobles de pagina ahora dejan que cada ficha declare sus **CTA**: el bloque
+    del monitor dice "Dónde comprar", no "Comprar", y de ese veredicto depende
+    todo. Con "Comprar" para todas, la diferencia era inexpresable.
+- **MUTANTES: 24 corridos sobre una copia fuera del arbol, uno por vez, suite
+  entera, restaurando y verificando por md5 despues de cada uno. MUEREN LOS 24.**
+  - 13 nuevos: sin la regla nueva (10 fallas), adoptar el list_price en vez del
+    model_price (9), congelar siempre con dos candidatos (8), gatear en
+    `bloqueLegible` en vez de en lo que declara la pagina (5), `!==` por `<` (1) y
+    por `>` (12), el bloque selector volviendo a "gana el primer monto" (2),
+    rechazar todo bloque con varios montos (3), no exigir unicidad del senalado
+    (1), exigir candidato tambien con un solo monto (13), el call site sin pasar
+    los candidatos (2), `VERSION_PRECIO` de vuelta en 3 (2), sin deduplicar los
+    montos del bloque (2).
+  - 11 del banco anterior, para comprobar que no se debilito nada viejo:
+    `conservaPrecio` sin la comprobacion de rango, `conservaEstado`, la guarda del
+    bloque ILEGIBLE, la guarda de "Precio original", `precio: null` en vez de
+    omitir el campo, el tachado condicionado al bloque legible, `versionPrecio`
+    sellandose sin lectura util, la espera de pintado, el timeout en la posicion de
+    `arg`, `corrigeFuenteDePrecio` sin `precioInterno`, `mismaFuente` ignorando la
+    pagina.
+  - **DOS SOBREVIVIERON EN LA PRIMERA PASADA, y los dos eran VIEJOS**: la guarda
+    del bloque ILEGIBLE y la guarda de "Precio original" del final. La regla nueva
+    los habia dejado sin cobertura propia — la primera queda redundante mientras
+    `paginaNoLoVendeOnline` no pueda ser cierto con el bloque ilegible, que es un
+    acoplamiento entre dos modulos y no una garantia; la segunda solo es alcanzable
+    con UN candidato y `precioFinal` finito, que ninguna prueba producia. Se
+    agregaron las dos pruebas que faltaban y mueren.
+- **Replay de `comparar()` sobre una COPIA del catalogo REAL (1.031 registros):**
+  - el sitio sin cambios pero con la version subiendo 3 -> 4: **0 eventos, 0
+    correcciones**, 929 registros sellados. El salto de version por si solo no
+    emite nada.
+  - los dos SKU con sus numeros reales: **0 avisos** y 2 correcciones tecnicas
+    (539.990 -> 369.990 y 279.990 -> 199.990).
+  - cota alta (los 929 cambiando de precio a la vez con el guardado como tachado):
+    **0 avisos al operador**, 929 correcciones tecnicas.
+  - control: una baja real del 23% en un SKU cuyo guardado NO es el tachado sale
+    igual, en la primera corrida.
+- **PIPELINE REAL (`src/run.mjs` entero) contra una COPIA del catalogo real, sin
+  red**, con `procesarEntrada`, `discover` y `playwright` sustituidos por dobles
+  que sirven los textos MEDIDOS y llaman al `extractSingleProduct` REAL (el stub de
+  playwright revienta si alguien intenta abrir una pagina). `CARPETA_DATOS` en
+  carpeta temporal, `env -u DISCORD_WEBHOOK_URL`, `VIVO=0`:
+
+  | corrida (mismo material) | bajas | subes | correcciones | A36 | monitor |
+  |---|---|---|---|---|---|
+  | C1 selector pintado | 0 | 0 | **2** | 369.990 | 199.990 |
+  | C2 selector CORTADO | 0 | 0 | 0 | 369.990 | 199.990 |
+  | C3 selector pintado | 0 | 0 | 0 | 369.990 | 199.990 |
+  | C4 selector CORTADO | 0 | 0 | 0 | 369.990 | 199.990 |
+  | C5 CORTADO + baja real a 329.990 | **1** | 0 | 0 | 329.990 | 199.990 |
+  | C6 pintado + baja real a 299.990 | **1** | 0 | 0 | 299.990 | 199.990 |
+
+  Catalogo inicial: A36 en 539.990 (su tachado) y monitor en 279.990 (el del
+  vecino). `history.jsonl` no se llego a crear hasta C5.
+
+- **EL CONTROL CONTRA HEAD, mismo material, mismos dobles:**
+
+  | | HEAD | con el arreglo |
+  |---|---|---|
+  | 4 corridas alternando el render | **4 avisos falsos** (baja/sube/baja/sube 539.990 <-> 369.990) | **0** |
+  | A36 al final | 539.990 (el TACHADO) | 369.990 |
+  | monitor al final | 279.990 (el del vecino) | 199.990 |
+
+  Los 4 eventos de HEAD son la forma exacta de los 5 avisos reales del encargo.
+- **Politica de scraping:** UA `CazadorBot/1.0`, **8 paginas en todo el encargo**
+  (4 + 2 + 1 de reconocimiento y 1 de la corrida real con `LIMITE_PAGINAS=1
+  SIN_DESCUBRIMIENTO=1`), **5 s entre cargas** porque habia una revision de
+  produccion en curso, `DELAY_MS` 2500 sin tocar, cero requests extra. **Jamas se
+  toco el webhook real** (`env -u DISCORD_WEBHOOK_URL` en cada corrida).
+- **`data/` del repo intacta**: los md5 de los 5 archivos son identicos a los del
+  principio. **No se commiteo nada.**
+
+## Pendientes
+
+1. **Mirar `precioCongelado` y `correccionesDePrecio` en la primera corrida real.**
+   Hoy `precioCongelado` va en 94. La pieza 1 destraba ademas a los congelados con
+   dos candidatos que declaran "no lo vendo online" — cuantos son no esta
+   proyectado a proposito: depende de lo que cada pagina publique en esa lectura, y
+   la proyeccion de escritorio ya salio circular una vez (entrada del 2026-09-13,
+   manana). `correccionesDePrecio` tiene que **caer a 0 en pocas corridas**; si se
+   queda alto, la migracion esta tapando cambios de verdad.
+2. **Abrir la ficha de los primeros SKU corregidos y confirmar el numero contra la
+   pagina** antes de darlos por buenos. Son numeros que llevaban dias sin
+   verificarse.
+3. **El bloque de compra de una /buy/ hubble tambien contamina el STOCK, medido hoy
+   y NO arreglado aca.** `galaxy-a36/buy/` devuelve `estadoDesdeBloqueCompra` =
+   **"agotado"** porque el selector de colores escribe "Gris increíble **Agotado**
+   Grafito increíble **Agotado**" para OTRAS variantes, mientras la ficha plana del
+   mismo SKU dice "Comprar" (disponible). Es la misma contaminacion que este
+   encargo cerro para el precio, del otro lado. No se toco porque no es lo que se
+   pidio y porque `conservaEstado` solo protege cuando la otra lectura es
+   "desconocido", asi que arreglarlo toca la maquinaria de stock a dias del Cyber.
+   **Merece su propio ticket, con esta medicion.**
+4. **El agujero de la primera linea de `precioVisiblePreferido` sigue abierto**
+   (pendiente heredado): con `list_price` invalido se adopta el `model_price` aunque
+   no este escrito. Ahora es mas chico — si la pagina declara que no vende online o
+   si el bloque publica el monto, la decision ya no pasa por ahi — pero no esta
+   cerrado.
+5. Siguen los pendientes de las entradas anteriores (rotar `history.jsonl` antes de
+   los 50 MB, cachear Playwright, medir `duracionPrincipalesMin`, contar las
+   livianas descartadas, el hueco de cobertura de `run.mjs`, las 126 /buy/
+   duplicadas, y la decision de producto sobre una tercera revision completa).
+
+---
+
+# 2026-09-13 (tarde-noche) — El vaiven del A36 seguia vivo: la carrera era la HIDRATACION de digitalData
+
+Tres verificaciones independientes midieron el arreglo de la tarde. **Dos lo
+tumbaron y la tercera lo dejo pasar pero encontro un defecto grave aparte.** Los
+tres tenian razon en lo que importa: el vaiven del A36 **no estaba cerrado**, y el
+arreglo habia introducido **dos regresiones** propias. Esta entrada cierra los
+diez defectos confirmados, cada uno con su prueba y su mutante.
+
+## EL HALLAZGO QUE LO ORDENA TODO (medido en vivo, 2 cargas)
+
+Se cargo `galaxy-a36/buy/` entrando **igual que produccion**
+(`waitUntil: "domcontentloaded"`, UA CazadorBot) y se muestreo digitalData **y** el
+bloque de compra JUNTOS cada 250 ms. La ventana mala existe y dura ~375 ms:
+
+```
+  935 ms   model_price "539990"   list_price ""
+           bloque: "…Galaxy A36 Desde $ 44.999 al mes o $ 539.990 … 128GB｜6GB 256GB｜8GB $ 44.999 al mes o $ 539.990"
+           body:   solo $44.999 y $539.990
+1.310 ms   model_price "369990"   list_price "539990"
+           bloque: "…Desde $ 30.832 al mes o $ 369.990 … 128GB｜6GB $ 35.832 al mes o $ 429.990 … 256GB｜8GB … o $ 369.990"
+```
+
+**Durante esos 375 ms la pagina publica el precio TACHADO en el campo del precio de
+venta, no publica list_price, y el Buying Tool ya esta pintado mostrando ese mismo
+numero.** La espera que habia (`model_price > 0`) se cumple ahi, asi que la lectura
+de produccion entraba en ese estado y guardaba 539.990. **Ese es el mecanismo del
+vaiven del A36**, el SKU de 3 de los 5 avisos falsos del encargo, y **ninguna regla
+que mire el bloque lo puede detectar**, porque el bloque dice exactamente lo mismo
+que digitalData.
+
+De paso desmiente la fixture con la que se midio el arreglo de la tarde: ahi el
+estado malo se modelaba como el tool CORTADO, sin ningun monto. La pagina real, en
+ese instante, SI publica un monto — el equivocado. **La cifra titular de aquel
+informe ("4 avisos falsos -> 0") estaba medida contra un estado inferido.**
+
+## Los defectos confirmados, y su arreglo
+
+### 1. (grave) La carrera de hidratacion — el vaiven nunca se cerro
+
+Reproducido cabeza a cabeza, mismo material y mismo doble, con el doble modelando
+el RELOJ de la pagina (cada espera del codigo adelanta un tic; la pagina se hidrata
+al tic 2 o al 3 segun la corrida, y la espera que pide por `list_price` bloquea
+hasta la hidratacion). Es justo con las dos versiones: HEAD tambien se hidrata si
+la pagina gana la carrera sola.
+
+| 6 corridas, el catalogo arrancando en 539.990 (el tachado real de hoy) | HEAD | con el arreglo |
+|---|---|---|
+| avisos FALSOS en C1-C4 | **4** (baja/sube/baja/sube 539.990 ↔ 369.990) | **0** |
+| una baja REAL en C5 (la pagina asienta tarde) | **se la traga entera** | **se avisa** |
+| una baja REAL en C6 (asienta rapido) | se avisa | se avisa |
+| precio leido en las 4 primeras | alterna | 369.990 en las 4 |
+
+Los 4 eventos de HEAD son la forma exacta de los 5 avisos reales del encargo. Y el
+descubrimiento que el encargo no tenia: **HEAD no solo inventa, ademas se come las
+bajas de verdad**, porque vuelve a escribir el tachado encima.
+
+**Arreglo (`esperarDigitalDataAsentado`, src/extract.mjs):** despues de la espera
+de `model_price` se espera a que digitalData traiga **los dos** campos. La senal es
+`list_price`: los dos se llenan con la misma respuesta de api.shop.samsung.com, asi
+que esperar al segundo garantiza que el primero ya no es el provisorio.
+
+- Presupuesto propio, `HIDRATACION_TIMEOUT_MS = 3000`: **~8 veces la ventana medida**.
+- **Solo se paga si la primera espera se cumplio.** Hay ~150 paginas que
+  legitimamente nunca publican precio (filtros, kits, accesorios) y cobrarles
+  ademas este presupuesto serian ~7 min por revision completa sobre paginas que no
+  tienen nada que hidratar. Es la leccion del 2026-08-02: una espera nueva se mide
+  contra el PEOR caso del catalogo. Medido en vivo: en la ficha del A36, ya
+  asentada al llegar, `extractSingleProduct` tarda **311 ms**.
+- Si el presupuesto se agota, la lectura queda marcada `digitalDataSinAsentar` y
+  **no adopta ningun numero de digitalData**. Lo que sigue mandando es la barra de
+  precio de la ficha cuando publica su monto: ese camino nunca dependio de
+  digitalData.
+
+### 2. (grave) REGRESION propia: el filtro por candidatos caia del lado malo
+
+Con digitalData rancio y el bloque YA publicando el precio bueno, el filtro por
+candidatos del arreglo de la tarde no encontraba coincidencia (ninguno de los 5
+montos es 539.990), devolvia `null`, y el precio caia a `precioFinal` — o sea al
+`model_price` rancio. **HEAD guardaba 369.990 y el arreglo guardaba 539.990: el
+conjunto de estados que producen el numero equivocado era ESTRICTAMENTE MAYOR con
+el arreglo que sin el.**
+
+**Arreglo, dos piezas:**
+- **el cuarto estado de `precioAdoptable`**: "el bloque publico montos pero ninguno
+  es de este SKU" deja de confundirse con "el bloque no publica monto". Un bloque
+  que escribe precios y no señala a este producto es un selector hablando de otras
+  variantes: la respuesta honesta es que no se sabe, y ya no se cae al texto de
+  toda la pagina.
+- **con digitalData sin asentar no se le pasan candidatos al bloque**: desambiguar
+  un selector contra numeros rancios es peor que no desambiguarlo. Medido: a los
+  935 ms el tool publica un unico monto — el tachado — y ese monto SI coincide con
+  el model_price provisorio, asi que el filtro lo bendecia.
+
+### 3. (grave) REGRESION propia: "no hay precio" caia en la API, y la API publica el de LISTA
+
+`precioElegido = varios && Number.isFinite(precioApi) && !montoVisible(precioVisto, bodyText) ? precioApi : precioVisto`
+
+`montoVisible(null, body)` es `false`, asi que **el silencio deliberado de
+`precioAdoptable` caia directo en `precioApi`**. Y la API publica el precio de
+LISTA, medido hoy en las respuestas que las propias paginas piden:
+
+```
+SM-A366ELVGLTL   price $539.990 (BUY)   promotionPrice $369.990
+LS32DG300ELXZS   price $279.990 (BUY)   promotionPrice $199.990
+```
+
+O sea que callarse se convertia en guardar el TACHADO: lo peor de los dos mundos.
+Reproducido sobre una ficha fusionada REAL — el S25 FE, cuyo `model_code` trae tres
+codigos, verificado en vivo hoy: `SM-S936BDBJLTL,SM-S931BDBJLTL,SM-S731BDBPLTL`:
+
+| 5 lecturas alternando si el bloque publica su monto | HEAD | con el arreglo de la tarde | ahora |
+|---|---|---|---|
+| precios entregados | 579.990 x5 | **579.990 / 829.990 alternando** | 579.990 / (sin precio) |
+| avisos falsos | 0 | **4** (+43% y -30%, dos veces) | **0** |
+
+**Arreglo:** la rama de la API exige ademas `Number.isFinite(precioVisto)`. Su regla
+original — "el precio leido no es de este SKU" — necesita que HAYA un precio leido;
+"no hubo precio que leer" es otra cosa y no puede compartir el mismo `null`.
+
+### 4. (alta) La fixture que se "reparo" era el hallazgo
+
+En `test/atribucion.test.mjs` se le habia agregado el monto al bloque de dos dobles
+(el S25 FE y el pack F-SMR640SML70) con el argumento de que "el body ES el bloque
+mas el resto de la pagina, asi que un bloque mudo con el body escrito es un estado
+que no existe". **Ese argumento es justo la premisa que este encargo existe para
+negar**, y hoy esta medido en vivo que es falso: en la /buy/ del S25 FE, a los
+1.640 ms, el body ya trae montos escritos ($556.500, $69.165, $829.990) mientras el
+bloque todavia no publica ninguno.
+
+**Arreglo:** las dos fixtures **vuelven a su forma de HEAD** y las aserciones dicen
+la verdad de la conducta nueva, en los DOS estados de la pagina:
+- bloque pintado -> 579.990 / 974.980, y la API de lista no los puede pisar;
+- bloque mudo -> **no hay precio**, y explicitamente `notEqual(829990)`, que es lo
+  que protege la guarda del defecto 3;
+- y la prueba que faltaba: la MISMA ficha leida 5 veces alternando los dos estados
+  tiene que dar **un solo precio o ninguno, nunca dos**, y 0 avisos.
+
+**Regla que queda escrita:** una fixture solo se repara con una medicion en vivo de
+ESA pagina en ESE estado, nunca con un argumento sobre como deberia ser.
+
+### 5. (media) La llave "no lo vendo online" se leia de un texto ajeno al SKU
+
+`estadoDesdeBloqueCompra` corre sobre el bloque ENTERO y le basta con que la frase
+"no está a la venta" aparezca en cualquier parte. En una /buy/ hubble ese bloque es
+el selector de grupo: habla de TODAS las variantes. Medido hoy en `galaxy-a36/buy/`,
+el selector escribe "Gris increíble **Agotado** Grafito increíble **Agotado**" de
+otros colores. **Darle a ese texto la llave del PRECIO era entregarsela justo al
+texto que este arreglo acaba de declarar ajeno.**
+
+**Arreglo:** `leerBloqueCompra` devuelve ahora **de que elemento** salio el texto
+(`selector` / `barraDePrecio`), y la llave exige que sea la **barra de precio de
+esta ficha** (`pd-buying-price` / `buying-tool__summary`), no el Buying Tool.
+De los dos selectores que podrian ser esa barra, **solo cuenta `pd-buying-price`**:
+el otro, `buying-tool__summary`, lleva "buying-tool" en el nombre — es el resumen
+del MISMO selector de grupo — y ninguna medicion lo respalda como barra de un solo
+producto. Ante la duda, el lado seguro es exigir que el monto señale a un candidato.
+
+**Costo medido: de los 94 congelados, 9 vienen de una /buy/** y por lo tanto no se
+destraban. Es el lado seguro (estaban congelados de antes) y queda como pendiente
+medirlo en produccion. Los otros 85 salen de fichas planas y no se ven afectados.
+
+### 6. (media) Un monto solitario mandaba aunque el bloque fuera un selector
+
+La regla de la tarde era "UN monto manda, VARIOS son un selector", y esa cuenta se
+rompe justo cuando importa: un Buying Tool **a medio pintar publica UN SOLO monto**
+(medido: el tachado, a los 935 ms), y un render parcial que deje escrita solo la
+fila de accesorios hacia adoptar **$49.990 para un celular de $369.990** — una
+"baja" del 86% a dias del Cyber.
+
+**Arreglo:** la regla mira el ORIGEN del texto, no la cantidad de montos.
+- **barra de precio de la ficha**: un monto solitario manda, aunque no coincida con
+  digitalData. Es el caso que la regla del 2026-09-12 vino a cubrir
+  (SM-X400NZRDCHO: el bloque cobra $494.990 y digitalData publica 379.990/549.989).
+- **selector de grupo**: todo monto, sea uno o sean ocho, tiene que señalar a un
+  unico candidato de digitalData.
+
+### 7. (media) El mutante que sobrevivia, y era de la regla nueva
+
+Borrar `if (esPrecioOriginalEscrito(modelPrice, bodyText)) return null;` de dentro
+del bloque de dos candidatos dejaba la suite en 482 verdes: ninguna prueba cubria
+esa guarda, y **el informe anterior afirmaba "24 mutantes, mueren los 24"**. Se
+agrego la prueba que faltaba (con su control sin la etiqueta) y el mutante muere.
+
+### 8. (grave) La amnistia de la migracion se traga una baja REAL, y puede quedar armada dias
+
+`corrigeFuenteDePrecio` calla el aviso de producto cuando el precio guardado es
+exactamente el tachado de hoy. Eso distingue bien "el guardado estaba mal" de casi
+todo… menos de **una oferta que estrena**, que tiene esa misma forma: al empezar la
+promo, el precio de ayer pasa a ser el "Precio original" de hoy. Verificado sobre el
+historial real: `EF-ES942COEGWW` 49.990 -> 34.993 con list_price 49.990 hoy;
+`EF-DX825UWEGWW` 229.990 -> 160.993 con list_price 229.990.
+
+Eso es aceptable **una vez**, en la corrida de migracion — es el precio que el
+proyecto decidio pagar el 2026-09-12 para no mandar 420 avisos falsos. Lo que no es
+aceptable es que la ventana quede armada **durante dias**: se cerraba por SKU en la
+primera lectura CON precio, y el Buying Tool de una /buy/ no se pinta en cerca de la
+mitad de las lecturas, asi que los **22 SKU que solo viven en una /buy/** podian
+llegar al Cyber con la amnistia puesta.
+
+**Arreglo:** `HORAS_MAX_MIGRACION_PRECIO = 24`, anclado en `migracionPrecioDesde`.
+- El ancla se escribe en la primera observacion con version nueva **que no trae
+  precio** — el caso peligroso, porque ahi la version no se sella y la ventana no se
+  cierra sola. Cuando la lectura SI trae precio no hace falta ancla: la version se
+  sella en esa misma corrida. **Medido sobre una copia del catalogo real: 0 de 929
+  registros se llevan el campo en una corrida normal de migracion.**
+- No se reinicia en cada corrida (si no, la ventana no se cerraria nunca) y se borra
+  en cuanto deja de haber migracion pendiente.
+- 24 h le da a cualquier SKU — incluidos los 733 de fuera del bloque liviano — al
+  menos dos revisiones completas para cerrarla por las buenas.
+
+**Y una condicion de despliegue, no un pendiente:** hay que desplegar esto y dejar
+correr **una revision completa antes del Cyber**, para quemar la ventana a proposito.
+Si no, el riesgo se invierte: una oferta real de Cyber saliendo por el canal tecnico.
+
+### 9. (media) El aviso tecnico cortaba en 15 lineas
+
+Es la unica forma que tiene el operador de enterarse de que una oferta real se fue
+por el canal tecnico. La mayor ola simultanea que registra `data/history.jsonl` —
+**206 bajas en UNA corrida, el 2026-09-09T16:56** — se veia como "…y 191 más".
+
+Subirlo a un numero fijo mas grande no alcanzaba, **y lo cazo la prueba**: con los
+modelos reales cada linea mide ~50 caracteres y 40 lineas se pasan del limite de
+1900 que aplica `notifyTecnico`, **que ademas corta con `slice`** — o sea que se
+perderian el "…y N más" y el pie, y el mensaje mentiria por omision sin decirlo.
+Asi que el tope es el **presupuesto**: se llenan tantas lineas como quepan. Medido:
+29 lineas con los modelos mas largos (1.879 caracteres), 43 con los cortos.
+
+### 10. (media) La causa escrita en la bitacora era falsa
+
+Ver el recuadro de la entrada anterior. `model_price` es el precio CON promocion y
+`list_price` el de lista, medido contra la API que la propia pagina pide, en dos
+fichas. El 279.990 SI es un numero del monitor. Corregido en BITACORA.md, en
+`src/extract.mjs` y en los tres archivos de prueba que lo repetian. **Las
+aserciones numericas no cambian.**
+
+### 11. (media) Adopcion a ciegas, ahora contada
+
+Cuando la pagina declara que no la vende online no hay NINGUN monto dibujado contra
+el cual contrastar el numero: se adopta el `model_price` porque es el unico
+deterministico que queda, no porque se haya visto. Nada lo delataria si algun dia
+viene raro. Ahora el resumen de cada corrida trae **`precioDeclarado`** (cuantas
+adopciones a ciegas) y **`digitalDataSinAsentar`** (cuantas paginas no terminaron de
+hidratarse dentro del presupuesto). Los dos son diagnostico de la LECTURA y
+`comparar()` los borra antes de guardar el registro.
+
+## Las cuentas que faltaban
+
+```
+paginas que firman MAS DE UN SKU vivo (fichas fusionadas contables)     6  (14 SKU, rango AGRUPADA)
+SKU vivos firmados por una pagina /buy/                                160
+  ...cuyo slug NO los nombra (la /buy/ es un SELECTOR)                  27   (rango 3: 11 · 2: 2 · 1: 14)
+  ...sin ficha plana en seed.json (sin pagina de respaldo)              22
+SKU vivos congelados (corridasSinPrecio > 0)                            94   (los 94 "no-a-la-venta")
+  ...cuya pagina es una /buy/ -> la llave nueva NO los destraba          9
+SKU vivos que entran a la migracion (versionPrecio < 4)                929
+```
+
+**Lo que NO se puede contar offline, dicho con todas sus letras:** el catalogo no
+guarda el `model_code` crudo, asi que las fichas fusionadas con un solo propio (la
+forma del S25 FE) no se pueden censar desde `data/latest.json`. Que existen esta
+verificado en vivo hoy; **cuantas son sigue sin medirse** y queda como pendiente.
+
+## Verificacion
+
+- **`npm test`: 482 -> 506 verdes, 0 fallas.** Linea base 466, nunca baja. Archivo
+  nuevo `test/vaiven-hidratacion.test.mjs` (22 pruebas) y 2 pruebas nuevas en
+  `test/atribucion.test.mjs`.
+- **MUTANTES: 31 corridos, uno por vez, sobre una copia fuera del arbol, suite
+  entera, restaurando y verificando por md5 (y respetando CRLF) despues de cada
+  uno. MUEREN LOS 31.**
+  - 21 nuevos: sin la espera de hidratacion, la espera agotada dandose por asentada,
+    la espera agotada sin recordarse, sin la guarda de `digitalDataAsentado`, el
+    selector desambiguado con candidatos rancios, sin el cuarto estado, un monto
+    solitario mandando siempre, todo bloque contando como barra, ningun bloque
+    contando como barra, el resumen del Buying Tool contando como barra, la llave
+    desde cualquier bloque, sin la guarda de "Precio
+    original", la API pisando el silencio, sin marcar la adopcion a ciegas, el
+    diagnostico sobreviviendo al catalogo, la amnistia sin reloj, el ancla sin
+    escribirse, el ancla reiniciandose, el ancla sin borrarse, el tope fijo de 15,
+    el tope fijo sin presupuesto.
+  - 10 del banco anterior, para comprobar que no se debilito nada viejo:
+    `conservaPrecio` sin rango, la guarda del bloque ILEGIBLE, la guarda de "Precio
+    original" del final, `precio: null` en vez de omitir el campo, `versionPrecio`
+    sellandose sin lectura util, la espera de pintado, el timeout en la posicion de
+    `arg`, `corrigeFuenteDePrecio` sin `precioInterno`, `mismaFuente` ignorando la
+    pagina, el tachado condicionado al bloque legible.
+  - **En la primera pasada sobrevivieron 2, los dos nuevos**: la guarda de
+    `digitalDataAsentado` (el cuarto estado la tapaba en el caso del selector, pero
+    no en el del bloque sin ningun monto) y el ancla reiniciandose en cada corrida.
+    Se agregaron las dos pruebas que faltaban y mueren.
+- **Replay de `comparar()` sobre una COPIA del catalogo REAL (1.031 registros):**
+
+  | escenario | avisos | correcciones |
+  |---|---|---|
+  | el sitio sin cambios, version 3 -> 4 | **0** | **0** |
+  | los dos SKU del encargo con sus numeros reales | **0** | 2 (539.990->369.990 y 279.990->199.990) |
+  | cota alta: los 929 cambiando con el guardado como tachado | **0** | 929 |
+  | control: baja real del 23% cuyo guardado NO es el tachado | **1 baja** | 0 |
+  | el SKU se lee SIN precio: la ventana queda armada y anclada | 0 | 0 |
+  | 25 h despues llega el precio: **vuelve a ser un aviso** | **1 baja** | 0 |
+  | control, 1 h despues: sigue siendo correccion tecnica | 0 | 1 |
+
+  Y 0 de 929 registros con diagnostico de lectura filtrado al catalogo.
+- **EL CODIGO REAL CONTRA LAS PAGINAS REALES, extremo a extremo** (extract ->
+  integrarVariantes -> comparar, partiendo del registro REAL de `data/latest.json`,
+  sin webhook):
+
+  | ficha | guardado hoy | leido ahora | avisos | canal tecnico |
+  |---|---|---|---|---|
+  | `galaxy-a36/buy/` | 539.990 (el TACHADO) | **369.990** en 311 ms | **0** | 1 correccion |
+  | `odyssey-g3-…ls32dg300elxzs/` | 279.990 (el de LISTA) | **199.990** en 1.912 ms | **0** | 1 correccion |
+
+  El monitor sale ademas con `precioDeclarado: true` — la adopcion a ciegas contada
+  por primera vez sobre una pagina de verdad.
+- **Pipeline real (`src/run.mjs` entero)** contra una COPIA del catalogo real en
+  carpeta temporal, `LIMITE_PAGINAS`, `SIN_DESCUBRIMIENTO=1`, `VIVO=0`,
+  `env -u DISCORD_WEBHOOK_URL`: 0 errores, 0 eventos, 0 correcciones, el resumen
+  trae los dos campos nuevos (`precioDeclarado: 0`, `digitalDataSinAsentar: 0`) y el
+  catalogo de la carpeta temporal queda intacto.
+- **Politica de scraping:** **8 paginas de samsung.com en todo el encargo** (3 de
+  muestreo — A36 /buy/, monitor y S25 FE /buy/ —, 3 de pipeline y 2 de la
+  verificacion extremo a extremo), UA `CazadorBot/1.0`, `DELAY_MS` 2500 sin tocar,
+  **cero requests extra** (las respuestas de la API se leyeron del trafico que la
+  propia pagina genera). Habia una revision de produccion en curso, verificado con
+  `gh run list`. **Jamas se toco el webhook real.**
+- **`data/` del repo intacta**: los md5 de los 5 archivos son identicos a los del
+  principio. **No se commiteo nada.**
+
+## Pendientes
+
+1. **CONDICION DE DESPLIEGUE, no observacion posterior: desplegar y dejar correr
+   UNA revision completa antes del Cyber**, y confirmar que `correccionesDePrecio`
+   vuelve a 0. Es lo que quema la ventana de amnistia a proposito.
+2. **Mirar los tres contadores en la primera corrida real.** `precioCongelado` va en
+   94 (bajaria a lo sumo a 9, que son los que vienen de una /buy/).
+   `digitalDataSinAsentar` **tiene que quedar cerca de 0**: si es alto, hay paginas
+   reales que no publican `list_price` y el presupuesto de 3 s quedo corto —
+   entonces hay que subirlo o volver a mirar la regla. `precioDeclarado` dice
+   cuantos precios se adoptaron sin ningun monto dibujado contra el cual
+   contrastarlos.
+3. **Abrir la ficha de los primeros SKU corregidos** y confirmar el numero contra la
+   pagina antes de darlos por buenos.
+4. **CUANTAS FICHAS FUSIONADAS HAY, sigue sin medirse.** Las contables desde el
+   catalogo son 6 paginas / 14 SKU; la forma del S25 FE (varios `model_code` y un
+   solo propio) no se puede censar offline y esta verificada en vivo. Hace falta
+   contarlas en una corrida real, registrando cuando `codigos.length > 1`.
+5. **EL PRECIO DE LA API ES EL DE LISTA, y hay una rama que lo adopta.** Medido hoy
+   en dos paginas: `price` = precio de lista y `promotionPrice` = lo que se cobra.
+   `productosDesdeApi` toma `price.value`, asi que **las paginas de grupo
+   (`propios.length > 1`, 14 SKU vivos con rango AGRUPADA) pueden estar guardando el
+   precio de lista por construccion.** No se toco: cambiarlo mueve el precio de esos
+   SKU a dias del Cyber y merece su propio ticket, con esta medicion y una
+   verificacion en vivo de cada uno.
+6. **El bloque de compra de una /buy/ hubble contamina el STOCK** (pendiente
+   heredado, y hoy REFORZADO). Medido de nuevo en la verificacion extremo a extremo:
+   `galaxy-a36/buy/` devuelve `estadoStock: "agotado"` porque el selector escribe
+   "Gris increíble Agotado…" de otros colores, mientras la ficha plana del mismo SKU
+   dice "Comprar". El arreglo de hoy **saco a ese texto del camino del PRECIO pero
+   no del camino del STOCK**, a proposito: `conservaEstado` solo protege cuando la
+   otra lectura es "desconocido", asi que tocarlo mueve la maquinaria de stock a
+   dias del Cyber. **Ahora se ve mas que antes, porque el precio ya no falla.**
+   Merece su propio ticket, con la misma medicion que el precio.
+7. **Los 22 SKU que solo viven en una /buy/ pagan hasta una corrida de atraso** cuando
+   su Buying Tool no señala a ningun candidato: esa corrida quedan sin precio y
+   `comparar()` conserva el ultimo bueno. Es el precio correcto por no inventar, pero
+   conviene medirlo: bastaria una carga de cada uno mirando si su tool señala
+   exactamente un candidato. No entro en el tope de 8 paginas de este encargo.
+8. **El agujero de la primera linea de `precioVisiblePreferido`** (pendiente
+   heredado) **quedo mucho mas chico**: con `list_price` invalido ya no se adopta el
+   `model_price`, porque esa situacion es ahora, por definicion, "digitalData sin
+   asentar" y no produce precio. Lo que queda por medir es cuantas paginas reales
+   tienen un `list_price` genuinamente ausente — hoy no se conoce ninguna: las 6
+   fichas cargadas en vivo publican los dos campos una vez asentadas.
+9. Siguen los pendientes de las entradas anteriores: rotar `history.jsonl` antes de
+   los 50 MB, cachear Playwright, medir `duracionPrincipalesMin`, contar las livianas
+   descartadas, el hueco de cobertura de `run.mjs`, las 126 /buy/ duplicadas, y la
+   decision de producto sobre una tercera revision completa.

@@ -237,9 +237,13 @@ async function leerBloqueCompra(page) {
         "[class*='buying']",
       ];
       let el = null;
+      let usado = null;
       for (const s of selectores) {
         el = document.querySelector(s);
-        if (el) break;
+        if (el) {
+          usado = s;
+          break;
+        }
       }
       const visible = (n) => !!(n.offsetWidth || n.offsetHeight || n.getClientRects().length);
       // solo botones VISIBLES y de texto corto: un CTA real dice "Comprar" o
@@ -257,14 +261,53 @@ async function leerBloqueCompra(page) {
       // FUERA de [class*='buying']. Sin ella ese SKU se guardaba como "agotado"
       // por la API, que es un estado distinto del que ve el cliente.
       const barra = [...document.querySelectorAll("[class*='price-bar']")].map(botonesDe).flat();
-      if (!el && barra.length === 0) return { texto: null, ctas: [], ctasBarra: [] };
-      return { texto: el && typeof el.innerText === "string" ? el.innerText : null, ctas: botonesDe(el), ctasBarra: barra.slice(0, 12) };
+      if (!el && barra.length === 0) return { texto: null, ctas: [], ctasBarra: [], selector: null };
+      return {
+        texto: el && typeof el.innerText === "string" ? el.innerText : null,
+        ctas: botonesDe(el),
+        ctasBarra: barra.slice(0, 12),
+        selector: usado,
+      };
     })
     .catch(() => null);
   return {
     texto: datos?.texto ?? null,
     ctas: datos?.ctas ?? [],
     ctasBarra: datos?.ctasBarra ?? [],
+    selector: datos?.selector ?? null,
+    // ¿EL BLOQUE QUE SE LEYO ES LA BARRA DE PRECIO DE ESTE SKU, O EL SELECTOR DE
+    // UN GRUPO? (2026-09-13, defecto medido por dos verificadores.)
+    //
+    // Los dos primeros selectores de la lista de arriba son la barra de precio
+    // de ESTA ficha: verificado en vivo sobre TV, notebook y accesorio, su
+    // innerText es exactamente precio + CTA. Todo lo que caiga mas abajo en la
+    // lista es, en las paginas /buy/ con plantilla hubble, el Buying Tool: un
+    // SELECTOR DE GRUPO que habla de TODAS las variantes a la vez.
+    //
+    // Medido hoy en vivo en galaxy-a36/buy/ (el selector que gano fue
+    // [class*='pd-buy']): el Buying Tool publica el monto de cada opcion
+    // ("...128GB｜6GB $ 35.832 al mes o $ 429.990 256GB｜8GB ... o $ 369.990...")
+    // y tambien el veredicto de stock de cada color ("Gris increíble Agotado").
+    // Ninguna de las dos cosas es de este SKU. En la ficha del monitor
+    // LS32DG300ELXZS, en cambio, el ganador es [class*='pd-buying-price'] y su
+    // innerText entero es "Dónde comprar": ahi si habla este producto.
+    //
+    // Quien lee este campo:
+    //  - precioDelBloqueCompra, para saber si un monto solitario puede mandar
+    //    sin comprobar nada (barra) o tiene que senalar a un candidato de
+    //    digitalData (selector);
+    //  - la llave de la concesion "la pagina declara que no lo vende online",
+    //    que solo vale desde la barra (ver extractSingleProduct).
+    //
+    // SOLO EL PRIMER SELECTOR CUENTA COMO BARRA, y es a proposito. El segundo de
+    // la lista, `buying-tool__summary`, lleva "buying-tool" en el nombre: es el
+    // resumen del MISMO Buying Tool de las paginas hubble, o sea que refleja la
+    // opcion que el selector tenga elegida, no necesariamente este SKU. Solo
+    // `pd-buying-price` esta verificado en vivo como la barra de precio de un
+    // unico producto (TV F6000, Book4 15,6", soporte WMN-M13EA y el monitor
+    // LS32DG300ELXZS: su innerText es exactamente precio + CTA). Ante la duda,
+    // el lado seguro es exigir que el monto señale a un candidato.
+    barraDePrecio: datos?.selector === "[class*='pd-buying-price']",
     // "NO PUDE LEER" NO ES LO MISMO QUE "LEI Y NO DICE PRECIO" (2026-09-12,
     // defecto medido por los tres verificadores). Este evaluate va envuelto en
     // `.catch(() => null)` y hasta hoy los dos casos salian identicos: `texto:
@@ -321,6 +364,33 @@ const PRECIO_TIMEOUT_MS = 8000;
  */
 const RENDER_TIMEOUT_MS = 1500;
 
+/**
+ * PRESUPUESTO DE LA ESPERA DE HIDRATACION DE digitalData (2026-09-13 tarde).
+ *
+ * La espera vieja solo exigia `model_price > 0`, y eso se cumple ANTES de que la
+ * pagina termine de hidratarse. Muestreado en vivo cada 250 ms sobre
+ * galaxy-a36/buy/, entrando igual que produccion:
+ *     935 ms   model_price "539990"   list_price ""       <- el precio TACHADO
+ *   1.310 ms   model_price "369990"   list_price "539990" <- asentado
+ * La ventana mala duro 375 ms y la lectura de produccion cae dentro de ella cada
+ * vez que el primer pintado del Buying Tool gana la carrera. Es el mecanismo del
+ * vaiven del A36 (3 de los 5 avisos falsos del encargo).
+ *
+ * 3 s es ~8 veces esa ventana medida. No se usa PRECIO_TIMEOUT_MS (8 s) porque
+ * esta espera la paga TODA pagina que no publique list_price, y el incidente del
+ * 2026-08-02 enseño que una espera nueva hay que medirla contra el PEOR caso del
+ * catalogo, no contra el caso que se esta arreglando. Cuando la pagina ya esta
+ * asentada -- el caso normal -- cuesta cero: waitForFunction vuelve de inmediato
+ * si la condicion ya se cumple.
+ *
+ * Si se agota, la lectura queda marcada `digitalDataSinAsentar` y no adopta
+ * ningun numero de digitalData (ver precioAdoptable). El contador sale en el
+ * resumen de la corrida para poder medir en produccion cuantas paginas caen ahi:
+ * en las 6 fichas cargadas en vivo (A36 /buy/, monitor, S25 FE /buy/, y las tres
+ * de la entrada anterior) TODAS publican los dos campos una vez asentadas.
+ */
+const HIDRATACION_TIMEOUT_MS = 3000;
+
 function aNumero(valor) {
   return Number(String(valor ?? "").replace(",", "."));
 }
@@ -365,6 +435,38 @@ function montoVisible(monto, texto) {
  * (ver la nota de esa constante: con las sobras la espera se auto-descartaba en
  * las paginas lentas, que son justo las que corren la carrera).
  */
+/**
+ * ESPERA A QUE digitalData TERMINE DE HIDRATARSE (2026-09-13 tarde).
+ *
+ * La senal es `list_price`: mientras la respuesta de api.shop.samsung.com no
+ * llega, la pagina publica `list_price: ""` y deja el precio de LISTA metido en
+ * `model_price` (medido en vivo, ver HIDRATACION_TIMEOUT_MS). Los dos campos se
+ * llenan juntos, con la misma respuesta, asi que esperar al segundo garantiza
+ * que el primero ya no es el provisorio.
+ *
+ * No lanza ni decide nada: devuelve si lo logro. Quien decide es
+ * extractSingleProduct, que con `false` marca la lectura y no adopta numeros de
+ * digitalData.
+ */
+async function esperarDigitalDataAsentado(page, presupuestoMs = HIDRATACION_TIMEOUT_MS) {
+  if (typeof page.waitForFunction !== "function") return true;
+  try {
+    await page.waitForFunction(
+      () => {
+        const p = window.digitalData?.product;
+        if (!p) return false;
+        const n = Number(String(p.list_price ?? "").replace(",", "."));
+        return Number.isFinite(n) && n > 0;
+      },
+      undefined,
+      { timeout: presupuestoMs },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function esperarMontoPintado(page, montos, presupuestoMs = RENDER_TIMEOUT_MS) {
   const buscados = montos.map(montoFormateado).filter(Boolean);
   if (buscados.length === 0 || !(presupuestoMs > 0)) return;
@@ -418,17 +520,91 @@ async function esperarMontoPintado(page, montos, presupuestoMs = RENDER_TIMEOUT_
  *   3 = ademas, ningun precio que no este ESCRITO en la pagina (2026-09-12
  *       tarde): se espera a que el monto se pinte y, si no se pinta, no hay
  *       precio. Ver precioVisiblePreferido y esperarMontoPintado.
+ *   4 = el precio sale del BLOQUE DE COMPRA o de nada (2026-09-13): el texto de
+ *       la pagina entera deja de arbitrar entre model_price y list_price, y un
+ *       bloque que es un SELECTOR de grupo solo vale si senala a un unico
+ *       candidato. Ver precioAdoptable y la funcion de aca abajo.
  */
-export const VERSION_PRECIO = 3;
+export const VERSION_PRECIO = 4;
 
-export function precioDelBloqueCompra(texto) {
+/**
+ * EL MONTO QUE PUBLICA EL BLOQUE DE COMPRA.
+ *
+ * UN BLOQUE PUEDE PUBLICAR VARIOS MONTOS, Y EL PRIMERO NO ES NECESARIAMENTE EL
+ * DE ESTE SKU (2026-09-13, medido en vivo). La barra de precio de una ficha
+ * normal (`pd-buying-price`) escribe UNO solo:
+ *   "Desde $ 30.833 en 12 cuotas sin intereses* o $369.990 Precio original:
+ *    $539.990 Ahorra $ 170.000 *Aplican condiciones Comprar"
+ * Pero el "Buying Tool" de las paginas /buy/ con plantilla hubble es un SELECTOR
+ * DE GRUPO y escribe el de cada opcion que ofrece. Texto literal de
+ * galaxy-a36/buy/ medido hoy, con los montos que deja en el bloque:
+ *   "... Galaxy A36 Desde $ 30.832 al mes o $ 369.990 ... Selecciona tu
+ *    almacenamiento 128GB|6GB ... o $ 429.990 256GB|8GB ... o $ 369.990 ..."
+ *   -> ["369.990", "429.990", "369.990", "7.915", "94.991", "49.990", ...]
+ * Tomar el primero es tomar el de la variante que el selector trae elegida por
+ * omision, no el de este SKU: el dia que Samsung cambie esa opcion por omision,
+ * el precio guardado cambia solo. Es el MISMO defecto que el carrusel "¿Buscas
+ * alternativas?" le hacia al stock (ver leerBloqueCompra): leer un numero de un
+ * texto que no es la barra de precio de este producto.
+ *
+ * LA REGLA NO LA DECIDE LA CANTIDAD DE MONTOS SINO QUE BLOQUE SE LEYO
+ * (corregido 2026-09-13 tarde, defecto medido por dos verificadores). La primera
+ * version de esta funcion decia "UN monto manda, VARIOS son un selector", y esa
+ * cuenta se rompe justo cuando importa: un Buying Tool a MEDIO PINTAR publica UN
+ * SOLO monto, y no es el de este SKU.
+ *   - Medido en vivo hoy en galaxy-a36/buy/, a los 935 ms de domcontentloaded:
+ *     el tool ya esta pintado y publica un unico "Desde $ 44.999 al mes o
+ *     $ 539.990" -- el precio TACHADO. A los 1.310 ms se re-pinta con los cinco
+ *     montos reales y el primero pasa a ser $ 369.990.
+ *   - Y el otro lado de la misma moneda: un render parcial que deje escrita solo
+ *     la fila de accesorios ("...Accesorios Desde $ 4.165 al mes o $ 49.990")
+ *     hacia adoptar $49.990 para un celular de $369.990: una "baja" del 86% a
+ *     dias del Cyber.
+ *
+ * Por eso la regla mira el ORIGEN del texto (bloque.barraDePrecio, ver
+ * leerBloqueCompra):
+ *  - LA BARRA DE PRECIO de esta ficha (pd-buying-price / buying-tool__summary):
+ *    un monto solitario manda, como desde el 2026-09-12, y vale AUNQUE no
+ *    coincida con ningun campo de digitalData -- que es justo el caso que ese
+ *    arreglo vino a cubrir (SM-X400NZRDCHO: el bloque cobra $494.990 y
+ *    digitalData publica 379.990 y 549.989). Ese elemento habla de un solo
+ *    producto: el de la ficha.
+ *  - EL SELECTOR DE GRUPO (Buying Tool de una /buy/ hubble): sus montos son de
+ *    todas las variantes y de los accesorios, asi que solo decide si
+ *    EXACTAMENTE UNO de ellos es uno de los numeros que digitalData publica para
+ *    ESTE SKU -- tenga uno o tenga ocho. Si son dos, o ninguno, el bloque no
+ *    señalo a este producto y no decide nadie.
+ *    Medido: galaxy-a36/buy/ pintado -> {369.990, 429.990, 49.990...} contra
+ *    {369.990, 539.990} = 1 coincidencia -> 369.990 (el correcto);
+ *    galaxy-z-flip7/buy/ -> {1.169.990, 1.299.990} contra {1.169.990, 1.269.989}
+ *    = 1 -> 1.169.990 (lo mismo que hoy); galaxy-a56/buy/ -> {529.990, 569.990}
+ *    contra {529.990} = 1 -> 529.990 (lo mismo que hoy).
+ *
+ * @param candidatos los montos que digitalData publica para ESTE SKU
+ *   ([model_price, list_price]). Sin ellos un bloque de selector no puede
+ *   decidir, que es el lado seguro.
+ * @param opciones.barraDePrecio si el texto salio de la barra de precio de esta
+ *   ficha. Por omision `true`, que es la forma en que se comporto esta funcion
+ *   desde que existe; el call site real pasa lo que leyo leerBloqueCompra.
+ */
+export function montosDelBloqueCompra(texto) {
   const t = String(texto ?? "").replace(/\s+/g, " ");
   // " o $579.990" / " o $ 559.990". La frontera de palabra
   // evita enganchar la "o" final de otra palabra ("Ahorra $" no cae aca).
-  const m = /\bo\s*\$\s?([\d.]{4,})/.exec(t);
-  if (!m) return null;
-  const n = Number(m[1].replace(/\./g, ""));
-  return Number.isFinite(n) && n > 0 ? n : null;
+  const montos = [];
+  for (const m of t.matchAll(/\bo\s*\$\s?([\d.]{4,})/g)) {
+    const n = Number(m[1].replace(/\./g, ""));
+    if (Number.isFinite(n) && n > 0 && !montos.includes(n)) montos.push(n);
+  }
+  return montos;
+}
+
+export function precioDelBloqueCompra(texto, candidatos = [], { barraDePrecio = true } = {}) {
+  const montos = montosDelBloqueCompra(texto);
+  if (montos.length === 0) return null;
+  if (barraDePrecio && montos.length === 1) return montos[0];
+  const senalados = montos.filter((n) => (candidatos ?? []).some((c) => Number.isFinite(c) && c === n));
+  return senalados.length === 1 ? senalados[0] : null;
 }
 
 /**
@@ -578,16 +754,134 @@ export function precioAdoptable({
   listPrice,
   bloqueLegible,
   paginaNoLoVendeOnline,
+  montosEnBloque = 0,
+  digitalDataAsentado = true,
   bodyText,
 }) {
   if (Number.isFinite(precioBloque) && precioBloque > 0) return precioBloque;
+
+  // (d) EL BLOQUE PUBLICO MONTOS, PERO NINGUNO ES DE ESTE SKU (2026-09-13 tarde).
+  //
+  // Es un cuarto estado, y hasta hoy se confundia con (b) "el bloque no publica
+  // monto". No son lo mismo: un bloque que escribe precios y no señala a este
+  // producto es un SELECTOR hablando de sus otras variantes, o un render a
+  // medias. Caer ahi en `precioFinal` -- o sea en el texto de toda la pagina --
+  // es volver a abrir la puerta que este arreglo cerro, y esta MEDIDO que lo
+  // hacia: con digitalData todavia sin asentar en la /buy/ del A36, el filtro
+  // por candidatos devolvia null y el precio caia al model_price rancio
+  // (539.990, el TACHADO) mientras el bloque ya estaba mostrando el correcto
+  // (369.990). HEAD guardaba el bueno y esta version guardaba el malo: una
+  // regresion, no un residuo.
+  //
+  // Cuando el bloque habla y no habla de este SKU, la respuesta honesta es que
+  // no se sabe. El campo se omite y comparar() conserva el ultimo precio bueno.
+  if (montosEnBloque > 0) return null;
+
+  // DIGITALDATA A MEDIO HIDRATAR: NINGUNO DE SUS DOS NUMEROS ES CONFIABLE.
+  //
+  // Medido en vivo el 2026-09-13 sobre galaxy-a36/buy/, entrando igual que
+  // produccion (waitUntil "domcontentloaded") y muestreando cada 250 ms:
+  //     935 ms   model_price "539990"   list_price ""        <- el TACHADO en el
+  //                                                             campo del precio
+  //                                                             de venta
+  //   1.310 ms   model_price "369990"   list_price "539990"  <- asentado
+  // O sea que durante ~375 ms la pagina publica el precio de lista en el campo
+  // del precio de venta y no publica ningun list_price. La espera que habia
+  // (model_price > 0) se cumple en ese estado, asi que la lectura entraba ahi y
+  // guardaba 539.990: ES el mecanismo del vaiven del A36, el SKU de 3 de los 5
+  // avisos falsos del encargo. Ninguna regla de mas abajo puede detectarlo,
+  // porque el bloque de compra dice lo mismo que digitalData.
+  //
+  // Ahora extractSingleProduct espera a que digitalData traiga los DOS campos
+  // (ver esperarDigitalDataAsentado) y, si no lo logra dentro de su presupuesto,
+  // esta lectura no adopta ningun numero de digitalData. Es la regla de oro del
+  // proyecto: un numero que sabemos que puede ser el tachado no se guarda.
+  // Lo que SI sigue mandando es la barra de precio de la ficha cuando publica su
+  // monto, porque ese camino nunca dependio de digitalData (se resuelve en la
+  // primera linea de esta funcion).
+  if (!digitalDataAsentado) return null;
+
   const dosCandidatos =
     Number.isFinite(modelPrice) && Number.isFinite(listPrice) && listPrice > 0 && modelPrice !== listPrice;
   if (!bloqueLegible && dosCandidatos) return null;
+
+  // EL BLOQUE NO ENTREGO NINGUN MONTO Y DIGITALDATA PUBLICA DOS NUMEROS
+  // DISTINTOS: LA DECISION NO CAE EN EL TEXTO DE TODA LA PAGINA (2026-09-13).
+  //
+  // Es el ultimo tramo del vaiven, y es el MISMO defecto que el proyecto ya
+  // habia cerrado para el STOCK. Hasta hoy este caso caia en `precioFinal`, o
+  // sea en precioVisiblePreferido, que elige entre model_price y list_price
+  // segun cual este escrito en `document.body.innerText` -- el texto de la
+  // PAGINA ENTERA. Y la pagina entera esta llena de montos que no son de este
+  // SKU. Las dos fichas que seguian bailando despues del arreglo del 2026-09-12
+  // (las unicas dos, medido sobre los 22 snapshots de data/latest.json), con su
+  // evidencia cargada en vivo el 2026-09-13:
+  //
+  //  - LS32DG300ELXZS: su bloque es la barra de precio de verdad
+  //    (`pd-buying-price`) y dice solo "Dónde comprar". Su model_price (199.990)
+  //    NO esta escrito en ninguna parte del body; su list_price (279.990) SI.
+  //
+  //    QUE ES CADA UNO DE ESOS DOS NUMEROS, medido en la respuesta que la PROPIA
+  //    pagina le pide a api.shop.samsung.com (capturada del trafico, cero
+  //    requests extra, 2026-09-13):
+  //        price          = {formattedValue "$279.990", priceType "BUY"}
+  //        promotionPrice = {formattedValue "$199.990"}
+  //    O sea `model_price` es el precio CON la promocion aplicada y `list_price`
+  //    es el de lista. Se repite identico en el A36 (price $539.990 BUY /
+  //    promotionPrice $369.990). Con el bloque mudo, el unico deterministico es
+  //    el primero: el de lista es, por definicion, el que el cliente NO paga.
+  //
+  //    (Una version anterior de este comentario decia que el 279.990 "es el
+  //    precio de OTRO PRODUCTO", el Odyssey G4 del carrusel de alternativas.
+  //    Es FALSO y lo desmiente la API de arriba: el numero aparece al lado del
+  //    G4 en el body, pero es tambien el precio de lista de ESTE monitor. La
+  //    conducta elegida no cambia; la razon si, y dejar escrita una causa falsa
+  //    es caro: el que lea "el body esta contaminado por el carrusel" va a
+  //    construir un filtro de carrusel que no arregla nada.)
+  //  - SM-A366ELVGLTL: su /buy/ de plantilla hubble publica en el bloque el monto
+  //    de cada variante, y ademas su digitalData tarda ~1,3 s en asentarse. Los
+  //    DOS candidatos aparecen en el body (369.990 en el propio tool y 539.990 en
+  //    la ficha de resumen, sin la etiqueta "Precio original" que lo delataria),
+  //    asi que ganaba el que alcanzara a pintarse. Ver esperarDigitalDataAsentado
+  //    para el mecanismo completo, medido en vivo el 2026-09-13.
+  //
+  // Los dos estados de la pagina tienen que dar el MISMO precio, y para eso hay
+  // que dejar de mirar el body. Quedan dos salidas, y ninguna es el list_price:
+  //
+  //  (b) LA PAGINA DECLARA QUE NO LO VENDE ONLINE. El bloque dijo, en el mismo
+  //      lugar donde escribiria el precio, que no hay precio de venta que leer
+  //      ("Dónde comprar" / "No está a la venta", vocabulario cerrado de
+  //      src/stock.mjs). Eso es una propiedad ESTABLE de la ficha, no una
+  //      carrera: no va a pintar un monto mas tarde. El unico numero
+  //      deterministico que queda es el model_price -- el campo con el que
+  //      Samsung nombra el precio de venta --, y el list_price es por definicion
+  //      el de lista (en el body del Z Flip7 aparece literal como "ListPrice").
+  //      Es la concesion 2 de mas abajo, que hasta hoy se rendia cuando habia
+  //      dos candidatos y por eso dejaba al monitor eligiendo por sorteo.
+  //  (c) CUALQUIER OTRO CASO: no hay precio. Un bloque legible sin monto que NO
+  //      declara nada es el Buying Tool a medio pintar, y esta medido (E9, E9b,
+  //      E9c del 2026-09-12) que es indistinguible de uno que no va a escribir
+  //      nunca: adoptar ahi devolvia 3 a 5 avisos falsos. El campo se omite,
+  //      comparar() conserva el ultimo precio bueno y `precioIlegible` lo deja
+  //      contado en `sinPrecioVisible` / `precioCongelado`, asi que el silencio
+  //      es visible y no eterno.
+  //
+  // Lo que se pierde a proposito: la segunda linea de precioVisiblePreferido
+  // (adoptar el list_price porque el model_price no esta escrito) deja de
+  // alimentar una adopcion. Nacio por el pack F-SMR640SML70 (2026-08-03), cuya
+  // ficha SI escribe el monto en el bloque, asi que ese caso hoy lo resuelve
+  // precioDelBloqueCompra una linea mas arriba.
+  if (dosCandidatos) {
+    if (paginaNoLoVendeOnline && Number.isFinite(modelPrice) && modelPrice > 0) {
+      if (esPrecioOriginalEscrito(modelPrice, bodyText)) return null;
+      return modelPrice;
+    }
+    return null;
+  }
+
   // concesion 2: un solo candidato Y la pagina declarando que no lo vende online
   if (
     !Number.isFinite(precioFinal) &&
-    !dosCandidatos &&
     paginaNoLoVendeOnline &&
     Number.isFinite(modelPrice) &&
     modelPrice > 0
@@ -674,6 +968,7 @@ export function productosDesdeApi(respuestas) {
  * @throws {PaginaAjena} cuando la navegacion aterrizo en la ficha de otro producto.
  */
 export async function extractSingleProduct(page, url, respuestasApi = []) {
+  let digitalDataListo = true;
   try {
     await page.waitForFunction(
       () => {
@@ -691,7 +986,24 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
     // se agoto la espera: puede ser un producto realmente dado de baja (los
     // monitores descontinuados dejan model_price en "" para siempre) o una
     // pagina lenta. Quien decide es el bloque de abajo, con el dato en mano.
+    digitalDataListo = false;
   }
+
+  // Y ADEMAS SE ESPERA A QUE digitalData TERMINE DE HIDRATARSE. La espera de
+  // arriba solo exige model_price > 0, y eso se cumple mientras la pagina
+  // todavia tiene el precio TACHADO en ese campo y el list_price vacio (medido
+  // en vivo: ventana de 375 ms en galaxy-a36/buy/). Leer ahi era el ultimo
+  // mecanismo vivo del vaiven. Ver esperarDigitalDataAsentado.
+  //
+  // SOLO SI LA ESPERA DE ARRIBA SE CUMPLIO, y eso no es un detalle: hay ~150
+  // paginas del catalogo que legitimamente NUNCA publican precio (filtros, kits,
+  // accesorios) y ahi la primera espera se agota entera. Cobrarles ademas el
+  // presupuesto de hidratacion serian ~7 min por revision completa sobre paginas
+  // que no tienen nada que hidratar. Es la leccion del incidente del 2026-08-02:
+  // una espera nueva se mide contra el PEOR caso del catalogo, no contra el caso
+  // que se esta arreglando. Si la primera espera se agoto, digitalData no esta
+  // asentado por definicion y el valor `false` lo dice.
+  const digitalDataAsentado = digitalDataListo ? await esperarDigitalDataAsentado(page) : false;
 
   const digitalData = await page.evaluate(() => {
     try {
@@ -840,7 +1152,29 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
   // El bloque de compra de ESTE SKU es la fuente mas directa que existe: es el
   // numero que el cliente lee antes de apretar el boton. Manda sobre digitalData
   // cuando esta escrito (ver precioDelBloqueCompra); si no esta, no cambia nada.
-  const precioBloque = precioDelBloqueCompra(bloque.texto);
+  //
+  // Se le pasan los dos montos de digitalData porque el bloque de una pagina
+  // /buy/ hubble es un SELECTOR y publica el de cada variante que ofrece: sin
+  // saber cuales son los de ESTE SKU, "el primero que aparezca" es el de la
+  // opcion que el selector trae elegida por omision (ver precioDelBloqueCompra).
+  //
+  // Y se le dice DE DONDE salio ese texto: la barra de precio de esta ficha
+  // habla de un solo producto (un monto solitario manda), el Buying Tool de una
+  // /buy/ habla de todas las variantes (todo monto, sea uno o sean ocho, tiene
+  // que señalar a un candidato de digitalData). Medido en vivo: el tool del A36
+  // a los 935 ms publica UN monto y es el tachado.
+  //
+  // Y CON digitalData SIN ASENTAR NO HAY CANDIDATOS QUE PASARLE. Desambiguar un
+  // selector contra numeros rancios es peor que no desambiguarlo: medido en vivo,
+  // a los 935 ms el Buying Tool del A36 publica un unico monto -- el TACHADO -- y
+  // ese monto SI coincide con el model_price provisorio, asi que el filtro por
+  // candidatos lo bendecia. Sin candidatos, el selector no decide y el precio no
+  // se adopta. La barra de precio de la ficha no se ve afectada: su monto manda
+  // igual, porque ese camino nunca dependio de digitalData.
+  const montosEnBloque = montosDelBloqueCompra(bloque.texto);
+  const precioBloque = precioDelBloqueCompra(bloque.texto, digitalDataAsentado ? [precio, precioLista] : [], {
+    barraDePrecio: bloque.barraDePrecio,
+  });
   // NO es `precioBloque ?? precioFinal`: ese `??` era la puerta por la que el
   // vaiven seguia entrando (ver precioAdoptable, que distingue "no pude leer el
   // bloque" de "lo lei y no publica monto").
@@ -862,11 +1196,36 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
     //    ficha publica.
     // Las dos son informacion de mas, y para ESTA decision "de mas" es "todavia
     // no se": se prefiere seguir congelado a adoptar un numero que nadie vio.
-    paginaNoLoVendeOnline: estadoBloque === ESTADO.NO_A_LA_VENTA,
+    //
+    // Y SOLO DESDE LA BARRA DE PRECIO DE ESTA FICHA (2026-09-13 tarde, defecto
+    // medido). estadoDesdeBloqueCompra corre sobre el bloque ENTERO, y en una
+    // /buy/ hubble ese bloque es el selector de grupo: su veredicto describe a
+    // TODAS las variantes. Medido hoy en galaxy-a36/buy/, el selector escribe
+    // "Gris increíble Agotado Grafito increíble Agotado" de otros colores, y le
+    // alcanza con que la frase "no está a la venta" aparezca en cualquier parte
+    // para disparar. Dejar que ese veredicto decida el PRECIO era darle la llave
+    // a un texto que este mismo arreglo acaba de declarar ajeno al SKU.
+    paginaNoLoVendeOnline: bloque.barraDePrecio && estadoBloque === ESTADO.NO_A_LA_VENTA,
+    montosEnBloque: montosEnBloque.length,
+    digitalDataAsentado,
     bodyText,
   });
+  // LA API SOLO ENTRA CUANDO HAY UN PRECIO LEIDO AL QUE DESPLAZAR (2026-09-13
+  // tarde, regresion medida). `montoVisible(null, bodyText)` es false, asi que
+  // "no hay precio" -- la decision deliberada de callarse que toma
+  // precioAdoptable -- caia directo en `precioApi`, y el precio de la API es el
+  // de LISTA: medido hoy en las respuestas que la propia pagina pide, el A36
+  // publica price $539.990 (priceType BUY) contra promotionPrice $369.990, y el
+  // monitor LS32DG300ELXZS price $279.990 contra promotionPrice $199.990. O sea
+  // que el silencio se convertia en el TACHADO, que es lo peor de los dos
+  // mundos. Reproducido sobre una ficha fusionada real (el S25 FE, cuyo
+  // model_code trae tres codigos): 4 avisos falsos en 5 corridas contra 0 de
+  // HEAD. La regla original de esta linea -- "el precio leido no es de este SKU"
+  // -- necesita que haya un precio leido; "no hubo precio que leer" es otra cosa.
   const precioElegido =
-    varios && Number.isFinite(precioApi) && !montoVisible(precioVisto, bodyText) ? precioApi : precioVisto;
+    varios && Number.isFinite(precioApi) && Number.isFinite(precioVisto) && !montoVisible(precioVisto, bodyText)
+      ? precioApi
+      : precioVisto;
 
   const salidaPropia = {
     modelo: propio,
@@ -890,11 +1249,27 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
   // un valor, es la ausencia de uno.
   if (Number.isFinite(precioElegido) && precioElegido > 0) {
     salidaPropia.precio = precioElegido;
+    // ESTE PRECIO SE ADOPTO A CIEGAS, Y SE DEJA DICHO (2026-09-13 tarde).
+    // Cuando la pagina declara que no la vende online no hay NINGUN monto
+    // dibujado contra el cual contrastar el numero: se adopta el model_price
+    // porque es el unico deterministico que queda, no porque se haya visto. Si
+    // alguna vez ese campo trae un numero raro, nada lo delataria. El contador
+    // sale en el resumen de la corrida al lado de precioCongelado para que la
+    // poblacion sea visible desde el primer dia.
+    if (!Number.isFinite(precioBloque) && bloque.barraDePrecio && estadoBloque === ESTADO.NO_A_LA_VENTA) {
+      salidaPropia.precioDeclarado = true;
+    }
   } else {
     // diagnostico de ESTA lectura (no del producto): run.mjs lo cuenta en el
     // resumen y comparar.mjs lo borra antes de guardar el registro
     salidaPropia.precioIlegible = true;
   }
+  // Diagnostico de la hidratacion, tambien de ESTA lectura. Se escribe aunque el
+  // precio se haya podido leer de la barra, porque lo que mide es cuantas
+  // paginas no alcanzan a asentar digitalData dentro del presupuesto: es el
+  // numero con el que se decide, con datos de produccion y no de escritorio, si
+  // HIDRATACION_TIMEOUT_MS quedo corto.
+  if (!digitalDataAsentado) salidaPropia.digitalDataSinAsentar = true;
 
   // Rastro para que comparar() pueda distinguir una CORRECCION de fuente de una
   // baja de verdad: los dos numeros que la pagina publica y que este arreglo YA

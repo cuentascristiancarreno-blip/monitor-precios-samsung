@@ -251,8 +251,16 @@ function stockObservado(obs) {
  * SKU y en esa misma corrida, tiene otro numero y se avisa igual. Se
  * auto-desactiva por SKU al sellar versionPrecio.
  */
-function corrigeFuenteDePrecio(ant, obs) {
+function corrigeFuenteDePrecio(ant, obs, timestamp) {
   if (!(Number(obs?.versionPrecio ?? 0) > Number(ant?.versionPrecio ?? 0))) return false;
+  // LA VENTANA TAMBIEN SE CIERRA POR RELOJ (ver HORAS_MAX_MIGRACION_PRECIO).
+  // Sin esto la amnistia dura hasta la primera lectura CON precio de cada SKU, y
+  // un SKU de lectura intermitente la conserva armada durante dias: a dias del
+  // Cyber, una baja de verdad con forma de "el guardado era el tachado" se iria
+  // entera por el canal tecnico. `null` en horasEntre es "no se puede medir" y
+  // ahi se conserva el comportamiento de siempre, igual que en los otros pisos.
+  const horas = horasEntre(ant?.migracionPrecioDesde, timestamp);
+  if (horas !== null && horas >= HORAS_MAX_MIGRACION_PRECIO) return false;
   if (Number.isFinite(obs?.precioTachado) && ant?.precio === obs.precioTachado) return true;
   return Number.isFinite(obs?.precioInterno) && ant?.precio === obs.precioInterno;
 }
@@ -331,6 +339,39 @@ function mismaFuente(a, b) {
  */
 export const UMBRAL_PRECIO_OTRA_FUENTE = 3;
 
+/**
+ * CUANTO PUEDE DURAR LA AMNISTIA DE LA MIGRACION DE PRECIO (2026-09-13 tarde,
+ * defecto medido por un verificador).
+ *
+ * `corrigeFuenteDePrecio` calla el aviso de producto cuando el precio guardado
+ * es EXACTAMENTE el tachado que la pagina muestra hoy. Eso distingue bien "el
+ * guardado estaba mal" de casi todo... menos de UNA cosa, y es justo la que
+ * viene: **una oferta que estrena tiene esa misma forma**, porque al empezar la
+ * promo el precio de ayer pasa a ser el "Precio original" de hoy. Verificado
+ * sobre el historial real: EF-ES942COEGWW 49.990 -> 34.993 con list_price 49.990
+ * hoy; EF-DX825UWEGWW 229.990 -> 160.993 con list_price 229.990. Con la amnistia
+ * armada, esa baja del 30% sale por el canal tecnico diciendo "no bajaron ni
+ * subieron".
+ *
+ * Eso es aceptable UNA vez, en la corrida de migracion, y es el precio que el
+ * proyecto decidio pagar el 2026-09-12 para no mandar 420 avisos falsos. Lo que
+ * NO es aceptable es que la ventana quede armada durante dias: se cierra por SKU
+ * en la primera lectura CON precio, y el Buying Tool de una /buy/ no se pinta en
+ * cerca de la mitad de las lecturas, asi que los ~36-49 SKU que solo viven en
+ * una /buy/ podian llegar al Cyber con la amnistia todavia puesta.
+ *
+ * 24 h es el tope. Con 2 revisiones completas al dia le da a cualquier SKU del
+ * catalogo -- incluidos los 733 de fuera del bloque liviano -- al menos dos
+ * oportunidades de cerrarla por las buenas, y coincide con la regla que el
+ * proyecto ya usa para distinguir un rebote de un precio de verdad ("un precio
+ * real no vuelve al valor anterior en menos de un dia").
+ *
+ * El ancla es `migracionPrecioDesde`, que se escribe en la PRIMERA observacion
+ * con version mas nueva -- tenga precio o no --, justo porque el caso peligroso
+ * es el SKU que se lee sin precio muchas veces seguidas.
+ */
+export const HORAS_MAX_MIGRACION_PRECIO = 24;
+
 function reestableceLineaBase(ant, obs) {
   if (!(Number(obs?.versionStock ?? 0) > Number(ant?.versionStock ?? 0))) return false;
   const guardado = ant?.estadoStock ?? estadoObservado(ant) ?? ESTADO.DESCONOCIDO;
@@ -358,6 +399,12 @@ function borrarDiagnosticoDePrecio(rec) {
   delete rec.precioTachado;
   delete rec.precioInterno;
   delete rec.precioIlegible;
+  // diagnostico de la LECTURA, igual que los de arriba: cuantas veces se adopto
+  // un precio que la pagina no dibuja (porque declara que no lo vende online) y
+  // cuantas veces digitalData no alcanzo a hidratarse. run.mjs los cuenta en el
+  // resumen de la corrida; en el catalogo no describen al producto.
+  delete rec.precioDeclarado;
+  delete rec.digitalDataSinAsentar;
 }
 
 /**
@@ -580,6 +627,25 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
     else rec.versionPrecio = ant.versionPrecio;
   }
 
+  // EL RELOJ DE LA AMNISTIA DE LA MIGRACION (ver HORAS_MAX_MIGRACION_PRECIO).
+  //
+  // Se ancla en la primera observacion que trae una version mas nueva que la
+  // guardada Y QUE NO TRAE PRECIO, que es exactamente el caso peligroso: sin
+  // lectura util la version no se sella (regla del 2026-09-12) y la ventana no
+  // se cierra sola, asi que un SKU de lectura intermitente -- los ~36-49 que
+  // solo viven en una /buy/, cuyo Buying Tool se pinta cerca de la mitad de las
+  // veces -- podia llegar al Cyber con la amnistia todavia armada.
+  //
+  // Cuando la lectura SI trae precio no hace falta ancla: la version se sella en
+  // esta misma corrida y la ventana se cierra por las buenas. Por eso el campo
+  // no aparece en los ~930 registros sanos (medido sobre una copia del catalogo
+  // real: 0 de 929 lo llevan despues de una corrida normal).
+  if (Number(obs.versionPrecio ?? 0) > Number(ant.versionPrecio ?? 0) && !Number.isFinite(obs.precio)) {
+    rec.migracionPrecioDesde = ant.migracionPrecioDesde ?? timestamp;
+  } else {
+    delete rec.migracionPrecioDesde;
+  }
+
   let yaAnunciado = false;
   if (ant.notificadoDesaparecido) {
     cambios.push({ tipo: "recuperado", modelo, ...paraTitulo(rec), precio: rec.precio, categoria, url: rec.url, ...sinComprobar(rec) });
@@ -646,7 +712,7 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
     // extractSingleProduct, o sea la ficha propia (rango PROPIA). El JSON-LD de
     // una pagina familia no trae ninguno de los tres, asi que una fuente de menos
     // rango nunca puede disparar esta rama.
-    if (corrigeFuenteDePrecio(ant, obs)) {
+    if (corrigeFuenteDePrecio(ant, obs, timestamp)) {
       // El numero guardado era el tachado o el interno: se adopta el bueno sin
       // aviso de PRECIO... pero no en silencio total. No hay forma de
       // distinguir, desde una sola lectura, "el guardado estaba mal" de "este

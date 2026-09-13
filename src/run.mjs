@@ -379,6 +379,19 @@ async function main() {
   const sinPrecioMomificados = marcarSinPrecioProlongado(catalogo, { timestamp });
   const sinPrecioVisible = Object.values(observado).filter((r) => !Number.isFinite(r.precio)).length;
   const precioCongelado = Object.values(catalogo).filter((r) => (r.corridasSinPrecio ?? 0) > 0).length;
+  // LOS DOS NUMEROS NUEVOS DEL 2026-09-13 (tarde), los dos para poder decidir
+  // con datos de produccion lo que hoy solo se sabe de cuatro fichas cargadas a
+  // mano:
+  //  - precioDeclarado: lecturas que adoptaron un precio que la pagina NO
+  //    dibuja, solo porque el bloque declara que Samsung no lo vende online. Es
+  //    una adopcion a ciegas y no hay forma de contrastarla contra la pagina, asi
+  //    que por lo menos se cuenta.
+  //  - digitalDataSinAsentar: lecturas en que digitalData no termino de
+  //    hidratarse dentro del presupuesto (HIDRATACION_TIMEOUT_MS). Esas lecturas
+  //    NO adoptan ningun numero de digitalData, asi que si este contador es
+  //    alto, hay precios congelados por culpa del presupuesto y hay que subirlo.
+  const precioDeclarado = Object.values(observado).filter((r) => r.precioDeclarado === true).length;
+  const digitalDataSinAsentar = Object.values(observado).filter((r) => r.digitalDataSinAsentar === true).length;
 
   // CLAVES ORDENADAS. El orden de las claves de latest.json seguia el orden en
   // que se visitaban las paginas, asi que reordenar el recorrido lo reordenaba
@@ -468,6 +481,8 @@ async function main() {
     // congelando precios en silencio y nadie lo sabria.
     sinPrecioVisible,
     precioCongelado,
+    precioDeclarado,
+    digitalDataSinAsentar,
     sinPrecioProlongado: sinPrecioMomificados.length,
     // SKU cuyo precio guardado se corrigio en silencio porque lo que habia
     // guardado era el tachado o el numero interno (migracion versionPrecio).

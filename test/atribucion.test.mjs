@@ -12,7 +12,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RANGO, mismaPagina, repartirPorPropiedad, rutaDe, slugNombraSku } from "../src/identidad.mjs";
-import { clasificarVariantesFamilia, extractSingleProduct, productosDesdeApi } from "../src/extract.mjs";
+import { VERSION_PRECIO, clasificarVariantesFamilia, extractSingleProduct, productosDesdeApi } from "../src/extract.mjs";
 import { integrarVariantes } from "../src/catalogo.mjs";
 import { comparar } from "../src/comparar.mjs";
 import { ESTADO, VERSION_STOCK } from "../src/stock.mjs";
@@ -185,7 +185,7 @@ test("el JSON-LD trae el stock por variante y pasa por la misma maquina de estad
  * Doble de una pagina de Playwright. Reparte segun QUE pide cada evaluate, para
  * no depender del orden de las llamadas.
  */
-function paginaFalsa({ dd, bloque = null, ctas = [], ctasBarra = [], body = "texto de la pagina", urlFinal, especificaciones = {} }) {
+function paginaFalsa({ dd, bloque = null, ctas = [], ctasBarra = [], body = "texto de la pagina", urlFinal, especificaciones = {}, buyingTool = false }) {
   return {
     url: () => urlFinal,
     async waitForFunction() {},
@@ -197,7 +197,14 @@ function paginaFalsa({ dd, bloque = null, ctas = [], ctasBarra = [], body = "tex
       // solo no alcanza, porque el pie promocional del Buying Tool trae frases
       // como "Acumula puntos al comprar tus productos favoritos"
       if (fuente.includes("buying")) {
-        return bloque === null && ctas.length === 0 && ctasBarra.length === 0 ? null : { texto: bloque, ctas, ctasBarra };
+        // `selector` es lo que leerBloqueCompra usa para saber si el texto salio
+        // de la barra de precio de ESTA ficha o del Buying Tool de una /buy/,
+        // que habla de todas las variantes. Todas las fichas de este archivo son
+        // planas (su urlFinal no es una /buy/), asi que en vivo el ganador es
+        // `pd-buying-price`.
+        return bloque === null && ctas.length === 0 && ctasBarra.length === 0
+          ? null
+          : { texto: bloque, ctas, ctasBarra, selector: buyingTool ? "[class*='pd-buy']" : "[class*='pd-buying-price']" };
       }
       return especificaciones;
     },
@@ -488,10 +495,55 @@ test("un SKU borrado del catalogo no genera ningun evento", () => {
 
 const U_FE256_BUY = "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s25-fe-navy-256gb-sm-s731bdbkltl/";
 
-test("en una ficha fusionada gana el precio ESCRITO en la pagina, no el de la API", async () => {
+// LA FIXTURE VUELVE A SU FORMA ORIGINAL (2026-09-13 tarde, defecto medido por un
+// verificador). La version anterior de este arreglo le habia AGREGADO el monto al
+// bloque -- "Desde $ 48.333 ... o $ 579.990 ... *Aplican condiciones Comprar" --
+// con el argumento de que "el body ES el bloque mas el resto de la pagina, asi
+// que un bloque mudo con el body escrito es un estado que no existe".
+//
+// Ese argumento es justo la premisa que este encargo existe para negar, y hoy
+// esta medido en vivo que es falso: en la /buy/ del S25 FE, a los 1.640 ms de
+// domcontentloaded, el body ya trae montos escritos ($556.500, $69.165,
+// $829.990) mientras el bloque de compra todavia no publica ninguno. El body y
+// el bloque se pintan por separado. Reparar la fixture para que la prueba pasara
+// tapo el hallazgo: con la fixture ORIGINAL el codigo devolvia 829.990 -- el
+// precio de LISTA, via la API -- contra los 579.990 de HEAD.
+//
+// Asi que la fixture original se queda, y las pruebas afirman las dos cosas que
+// de verdad importan y que valen en los DOS estados de la pagina:
+//  1. la API de lista NUNCA le pisa el precio al cliente (esa era la promesa
+//     original, y hoy la sostiene la guarda `Number.isFinite(precioVisto)` de
+//     extractSingleProduct);
+//  2. la pagina no puede devolver DOS PRECIOS DISTINTOS segun el instante en que
+//     se lea: o el bueno, o ninguno.
+test("ficha fusionada: con el bloque pintado gana el precio del cliente, no el de la API", async () => {
   const base = {
     dd: {
       // la ficha publica los tres hermanos; la URL nombra solo al ultimo
+      model_code: "SM-S936BDBJLTL,SM-S931BDBJLTL,SM-S731BDBKLTL",
+      displayName: "Galaxy S25+;Galaxy S25;Galaxy S25 FE",
+      model_price: "579990",
+      list_price: "829990",
+    },
+    body: "Galaxy S25 FE Desde $ 48.333 en 12 cuotas o $ 579.990 Precio original: $ 829.990 Comprar",
+    bloque: "Desde $ 48.333 en 12 cuotas o $ 579.990 Precio original: $ 829.990 *Aplican condiciones Comprar",
+    urlFinal: U_FE256_BUY,
+  };
+  const apiLista = { products: [{ code: "SM-S731BDBKLTL", price: { value: 829990 }, stock: { stockLevelStatus: "inStock" } }] };
+
+  const conApi = await extractSingleProduct(paginaFalsa(base), U_FE256_BUY, [apiLista]);
+  const sinApi = await extractSingleProduct(paginaFalsa(base), U_FE256_BUY, []);
+
+  assert.equal(conApi.precio, 579990, "el cliente ve 579.990: la API de lista no puede pisarlo");
+  assert.equal(sinApi.precio, 579990);
+  assert.equal(conApi.precio, sinApi.precio, "la respuesta de la API no puede cambiar el precio guardado");
+});
+
+test("ficha fusionada con el bloque MUDO: no hay precio, y jamas el de la API", async () => {
+  // la fixture de HEAD, sin tocar: bloque legible que todavia no publico su
+  // monto y body con los dos numeros escritos.
+  const base = {
+    dd: {
       model_code: "SM-S936BDBJLTL,SM-S931BDBJLTL,SM-S731BDBKLTL",
       displayName: "Galaxy S25+;Galaxy S25;Galaxy S25 FE",
       model_price: "579990",
@@ -506,9 +558,68 @@ test("en una ficha fusionada gana el precio ESCRITO en la pagina, no el de la AP
   const conApi = await extractSingleProduct(paginaFalsa(base), U_FE256_BUY, [apiLista]);
   const sinApi = await extractSingleProduct(paginaFalsa(base), U_FE256_BUY, []);
 
-  assert.equal(conApi.precio, 579990, "el cliente ve 579.990: la API de lista no puede pisarlo");
-  assert.equal(sinApi.precio, 579990);
-  assert.equal(conApi.precio, sinApi.precio, "la respuesta de la API no puede cambiar el precio guardado");
+  assert.notEqual(conApi.precio, 829990, "EL DEFECTO MEDIDO: 829.990 es el precio de LISTA que publica la API");
+  assert.equal("precio" in conApi, false, "el bloque no publico monto: no hay precio que adoptar");
+  assert.equal("precio" in sinApi, false);
+  assert.equal(conApi.precioIlegible, true, "y queda contado en sinPrecioVisible");
+});
+
+test("ficha fusionada leida en sus DOS estados: nunca dos precios distintos", async () => {
+  // 5 corridas alternando si el bloque alcanzo a publicar su monto, con el body
+  // IDENTICO en todas. Es la prueba que faltaba: con la API respondiendo su
+  // precio de lista, la version anterior de este arreglo alternaba
+  // 579.990 <-> 829.990 y mandaba 4 avisos falsos (+43% y -30%, dos veces).
+  const dd = {
+    model_code: "SM-S936BDBJLTL,SM-S931BDBJLTL,SM-S731BDBKLTL",
+    displayName: "Galaxy S25+;Galaxy S25;Galaxy S25 FE",
+    model_price: "579990",
+    list_price: "829990",
+  };
+  const body = "Galaxy S25 FE Desde $ 48.333 en 12 cuotas o $ 579.990 Precio original: $ 829.990 Comprar";
+  const apiLista = { products: [{ code: "SM-S731BDBKLTL", price: { value: 829990 }, stock: { stockLevelStatus: "inStock" } }] };
+  const PINTADO = "Desde $ 48.333 en 12 cuotas o $ 579.990 Precio original: $ 829.990 *Aplican condiciones Comprar";
+  const MUDO = "*Aplican condiciones Comprar";
+
+  let catalogo = {
+    "SM-S731BDBKLTL": {
+      modelo: "SM-S731BDBKLTL",
+      nombre: "Galaxy S25 FE",
+      moneda: "CLP",
+      categoria: "Smartphones",
+      presencia: "activo",
+      ausencias: 0,
+      notificadoDesaparecido: false,
+      estadoStock: "disponible",
+      disponible: true,
+      versionStock: 2,
+      precio: 579990,
+      url: U_FE256_BUY,
+      paginaOrigen: U_FE256_BUY,
+      rango: RANGO.PROPIA,
+      versionPrecio: VERSION_PRECIO,
+    },
+  };
+  const avisos = [];
+  const vistos = new Set();
+  for (const pintado of [true, false, true, false, true]) {
+    const r = await extractSingleProduct(
+      paginaFalsa({ dd, body, bloque: pintado ? PINTADO : MUDO, urlFinal: U_FE256_BUY }),
+      U_FE256_BUY,
+      [apiLista],
+    );
+    if (Number.isFinite(r.precio)) vistos.add(r.precio);
+    const observado = {};
+    integrarVariantes(observado, { url: U_FE256_BUY, categoria: "Smartphones", subcategoria: null, variante: null }, [r], {
+      via: "individual",
+      timestamp: "T",
+    });
+    const paso = comparar({ previo: catalogo, observado, paginasFallidas: new Set(), corridaConfiable: true, timestamp: "T" });
+    catalogo = paso.catalogo;
+    avisos.push(...paso.cambios.filter((c) => c.tipo === "sube" || c.tipo === "baja"));
+  }
+  assert.deepEqual([...vistos], [579990], "el unico precio que la pagina puede entregar es el del cliente");
+  assert.deepEqual(avisos, [], "cero avisos: el render no puede mover el precio guardado");
+  assert.equal(catalogo["SM-S731BDBKLTL"].precio, 579990);
 });
 
 test("pero si el precio leido NO esta escrito en la pagina, la API sigue siendo el respaldo", async () => {
@@ -525,18 +636,45 @@ test("pero si el precio leido NO esta escrito en la pagina, la API sigue siendo 
   assert.equal(r.precio, 579990);
 });
 
-test("precioVisiblePreferido esta CABLEADO: el pack real sale con el precio que se ve", async () => {
-  // pack "Watch Ultra (2025) Blue + Galaxy Buds4 Pro" (F-SMR640SML70), medido el
-  // 2026-08-03: model_price=555980 no aparece en la pagina y list_price=974980 si.
-  // Sin este cableado la funcion se puede borrar y la suite sigue verde.
-  const page = paginaFalsa({
-    dd: { model_code: "F-SMR640SML70", displayName: "Watch Ultra + Buds4 Pro", model_price: "555980", list_price: "974980" },
-    body: "Watch Ultra (2025) Blue + Galaxy Buds4 Pro $ 974.980 Comprar ahora",
-    bloque: "*Aplican condiciones Comprar ahora",
-    urlFinal: "https://www.samsung.com/cl/watches/pack-f-smr640sml70/",
-  });
-  const r = await extractSingleProduct(page, "https://www.samsung.com/cl/watches/pack-f-smr640sml70/", []);
-  assert.equal(r.precio, 974980, "gana el precio ESCRITO en la pagina");
+test("el pack real: con el bloque pintado sale su precio; mudo, no sale ninguno", async () => {
+  // El pack "Watch Ultra (2025) Blue + Galaxy Buds4 Pro" (F-SMR640SML70), medido
+  // el 2026-08-03: model_price=555980 NO aparece en la pagina y list_price=974980
+  // si. Es el caso que le dio origen a precioVisiblePreferido.
+  //
+  // LA FIXTURE VUELVE A SU FORMA ORIGINAL (2026-09-13 tarde). La version anterior
+  // de este arreglo le habia agregado el monto al bloque para que la prueba
+  // siguiera dando 974.980; con la fixture de HEAD daba "sin precio", y eso se
+  // leyo como un problema de la fixture en vez de como lo que era: un cambio de
+  // conducta. La conducta nueva es la correcta -- con dos candidatos distintos y
+  // el bloque sin publicar monto, el texto de toda la pagina ya no arbitra --,
+  // pero hay que decirla, no esconderla.
+  const dd = { model_code: "F-SMR640SML70", displayName: "Watch Ultra + Buds4 Pro", model_price: "555980", list_price: "974980" };
+  const url = "https://www.samsung.com/cl/watches/pack-f-smr640sml70/";
+
+  const pintado = await extractSingleProduct(
+    paginaFalsa({
+      dd,
+      body: "Watch Ultra (2025) Blue + Galaxy Buds4 Pro Desde $ 81.248 en 12 cuotas o $ 974.980 Comprar ahora",
+      bloque: "Desde $ 81.248 en 12 cuotas o $ 974.980 *Aplican condiciones Comprar ahora",
+      urlFinal: url,
+    }),
+    url,
+    [],
+  );
+  assert.equal(pintado.precio, 974980, "gana el precio ESCRITO, no el model_price invisible");
+
+  const mudo = await extractSingleProduct(
+    paginaFalsa({
+      dd,
+      body: "Watch Ultra (2025) Blue + Galaxy Buds4 Pro $ 974.980 Comprar ahora",
+      bloque: "*Aplican condiciones Comprar ahora",
+      urlFinal: url,
+    }),
+    url,
+    [],
+  );
+  assert.equal("precio" in mudo, false, "el bloque no publico monto: mas vale callarse");
+  assert.notEqual(mudo.precio, 555980, "y JAMAS el model_price que la pagina no muestra");
 });
 
 // ---------------------------------------------------------------------------

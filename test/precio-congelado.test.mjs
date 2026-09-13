@@ -104,6 +104,13 @@ const OFERTA = {
 // bloque en alguno de sus tres estados posibles
 const SIN_PINTAR = "The Frame 43''\nCaracteristicas\nOpiniones";
 
+// DE QUE ELEMENTO SALIO EL BLOQUE (2026-09-13 tarde). Todas las fichas de este
+// archivo son fichas PLANAS de producto y en vivo el selector que gana ahi es
+// `pd-buying-price`: la barra de precio de ESE producto. El Buying Tool de una
+// /buy/ hubble es otra cosa -- habla de todas las variantes -- y de esa
+// diferencia depende si un monto solitario puede mandar sin comprobar nada.
+const BARRA_DE_PRECIO = "[class*='pd-buying-price']";
+
 /**
  * Doble de pagina con las lecturas del DOM separadas, igual que el de
  * test/precio-sin-carrera.test.mjs. `bloque` puede ser "auto" (el de la ficha),
@@ -124,7 +131,7 @@ function pagina(ficha, { bloque = "auto", body = null, ctas = null } = {}) {
       if (evaluaciones === 3) {
         if (bloque === "ilegible") throw new Error("evaluate fallido");
         const texto = bloque === "auto" ? ficha.bloque : bloque;
-        return { texto, ctas: ctas ?? (bloque === "auto" ? ficha.ctas ?? [] : []), ctasBarra: [] };
+        return { texto, ctas: ctas ?? (bloque === "auto" ? ficha.ctas ?? [] : []), ctasBarra: [], selector: BARRA_DE_PRECIO };
       }
       return {};
     },
@@ -237,7 +244,24 @@ test("si la pagina NO dijo que deja de venderlo, no se adopta nada", () => {
   );
 });
 
-test("EL CONTROL: con DOS candidatos no se adopta ninguno, en cualquier orden", () => {
+test("EL CONTROL: con DOS candidatos gana el model_price, nunca el de lista", () => {
+  // ESTA PRUEBA CAMBIO DE VEREDICTO EL 2026-09-13, y vale contar por que.
+  // Hasta hoy exigia `null` (el pack seguia congelado) con el argumento "dos
+  // candidatos = carrera posible". El argumento valia mientras la concesion
+  // heredara el resultado de precioVisiblePreferido, que mira el texto de TODA
+  // la pagina y por lo tanto SI depende del render. Ya no: con la pagina
+  // declarando que no la vende online, la regla elige un numero FIJO -- el
+  // model_price, jamas el list_price -- asi que la pagina devuelve lo mismo
+  // pinte o no pinte y no queda ninguna carrera que perder.
+  //
+  // Lo que se gana, medido: F-UN85MHWB450 tiene HOY guardado 1.099.990, que es
+  // exactamente su model_price, asi que destrabarlo no mueve un peso ni manda un
+  // aviso; lo que cambia es que a partir de ahora puede ENTERARSE si Samsung se
+  // lo cambia. Era el pendiente nº 1 de la entrada del 2026-09-13 ("si
+  // precioCongelado queda en 94, la llave es demasiado estrecha").
+  // Su list_price (1.659.980 = 1.099.990 + 559.990) es la suma de las partes del
+  // pack: un precio de referencia, como el "ListPrice" que el Z Flip7 escribe
+  // con todas sus letras en su propio body.
   const pack = (modelPrice, listPrice) =>
     precioAdoptable({
       precioBloque: null,
@@ -249,10 +273,10 @@ test("EL CONTROL: con DOS candidatos no se adopta ninguno, en cualquier orden", 
       bodyText: PACK.body,
     });
   // F-UN85MHWB450 tal como lo publica su pagina
-  assert.equal(pack(1099990, 1659980), null);
-  // y el mismo par dado vuelta: la regla es "un solo candidato", no "el menor de
-  // los dos" (fija el otro lado del limite: >= y <= mueren aca)
-  assert.equal(pack(1659980, 1099990), null);
+  assert.equal(pack(1099990, 1659980), 1099990);
+  // y el mismo par dado vuelta: la regla es "el model_price", NO "el menor de
+  // los dos" ni "el mayor". Un mutante que devuelva listPrice muere aca.
+  assert.equal(pack(1659980, 1099990), 1659980);
 });
 
 test("precioVisiblePreferido NO resuelve el caso: sin monto escrito devuelve null", () => {
@@ -294,11 +318,11 @@ test("las tres fichas de montos iguales se destraban y salen con su precio", asy
   }
 });
 
-test("EL CONTROL sigue congelado por el flujo real", async () => {
+test("EL CONTROL tambien se destraba por el flujo real, con SU numero", async () => {
   const r = await extractSingleProduct(pagina(PACK), PACK.url);
-  assert.equal("precio" in r, false, "el pack tiene dos candidatos: no se adopta ninguno");
-  assert.equal(r.precioIlegible, true, "y la lectura queda marcada, para que la contracara se vea");
-  assert.equal(r.precioTachado, 1659980, "el tachado queda como rastro para la migracion");
+  assert.equal(r.precio, 1099990, "el model_price, que ademas es el que ya estaba guardado");
+  assert.equal(r.precioIlegible, undefined, "la lectura ya no es ilegible: la pagina si publica un numero");
+  assert.equal(r.precioTachado, 1659980, "el de lista queda como rastro para la migracion, no como precio");
 });
 
 test("la ficha que no dice nada sobre la venta tampoco se destraba", async () => {
@@ -336,7 +360,7 @@ test("la barra pegajosa decide el stock pero NO destraba el precio", async () =>
       n += 1;
       if (n === 1) return { model_price: FRAME.modelPrice, list_price: FRAME.listPrice, model_code: FRAME.sku, displayName: "Producto" };
       if (n === 2) return FRAME.body;
-      if (n === 3) return { texto: null, ctas: [], ctasBarra: ["No está a la venta"] };
+      if (n === 3) return { texto: null, ctas: [], ctasBarra: ["No está a la venta"], selector: null };
       return {};
     },
   };
@@ -359,12 +383,12 @@ test("destrabar las tres fichas NO emite ningun aviso de precio", async () => {
   }
 });
 
-test("EL CONTROL: sigue congelado, conserva su precio y suma una corrida", async () => {
+test("EL CONTROL: se destraba SIN avisar, porque su numero es el que ya tenia", async () => {
   const paso = await unaCorrida(PACK, { [PACK.sku]: registro(PACK) });
-  assert.deepEqual(paso.cambios, [], "un pack congelado tampoco avisa nada");
-  assert.equal(paso.catalogo[PACK.sku].precio, PACK.guardado, "conserva el ultimo precio bueno");
-  assert.equal(paso.catalogo[PACK.sku].corridasSinPrecio, 5, "y el contador sigue subiendo: 4 -> 5");
-  assert.equal(paso.catalogo[PACK.sku].sinPrecioDesde, "T0", "el ancla de reloj no se mueve");
+  assert.deepEqual(paso.cambios, [], "el pack se destraba en el mismo numero: no hay nada que avisar");
+  assert.equal(paso.catalogo[PACK.sku].precio, PACK.guardado, "y ese numero es 1.099.990, el de siempre");
+  assert.equal(paso.catalogo[PACK.sku].corridasSinPrecio, undefined, "el contador de congelado se borra");
+  assert.equal(paso.catalogo[PACK.sku].sinPrecioDesde, undefined, "y el ancla de reloj se va con el");
 });
 
 // === 4. lo que se RECUPERA: la cobertura ====================================

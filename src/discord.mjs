@@ -623,7 +623,29 @@ export async function notifyDiscord(webhookUrl, { changes, errores, totalRevisad
  * se tragaba bajas reales enteras y sin segunda oportunidad (versionPrecio queda
  * sellado). Aca quedan, con los dos numeros y las bajas primero.
  */
-export function mensajeCorreccionesDePrecio(correcciones, tope = 15) {
+/**
+ * EL TOPE DEJA DE SER UN NUMERO FIJO (2026-09-13 tarde, defecto medido).
+ *
+ * Este mensaje es la unica forma que tiene el operador de enterarse de que una
+ * oferta REAL que estreno hoy se fue por el canal tecnico en vez de salir como
+ * baja (ver HORAS_MAX_MIGRACION_PRECIO en src/comparar.mjs: desde una sola
+ * lectura los dos casos son indistinguibles). Con las 15 lineas de antes, la
+ * mayor ola simultanea que registra data/history.jsonl -- 206 bajas en UNA
+ * corrida, el 2026-09-09T16:56 -- se veia como "…y 191 más", que es exactamente
+ * no enterarse.
+ *
+ * Subirlo a un numero fijo mas grande no alcanzaba, y lo cazo la prueba: con los
+ * modelos reales del catalogo cada linea mide ~50 caracteres
+ * (`• 🟢 SM-X520NLBACHO-123: $1.999.990 → $1.799.990`) y 40 lineas se pasan del
+ * limite de 1900 que aplica notifyTecnico, que ademas corta con `slice` -- o sea
+ * que se perderia el "…y N más" y el pie, y el mensaje quedaria mintiendo por
+ * omision sin decirlo. Asi que el tope es el PRESUPUESTO: se llenan tantas
+ * lineas como quepan y el maximo duro queda como red de seguridad. Con los
+ * modelos mas largos entran ~25; con los cortos, muchas mas.
+ */
+const LARGO_MAX_TECNICO = 1900;
+
+export function mensajeCorreccionesDePrecio(correcciones, tope = 60) {
   const lista = correcciones ?? [];
   if (lista.length === 0) return null;
   const esBaja = (c) => Number.isFinite(c.precio) && Number.isFinite(c.precioAnterior) && c.precio < c.precioAnterior;
@@ -634,18 +656,24 @@ export function mensajeCorreccionesDePrecio(correcciones, tope = 15) {
   const ordenadas = [...lista].sort(
     (a, b) => Number(esBaja(b)) - Number(esBaja(a)) || String(a.modelo).localeCompare(String(b.modelo)),
   );
-  const lineas = ordenadas
-    .slice(0, tope)
-    .map((c) => `• ${esBaja(c) ? "🟢" : "🔴"} ${c.modelo}: ${fmt(c.precioAnterior)} → ${fmt(c.precio)}`)
-    .join("\n");
-  const resto = ordenadas.length > tope ? `\n…y ${ordenadas.length - tope} más.` : "";
-  return (
-    `🔧 **Monitor Samsung — precios corregidos de origen**\n` +
-    `${lista.length} producto(s) tenían guardado un número que no era el que se cobra (el precio tachado, o un valor interno que la página no muestra). **No bajaron ni subieron**: se estaba leyendo mal, y por eso no salen como aviso de precio.\n` +
-    `${lineas}${resto}\n` +
-    `Si alguno de estos era una oferta de verdad que estrenó hoy, acá se ve: desde una sola lectura el monitor no puede distinguir los dos casos.\n` +
-    `Sale una sola vez por producto.`
+  const todas = ordenadas.map(
+    (c) => `• ${esBaja(c) ? "🟢" : "🔴"} ${c.modelo}: ${fmt(c.precioAnterior)} → ${fmt(c.precio)}`,
   );
+  const armar = (n) => {
+    const resto = todas.length > n ? `\n…y ${todas.length - n} más.` : "";
+    return (
+      `🔧 **Monitor Samsung — precios corregidos de origen**\n` +
+      `${lista.length} producto(s) tenían guardado un número que no era el que se cobra (el precio tachado, o un valor interno que la página no muestra). **No bajaron ni subieron**: se estaba leyendo mal, y por eso no salen como aviso de precio.\n` +
+      `${todas.slice(0, n).join("\n")}${resto}\n` +
+      `Si alguno de estos era una oferta de verdad que estrenó hoy, acá se ve: desde una sola lectura el monitor no puede distinguir los dos casos.\n` +
+      `Sale una sola vez por producto.`
+    );
+  };
+  // Se llenan tantas lineas como quepan en el presupuesto: nunca se entrega un
+  // mensaje que notifyTecnico vaya a cortar a la mitad (ver la nota de arriba).
+  let n = Math.min(todas.length, tope);
+  while (n > 1 && armar(n).length > LARGO_MAX_TECNICO) n -= 1;
+  return armar(n);
 }
 
 export async function notifyTecnico(webhookUrl, texto) {
