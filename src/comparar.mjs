@@ -46,6 +46,7 @@
 import { enAlcance, horasEntre } from "./alcance.mjs";
 import { normalizar } from "./titulo.mjs";
 import { ESTADO, disponibleDe, estadoObservado } from "./stock.mjs";
+import { MAGNITUDES, VENTANA_REBOTE_HORAS, evaluarEstabilidad } from "./estabilidad.mjs";
 
 export const UMBRAL_AUSENCIAS = 2;
 
@@ -405,6 +406,11 @@ function borrarDiagnosticoDePrecio(rec) {
   // resumen de la corrida; en el catalogo no describen al producto.
   delete rec.precioDeclarado;
   delete rec.digitalDataSinAsentar;
+  // diagnostico de la lectura del STOCK, mismo criterio: cuantas paginas
+  // resultaron ser un configurador y en cuantas de esas la API tampoco
+  // respondio (ver selectorDeGrupo en src/extract.mjs)
+  delete rec.stockDeSelector;
+  delete rec.stockSinFuente;
 }
 
 /**
@@ -852,7 +858,55 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
   // respaldo a `disponible` sigue vivo en src/stock.mjs.
   rec.disponible = disponibleDe(rec.estadoStock);
 
-  return { rec, cambios, correcciones };
+  // EL FRENO ANTI-PARPADEO VA AL FINAL, SOBRE LOS AVISOS YA DECIDIDOS (ver
+  // src/estabilidad.mjs). No cambia lo que se GUARDA -- el catalogo sigue
+  // diciendo la verdad de la ultima lectura -- ni toca ninguna de las reglas de
+  // arriba: solo decide cuales de esos avisos llegan a Discord y cual hay que
+  // dar al asentarse. Por eso es lo ultimo y por eso vive en su propio modulo.
+  return conFreno({ modelo, ant, rec, cambios, correcciones, categoria, timestamp });
+}
+
+/**
+ * Aplica el freno anti-parpadeo a los avisos que evaluarObservado ya decidio.
+ *
+ * NO CALLA NINGUNO: marca los que son un rebote para que el resumen los ponga en
+ * la seccion compacta "🌀 Siguen rebotando" en vez de darles su propia alerta
+ * (ver src/estabilidad.mjs para el por que y la medicion).
+ *
+ * Vive aca y no en src/estabilidad.mjs porque necesita `paraTitulo` (los datos
+ * de presentacion del producto), y estabilidad.mjs es deliberadamente ciego a
+ * como se ve un aviso: solo sabe de valores y de relojes.
+ */
+function conFreno({ modelo, ant, rec, cambios, correcciones, categoria, timestamp }) {
+  const { memorias, cambios: salida, rebotes, nuevosRebotando } = evaluarEstabilidad({
+    ant,
+    cambios,
+    timestamp,
+  });
+
+  // la memoria del freno se guarda en el registro; cuando no queda nada que
+  // recordar el campo desaparece, para no engordar los ~1.000 registros sanos
+  for (const mag of MAGNITUDES) {
+    if (memorias[mag.campo]) rec[mag.campo] = memorias[mag.campo];
+    else delete rec[mag.campo];
+  }
+
+  // EL RASTRO QUE PIDIO EL OPERADOR: enterarse por el canal TECNICO de que un
+  // producto empezo a rebotar y de que sus avisos pasan a salir compactos. La
+  // huella de "ya lo avise" NO vive aca sino en data/avisos-tecnicos.jsonl, y se
+  // escribe solo cuando Discord confirma la entrega (ver run.mjs): si el envio
+  // falla, la corrida siguiente lo vuelve a intentar.
+  const nuevos = nuevosRebotando.map((i) => ({
+    modelo,
+    magnitud: i.magnitud,
+    valor: i.valor,
+    anterior: i.anterior,
+    ...paraTitulo(rec),
+    categoria,
+    url: rec.url,
+  }));
+
+  return { rec, cambios: salida, correcciones, rebotes, nuevosRebotando: nuevos };
 }
 
 /**
@@ -865,13 +919,19 @@ export function comparar({ previo, observado, paginasFallidas, alcance, corridaC
   const catalogo = {};
   const cambios = [];
   const correccionesDePrecio = [];
+  // avisos que el freno anti-parpadeo degrado a la seccion compacta en esta
+  // corrida, y productos que acaban de empezar a rebotar (ver estabilidad.mjs)
+  const rebotesDegradados = [];
+  const nuevosRebotando = [];
   let fueraDeAlcance = 0;
 
   for (const [modelo, obs] of Object.entries(observado)) {
-    const { rec, cambios: propios, correcciones } = evaluarObservado({ modelo, ant: previo[modelo], obs, timestamp });
+    const { rec, cambios: propios, correcciones, rebotes, nuevosRebotando: nuevos } = evaluarObservado({ modelo, ant: previo[modelo], obs, timestamp });
     catalogo[modelo] = rec;
     cambios.push(...propios);
     correccionesDePrecio.push(...(correcciones ?? []));
+    rebotesDegradados.push(...(rebotes ?? []));
+    nuevosRebotando.push(...(nuevos ?? []));
   }
 
   for (const [modelo, ant] of Object.entries(previo)) {
@@ -979,7 +1039,71 @@ export function comparar({ previo, observado, paginasFallidas, alcance, corridaC
   // revision completa y una liviana dejen de ser incomparables entre si: sin el,
   // `productosEncontrados` pasa de 929 a 196 sin ninguna explicacion en el
   // archivo.
-  return { catalogo, cambios, correccionesDePrecio, fueraDeAlcance };
+  return { catalogo, cambios, correccionesDePrecio, fueraDeAlcance, rebotesDegradados, nuevosRebotando };
+}
+
+/**
+ * LOS TRES NUMEROS DEL FRENO QUE VAN A data/ejecuciones.jsonl.
+ *
+ * Vive aca, y es una funcion PURA, porque en run.mjs no habria ninguna prueba
+ * que lo cubra: el archivo arranca main() al importarse (hueco conocido). Una
+ * verificacion independiente mostro que ahi se podia clavar el contador en 0
+ * y la suite entera seguia verde. Aca no: hay pruebas con valores distintos de
+ * cero, y en run.mjs queda UNA sola linea de cableado (`...resumenDeRebotes()`).
+ *
+ * @param cambios los cambios de la corrida ya decididos (los degradados vienen
+ *   marcados `rebote: true`)
+ * @param catalogo el catalogo ya escrito, de donde sale quien esta rebotando AHORA
+ * @param nuevosRebotando los que empezaron a rebotar en ESTA corrida
+ */
+export function resumenDeRebotes({ cambios = [], catalogo = {}, nuevosRebotando = [], timestamp } = {}) {
+  return {
+    // avisos que salieron en la seccion compacta en vez de con su propia alerta
+    avisosDegradados: cambios.filter((c) => c?.rebote === true).length,
+    // cuantos productos estan rebotando AHORA. Si crece y no baja, hay un
+    // parpadeo nuevo que este proyecto todavia no diagnostico: la seccion
+    // compacta lo va a tapar, que es su trabajo, pero tapar no es arreglar.
+    productosRebotando: rebotesDe(catalogo, timestamp).length,
+    // cuantos EMPEZARON a rebotar en esta corrida
+    productosNuevosRebotando: (nuevosRebotando ?? []).length,
+  };
+}
+
+/**
+ * Productos que en ESTE momento estan rebotando, o sea que tienen al menos un
+ * rebote dentro de la ventana. Sale en el resumen de data/ejecuciones.jsonl (si
+ * el numero crece y no baja, hay un parpadeo nuevo que este proyecto todavia no
+ * diagnostico) y es la lista de la que sale el aviso tecnico.
+ *
+ * EL RELOJ SE APLICA ACA TAMBIEN, y no es redundante: un SKU que esta fuera del
+ * alcance de la corrida no pasa por evaluarEstabilidad, asi que su memoria
+ * guardada puede ser de hace una semana. Sin el reloj, ese registro figuraria
+ * "rebotando" para siempre.
+ */
+export function rebotesDe(catalogo, timestamp) {
+  const lista = [];
+  for (const [modelo, rec] of Object.entries(catalogo ?? {})) {
+    for (const mag of MAGNITUDES) {
+      const m = rec?.[mag.campo];
+      if (!m || !(m.n > 0)) continue;
+      if (timestamp) {
+        const h = horasEntre(m.ultimo, timestamp);
+        if (h === null || h > VENTANA_REBOTE_HORAS) continue;
+      }
+      lista.push({
+        modelo,
+        magnitud: mag.clave,
+        valor: mag.valorDe(rec),
+        valores: Array.isArray(m.v) ? m.v.slice(0, 3) : [],
+        veces: m.n,
+        desde: m.desde ?? null,
+        ...paraTitulo(rec),
+        categoria: rec?.categoria,
+        url: rec?.url,
+      });
+    }
+  }
+  return lista;
 }
 
 /**

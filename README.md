@@ -271,6 +271,94 @@ Y después lo comprobé contra las dos páginas de verdad, cargándolas con el s
 
 ---
 
+## El stock que iba y venía, y el freno nuevo (2026-09-13, noche)
+
+Dos cosas distintas, y las dos vienen de lo que reportaste: *"el Galaxy A36… 539.990, después 369.990, después vuelve a 539.990"* y *"el Galaxy Z Flip6, que a veces aparece agotado, después no está a la venta, agotado, no está a la venta"*.
+
+El baile del **precio** del A36 ya estaba arreglado. Lo que faltaba era el del **stock**, que es otro camino, y el **freno** que pediste para cuando vuelva a pasar por otra causa.
+
+---
+
+### Parte 1: el "agotado" que era de otro color
+
+Tres productos concentraban el rebote de stock: el **Z Flip7 FE**, el **A36** y el **Z Flip6**. Los tres se capturan desde una página de esas donde eliges capacidad y color antes de comprar — un configurador, no la ficha de un producto solo.
+
+Cargué dos de esas páginas mirándolas cada cuarto de segundo mientras cargan, y ahí está:
+
+**El Galaxy A36.** El producto que vigilamos es el **Violeta de 256 GB**. Su página escribe la grilla de colores con el stock de cada uno:
+
+> Verde lima increíble · Violeta increíble · Gris increíble **Agotado** · Grafito increíble **Agotado**
+
+El monitor veía esa palabra "Agotado" y la guardaba **como si fuera del Violeta**. No lo es: es del Gris y del Grafito. Y cuando el monitor leía medio segundo antes, la grilla todavía no estaba pintada, así que no veía ninguna palabra y preguntaba por el código exacto — y ahí la respuesta era **disponible**. Una revisión leía tarde y decía "agotado", la siguiente leía temprano y decía "disponible". De ahí la seguidilla.
+
+**El Z Flip7 FE.** La barra de abajo dice *"No está a la venta"*, pero recién a partir del segundo y medio. Antes de eso no dice nada, y el monitor caía a preguntar por el código, que responde *"agotado"*. Las dos respuestas son verdad y las dos significan lo mismo — no lo puedes comprar —, pero son etiquetas distintas, y cuál te llegaba dependía de si la página había terminado de dibujarse. De ahí el `agotado → no está a la venta → agotado`.
+
+**Lo que cambió.** En una página de configurador, el stock ya **no** se lee de la pantalla: se pregunta por el **código exacto del producto**, que es el único dato que habla de ese producto y no de sus hermanos. Es la misma regla que el monitor ya usaba en las páginas que muestran varios productos a la vez; a estas se les escapaba por un detalle técnico.
+
+- Son **11 productos** de los 929 vigilados. Los demás no se tocan: una ficha normal sigue decidiendo con su propio botón de compra.
+- **Ninguno se queda sin vigilancia, y los 11 dependen de la respuesta por código** (el informe anterior decía "9 de 11" y estaba mal contado: volví a censarlo y **ninguno** de los 11 tiene otra página en el catálogo — Z Flip7, Z Flip6, Z Flip3, Z Fold3, Z Fold6, Watch Ultra, S23 FE, S21 FE, A56, A36). Para los 12 códigos de las dos páginas que cargué en vivo, la respuesta por código llegó en todos. Si algún día faltara, el monitor **no inventa**: deja el estado como estaba y no te avisa nada.
+- **Lo que pierdes, dicho de frente:** 3 de esos 11 hoy figuran como *"no está a la venta"* y van a pasar a decir *"agotado"*. Las dos frases significan que no lo puedes comprar; lo que se va es el matiz, y lo que se gana es que dejen de rebotar. Si echas de menos la distinción, se puede recuperar (cuesta ~40 segundos por revisión completa) — dime y lo hago.
+
+**Comprobado contra las páginas de verdad**, con el sistema completo y partiendo del catálogo real:
+
+| Producto | Guardado hoy | Lo que dice ahora | Avisos |
+|---|---|---|---|
+| Galaxy A36 Violeta 256GB | agotado · $539.990 | **disponible · $369.990** | 1 aviso de "volvió el stock" (es de verdad) |
+| Galaxy Z Flip7 FE | no está a la venta | **agotado** | ninguno todavía: espera la segunda revisión, como siempre |
+
+---
+
+### Parte 2: el freno anti-rebote (lo vas a notar, así que acá está explicado)
+
+Esto es lo que pediste con todas sus letras: *"si ya me notificaste este cambio una vez, no es necesario volver a notificarlo las veces siguientes"* — pero también dijiste *"si efectivamente Samsung está cambiando el precio, ya, está bien que me notifiques"*. Las dos cosas juntas.
+
+**La regla, en una frase:** si un producto **vuelve a un precio (o a un estado) que ya te conté en los últimos 3 días**, eso no es una novedad, es un vaivén — así que **deja de tener su propia alerta** y pasa a **una sola línea** al final del resumen, en una sección que se llama **"🌀 Siguen rebotando"**.
+
+Una línea así se ve más o menos así:
+
+```
+🖥️ Monitor Odyssey G3 32" (LS32DG300ELXZS) — 🌀 $199.990 ⇄ $279.990 · ahora $199.990 (7ª vez en 72 h)
+```
+
+En vez de la alerta grande de siempre, con su bloque, su porcentaje y su link.
+
+**Lo importante: no dejo de avisarte nada.** El primer intento de este freno sí callaba los vaivenes, y al medirlo contra los últimos 30 días resultó que **se habría tragado 61 bajas de precio de verdad**, 49 de ellas de 20% o más (la mayor, una tablet de $1.599.990 a $849.990). Eso es justo lo contrario de lo que sirve. Así que el freno cambia **la forma** del aviso, nunca lo borra:
+
+1. **Un valor NUEVO siempre es alerta grande, al instante.** Si el A36 baja a $299.990 —un precio que no tenía— te llega como siempre, aunque el producto venga rebotando hace días. Una baja de Cyber es, por definición, un número nuevo.
+2. **Un regreso a un precio que ya conocías sale compacto, en la misma revisión**, con el precio de HOY. Si el monitor está otra vez a $199.990, eso lo lees igual y puedes ir a comprar.
+3. **Nunca hay silencio.** No existe un estado "en pausa": cada cambio sale en la misma revisión en que se detecta, grande o compacto.
+4. **Te aviso una vez, por el canal técnico**, cuando un producto empieza a rebotar — así sabes por qué dejó de sonar fuerte. Ese mensaje se repite solo si el vaivén dura más de una semana.
+
+**Lo que cambia, medido sobre los 829 avisos reales de los últimos 30 días:**
+
+| | antes | ahora |
+|---|---|---|
+| alertas grandes | 829 | **680** (18% menos) |
+| avisos que se pierden | — | **0** |
+| cuánto tiempo puedes quedar sin saber el precio de hoy | — | **0 horas** (sale en la misma revisión) |
+| revisiones que dejan de mandarte un mensaje grande | — | **49 de 125** (39%) |
+
+**El caso peor del catálogo, que es el que mejor lo muestra.** El monitor Odyssey G3 cambió de precio **58 veces en 30 días**, siempre entre $279.990 y $199.990. Hoy eso son 58 alertas; con el primer intento del freno habrían sido 22. Ahora son **2 alertas grandes** (una por cada precio, la primera vez) y 56 líneas compactas — con el precio de hoy en cada una.
+
+**Y las ofertas de verdad no se tocan.** La mayor ola de bajas del historial —**206 productos bajando de precio en una sola revisión**, el 9 de septiembre— sale **completa**, las 206 como alerta grande.
+
+**Los tres productos de tu reclamo**, procesando la secuencia real de esos dos días:
+
+| | avisos que recibiste | alertas grandes ahora |
+|---|---|---|
+| Galaxy A36 — precio | 6 | **1** |
+| Galaxy A36 — stock | 3 | **1** |
+| Galaxy Z Flip7 FE — stock | 4 | **1** |
+| Galaxy Z Flip6 — stock (cambió una sola vez de verdad) | 1 | **1** |
+
+Esa última fila importa tanto como las otras: **un cambio que ocurre una sola vez se sigue avisando igual.**
+
+**Dónde lo ves.** En `data/ejecuciones.jsonl`, cada revisión trae ahora `avisosDegradados` (cuántos salieron compactos), `productosRebotando` (cuántos están rebotando en este momento) y `productosNuevosRebotando` (cuántos empezaron hoy). Si `productosRebotando` crece y no baja, es que apareció un vaivén nuevo que todavía nadie diagnosticó — el freno lo ordena, pero ordenar no es arreglar.
+
+**Lo que se guarda igual.** Los avisos degradados **sí** quedan escritos en el historial del monitor, marcados. Cada uno de los vaivenes de este proyecto se encontró midiendo ese historial, y borrarlos dejaría ciega a la próxima investigación.
+
+---
+
 ## Dos tipos de revisión: completa y liviana (2026-09-12)
 
 Pediste que el recorrido entero se hiciera **dos veces al día** y que el resto de las veces, lo más seguido posible, se revisaran **solo las 5 categorías principales**, porque son las que te importan y ese recorrido es mucho más corto.

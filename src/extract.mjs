@@ -21,7 +21,7 @@
 //     "disponible por defecto").
 import { filtrarEspecificacionesUtiles } from "./titulo.mjs";
 import { ESTADO, VERSION_STOCK, disponibleDe, estadoDesdeApi, estadoDesdeBloqueCompra, estadoDesdeJsonLd } from "./stock.mjs";
-import { RANGO, repartirPorPropiedad } from "./identidad.mjs";
+import { RANGO, repartirPorPropiedad, slugNombraSku } from "./identidad.mjs";
 
 /**
  * La pagina que se pidio existe, pero Samsung entrego la ficha de OTRO producto
@@ -1122,9 +1122,67 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
   // una solo entra si la anterior no decidio, asi que agregar la barra no puede
   // quitarle un veredicto correcto a nadie.
   const bloque = await leerBloqueCompra(page);
-  const estadoBloque = estadoDesdeBloqueCompra(bloque.texto, bloque.ctas);
+
+  // ¿ESTA PAGINA ES UN CONFIGURADOR? (2026-09-13, medido en vivo)
+  //
+  // Una /buy/ con plantilla hubble cuyo slug NO nombra al SKU no es la ficha de
+  // este producto: es el SELECTOR de una familia. Todo su bloque de compra habla
+  // de TODAS las variantes a la vez, y la barra de abajo habla de la que el
+  // selector trae elegida. Ya se le quito por eso la llave del PRECIO (defectos
+  // 5 y 6 del 2026-09-13); esta es la mitad que quedo pendiente, la del STOCK.
+  //
+  // LO MEDIDO, muestreando cada 250 ms y entrando igual que produccion:
+  //   galaxy-a36/buy/ (SKU propio SM-A366ELVGLTL = Violeta 256GB)
+  //     · el bloque escribe "Gris increíble Agotado Grafito increíble Agotado":
+  //       el "Agotado" es de OTROS COLORES, no del SKU que se esta guardando.
+  //     · 19 de 20 muestras dan "agotado" por ese texto; la muestra de los
+  //       1.191 ms, tomada antes de que se pintara la grilla de colores, da
+  //       "desconocido" y cae a la API, que responde DISPONIBLE para este SKU
+  //       (y agotado para 7 de sus 8 hermanos). Esa moneda al aire es el vaiven
+  //       disponible <-> agotado que reporto el operador.
+  //   galaxy-z-flip7-fe/buy/ (SM-F761BZKJCHO)
+  //     · el bloque nunca decide; la BARRA pegajosa dice "No está a la venta"
+  //       desde los 1.480 ms y "nada" antes. La API dice agotado para los 4
+  //       codigos. 19 de 20 muestras dan "no-a-la-venta" y 1 da "agotado": ese
+  //       es el vaiven no-a-la-venta <-> agotado del mismo reporte.
+  //     · digitalData termina de asentarse a los 948 ms, o sea que la lectura de
+  //       produccion cae JUSTO en el borde donde la barra todavia se esta
+  //       pintando. No es mala suerte: es el instante en que se lee.
+  //
+  // LA DECISION: en un configurador el stock sale de la API POR CODIGO y de nada
+  // mas. Es la misma regla que el proyecto ya aplica a las paginas con varios
+  // SKU propios veinte lineas mas arriba ("el bloque de compra es un selector de
+  // grupo que NO se puede atribuir a ningun SKU"); estas se le escapaban solo
+  // porque su digitalData declara UN model_code. Las dos fuentes que se
+  // descartan no son mediciones de este SKU: una es el texto de otras variantes
+  // y la otra es una carrera de renderizado.
+  //
+  // LO QUE CUESTA, DICHO CON NUMEROS: 11 de los 929 SKU vivos leen hoy su stock
+  // de un configurador (27 salen de una /buy/ que no los nombra, pero 14 ya
+  // pasan por la API porque su pagina declara varios propios y 2 entran por el
+  // JSON-LD de una familia). De esos 11, los 3 que hoy dicen "no-a-la-venta"
+  // van a pasar a decir "agotado": las dos cosas significan "no se puede
+  // comprar" y el rebote entre ellas es exactamente el ruido que el operador
+  // pidio sacar. Si alguna vez hay que recuperar ese matiz, la via medida es
+  // ESPERAR a que la barra pegajosa termine de pintarse (su CTA aparece a los
+  // ~1,5 s, medio segundo despues de que digitalData se asienta) con su propio
+  // presupuesto y solo en esas 27 paginas: ~40 s por revision completa.
+  //
+  // LOS 11 DEPENDEN DE LA API, NO 9 (censo corregido el 2026-09-13 tras una
+  // verificacion independiente): NINGUNO de los 11 tiene otra pagina en el
+  // catalogo que lo nombre -- se busco cada SKU contra las 1.032 paginaOrigen y
+  // url del catalogo y no aparece en ninguna otra. La cifra "9 de 11" del
+  // informe anterior estaba mal contada. (La verificacion decia 12; son 11: su
+  // duodecimo, SM-F761BZWJCHO, esta guardado con presencia "desaparecido", o sea
+  // que no es un SKU vivo. Por eso tampoco hay ninguna pagina de configurador
+  // con dos SKU propios VIVOS.)
+  // Para los 12 codigos de las dos paginas cargadas en vivo la API respondio por
+  // TODOS. Si algun dia no responde, el estado queda "desconocido", que no cambia
+  // nada ni avisa nada, y `stockSinFuente` lo cuenta en el resumen.
+  const selectorDeGrupo = !bloque.barraDePrecio && !slugNombraSku(url, propio);
+  const estadoBloque = selectorDeGrupo ? ESTADO.DESCONOCIDO : estadoDesdeBloqueCompra(bloque.texto, bloque.ctas);
   let estado = estadoBloque;
-  if (estado === ESTADO.DESCONOCIDO) estado = estadoDesdeBloqueCompra(null, bloque.ctasBarra);
+  if (estado === ESTADO.DESCONOCIDO && !selectorDeGrupo) estado = estadoDesdeBloqueCompra(null, bloque.ctasBarra);
   if (estado === ESTADO.DESCONOCIDO) estado = porCodigo.get(propio)?.estado ?? ESTADO.DESCONOCIDO;
 
   // El precio ya esta a salvo en este punto: si la lectura de especificaciones
@@ -1239,6 +1297,16 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
     especificaciones: filtrarEspecificacionesUtiles(especCrudas),
     versionPrecio: VERSION_PRECIO,
   };
+
+  // DIAGNOSTICO DE ESTA LECTURA (no del producto): cuantas paginas resultaron
+  // ser un configurador y, de esas, en cuantas la API tampoco respondio y el
+  // stock quedo en "desconocido". Son los dos numeros con los que se comprueba
+  // en produccion -- y no de escritorio -- que el arreglo de arriba no dejo a
+  // ningun SKU sin fuente de stock. comparar() los borra antes de guardar.
+  if (selectorDeGrupo) {
+    salidaPropia.stockDeSelector = true;
+    if (estado === ESTADO.DESCONOCIDO) salidaPropia.stockSinFuente = true;
+  }
 
   // EL CAMPO SE OMITE, NO SE PONE EN null (medido). Un `precio: null` PISA el
   // precio guardado (`{...ant, ...obs}` en comparar.mjs) y lo deja en null sin

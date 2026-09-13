@@ -2,6 +2,7 @@ import { componerTitulo } from "./titulo.mjs";
 import { reloj } from "./reloj.mjs";
 import { ESTADO, textoEstado } from "./stock.mjs";
 import { entorno } from "./entorno.mjs";
+import { VENTANA_REBOTE_HORAS, esRebote } from "./estabilidad.mjs";
 
 const CLP = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 
@@ -129,6 +130,31 @@ function lineFor(change) {
   }
 }
 
+/**
+ * LA LINEA COMPACTA DE UN REBOTE (2026-09-13, segunda vuelta).
+ *
+ * Un rebote es un cambio a un valor que el operador YA escucho dentro de las
+ * ultimas VENTANA_REBOTE_HORAS. No se calla -- callarlo se tragaba 61 bajas
+ * reales en 30 dias, medido -- pero tampoco merece el bloque de tres lineas con
+ * link de una novedad, que es justo lo que el operador pidio dejar de recibir.
+ *
+ * UNA SOLA LINEA, y trae las tres cosas que hacen que no haga falta ninguna
+ * otra: entre que valores va, cual es el valor de AHORA (en negrita, porque es
+ * lo unico accionable) y cuantas veces lleva. Sin link: el producto ya salio con
+ * link la primera vez, cuando era novedad de verdad.
+ */
+function lineaRebote(change) {
+  const icono = iconoPara(change.categoria);
+  const nombre = escaparMarkdown(componerTitulo(change));
+  const sku = change.modelo || "sin SKU";
+  const esPrecio = change.tipo === "baja" || change.tipo === "sube";
+  const comoTexto = (v) => (esPrecio ? fmt(v) : textoEstado(v));
+  const actual = esPrecio ? change.precio : change.estado;
+  const entre = (change.valoresRebote ?? []).map(comoTexto).join(" ⇄ ");
+  const veces = Number.isFinite(change.vecesRebotado) ? ` (${change.vecesRebotado}ª vez en ${VENTANA_REBOTE_HORAS} h)` : "";
+  return `${icono} **${nombre}** (${sku}) — 🌀 ${entre} · ahora **${comoTexto(actual)}**${veces}`;
+}
+
 const TITULOS = {
   nuevo: "🆕 Productos nuevos",
   baja: "🟢 Bajas de precio",
@@ -137,6 +163,7 @@ const TITULOS = {
   recuperado: "✅ De vuelta en el sitio",
   desaparecido: "❌ Ya no aparecen (confirmado)",
   correccion: "⚠️ Correcciones de avisos en vivo",
+  rebote: "🌀 Siguen rebotando (ya te los avisé, no es novedad)",
   pendiente: "⏳ Avisos atrasados (no se pudieron entregar en la revisión anterior)",
 };
 
@@ -559,8 +586,15 @@ export async function notifyDiscord(webhookUrl, { changes, errores, totalRevisad
     return { mensajes: 0, fallidos: 0, noEntregados: [] };
   }
 
-  const porTipo = { nuevo: [], baja: [], sube: [], stock: [], recuperado: [], desaparecido: [] };
-  for (const c of changes) (porTipo[c.tipo] ?? porTipo.nuevo).push({ linea: lineFor(c), cambio: c });
+  const porTipo = { nuevo: [], baja: [], sube: [], stock: [], recuperado: [], desaparecido: [], rebote: [] };
+  // UN REBOTE SE AGRUPA POR SER REBOTE, NO POR SU TIPO. Si fuera por tipo, el
+  // vaiven del monitor quedaria repartido entre "Bajas de precio" y "Subas de
+  // precio" y volveria a leerse como la seguidilla "bajo/subio/bajo/subio" que
+  // el operador reclamo.
+  for (const c of changes) {
+    if (esRebote(c)) porTipo.rebote.push({ linea: lineaRebote(c), cambio: c });
+    else (porTipo[c.tipo] ?? porTipo.nuevo).push({ linea: lineFor(c), cambio: c });
+  }
 
   // El conteo tiene que declarar la corrida COMPLETA, no la lista ya
   // deduplicada: si no, una corrida con 237 cambios de los que 229 salieron en
@@ -592,6 +626,9 @@ export async function notifyDiscord(webhookUrl, { changes, errores, totalRevisad
     ["recuperado", porTipo.recuperado],
     ["nuevo", porTipo.nuevo],
     ["desaparecido", porTipo.desaparecido],
+    // ULTIMA A PROPOSITO: es lo que el operador ya sabe. Va despues de todo lo
+    // que si es novedad, para que no le tape nada.
+    ["rebote", porTipo.rebote],
   ];
 
   const mensajes = armarMensajesConCambios(encabezado, secciones);
@@ -676,10 +713,64 @@ export function mensajeCorreccionesDePrecio(correcciones, tope = 60) {
   return armar(n);
 }
 
+/**
+ * EL RASTRO DEL FRENO ANTI-PARPADEO (2026-09-13), por el canal TECNICO.
+ *
+ * El operador pidio explicitamente poder enterarse de que un producto quedo
+ * marcado como inestable, "canal tecnico, no el de productos". Va ahi a
+ * proposito: no es una novedad de Samsung, es una declaracion sobre la calidad
+ * de la lectura -- el mismo lugar donde ya viven las momias y las correcciones
+ * de precio.
+ *
+ * QUE TIENE QUE DECIR, y que la version anterior decia mal: que el producto se
+ * sigue mirando, que sus avisos NO se perdieron (siguen saliendo, compactos, en
+ * el resumen) y cada cuanto puede repetirse este mensaje. La version anterior
+ * terminaba con "Sale una sola vez por producto" y era falso: medido sobre el
+ * historial real, el monitor LS32DG300ELXZS habria generado 12 de estos avisos
+ * en 30 dias, porque el episodio cierra y vuelve a abrir.
+ *
+ * Mismo presupuesto de largo que los otros avisos tecnicos: notifyTecnico corta
+ * con `slice` y un mensaje cortado pierde el pie.
+ */
+export function mensajeRebotando(rebotando, tope = 60) {
+  const lista = rebotando ?? [];
+  if (lista.length === 0) return null;
+  // orden estable: no puede depender de por donde empezo el recorrido
+  const ordenadas = [...lista].sort(
+    (a, b) => String(a.magnitud).localeCompare(String(b.magnitud)) || String(a.modelo).localeCompare(String(b.modelo)),
+  );
+  const valor = (m, v) => (m === "precio" ? fmt(v) : textoEstado(v));
+  const todas = ordenadas.map(
+    (i) => `• ${i.magnitud === "precio" ? "💲" : "📦"} ${i.modelo}: ${(i.valores ?? []).map((v) => valor(i.magnitud, v)).join(" ⇄ ")}`,
+  );
+  const armar = (n) => {
+    const resto = todas.length > n ? `\n…y ${todas.length - n} más.` : "";
+    return (
+      `🌀 **Monitor Samsung — productos que están rebotando**\n` +
+      `${lista.length} producto(s) volvieron a un valor que ya habían tenido hace menos de ${VENTANA_REBOTE_HORAS} h. Eso es un vaivén, no una novedad.\n` +
+      `${todas.slice(0, n).join("\n")}${resto}\n` +
+      `**No dejo de avisarte nada**: mientras rebotan, sus avisos salen juntos en una línea compacta al final del resumen (sección "Siguen rebotando"), con el valor de ahora. Un valor NUEVO vuelve a salir como alerta normal al instante.\n` +
+      `Este aviso sale una vez por episodio de rebote; si el vaivén dura más de una semana, puede repetirse.`
+    );
+  };
+  let n = Math.min(todas.length, tope);
+  while (n > 1 && armar(n).length > LARGO_MAX_TECNICO) n -= 1;
+  return armar(n);
+}
+
+/**
+ * @returns {{entregado: boolean}} `entregado:false` SOLO cuando habia webhook y
+ *   Discord rechazo el mensaje. Es lo que permite que quien lleva la huella de
+ *   "este aviso ya salio" no la escriba y la corrida siguiente lo reintente:
+ *   antes el resultado se descartaba, y un hipo de Discord borraba el aviso para
+ *   siempre (defecto confirmado el 2026-09-13). Sin webhook no hay nada que
+ *   reintentar, asi que cuenta como entregado.
+ */
 export async function notifyTecnico(webhookUrl, texto) {
   if (!webhookUrl) {
     console.log("DISCORD_WEBHOOK_URL no configurado, no se envia alerta tecnica.");
-    return;
+    return { entregado: true };
   }
-  await enviarMensaje(webhookUrl, texto.slice(0, 1900));
+  const r = await enviarMensaje(webhookUrl, texto.slice(0, 1900));
+  return { entregado: r?.ok === true };
 }

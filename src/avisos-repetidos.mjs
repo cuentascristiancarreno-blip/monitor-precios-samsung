@@ -46,6 +46,21 @@ export function yaSeAviso(huellas, clave, dia) {
 }
 
 /**
+ * ¿Este aviso salio ALGUNA de las dias que el archivo todavia recuerda (7 por
+ * defecto, ver serializarHuellas)?
+ *
+ * PARA QUE HACE FALTA, y por que no alcanzaba `yaSeAviso` (2026-09-13): el aviso
+ * de "este producto empezo a rebotar" es una novedad de UNA vez, no una
+ * condicion diaria. Con el freno de un dia, un producto que rebota una semana
+ * generaba siete mensajes identicos -- que es exactamente el ruido que este
+ * encargo vino a sacar. Con este, sale una vez por episodio, y si el vaiven dura
+ * mas de lo que el archivo recuerda, vuelve a salir (y el texto lo dice).
+ */
+export function yaSeAvisoAlguna(huellas, clave) {
+  return (huellas ?? []).some((h) => h.clave === clave);
+}
+
+/**
  * De las claves que hay que avisar, cuales todavia no salieron hoy. Se
  * devuelven en el orden en que llegaron, sin repetidas.
  */

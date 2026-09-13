@@ -5,16 +5,19 @@ import { chromium } from "playwright";
 import { DELAY_MS, USER_AGENT } from "./config.mjs";
 import { discoverFamilyUrls } from "./discover.mjs";
 import { procesarEntrada } from "./resolver.mjs";
-import { comparar, marcarSinPrecioProlongado, marcarSinVerificarProlongado, UMBRAL_SIN_VERIFICAR } from "./comparar.mjs";
+import { comparar, marcarSinPrecioProlongado, marcarSinVerificarProlongado, rebotesDe, resumenDeRebotes, UMBRAL_SIN_VERIFICAR } from "./comparar.mjs";
 import { integrarVariantes } from "./catalogo.mjs";
 import { resumirSilenciados } from "./silenciados.mjs";
-import { mensajeCorreccionesDePrecio, notifyDiscord, notifyTecnico } from "./discord.mjs";
+import { mensajeCorreccionesDePrecio, mensajeRebotando, notifyDiscord, notifyTecnico } from "./discord.mjs";
 import { crearDespachadorVivo, repartirCierre } from "./despachador-vivo.mjs";
 import { leerPendientes, serializarPendientes } from "./pendientes.mjs";
 import { entorno } from "./entorno.mjs";
 import { bloqueDelEntorno, medicionPrincipales, prepararRecorrido, skusQueCambiaronDeSeccion } from "./prioridad.mjs";
 import { claveNoConfiable, decidirModo, evaluarConfiabilidad, modoPedido, MODO_LIVIANO, ultimoCompleto, ultimoRecorrido } from "./alcance.mjs";
-import { diaDe, leerHuellas, serializarHuellas, yaSeAviso } from "./avisos-repetidos.mjs";
+import { diaDe, leerHuellas, serializarHuellas, yaSeAviso, yaSeAvisoAlguna } from "./avisos-repetidos.mjs";
+
+/** La clave de huella de "ya le conte que este producto esta rebotando". */
+const claveRebote = (r) => `rebotando:${r.modelo}:${r.magnitud}`;
 import { masCorridas, muestraDeUrls } from "./muestras.mjs";
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -142,7 +145,15 @@ async function main() {
       console.log(`INFO aviso_tecnico_omitido ${clave} (ya salio hoy)`);
       return false;
     }
-    await notifyTecnico(webhook, texto);
+    // LA HUELLA SOLO SI DISCORD LO ACEPTO (2026-09-13). Antes se escribia pase
+    // lo que pasara, asi que un aviso rechazado quedaba marcado como enviado y
+    // nadie lo volvia a intentar en todo el dia: la misma perdida silenciosa que
+    // data/pendientes.jsonl tapa en el canal de productos.
+    const { entregado } = await notifyTecnico(webhook, texto);
+    if (!entregado) {
+      console.error(`WARNING el aviso tecnico ${clave} no llego a Discord: se reintenta en la corrida siguiente`);
+      return false;
+    }
     huellasAviso.push({ clave, dia: hoy });
     // se guarda al tiro: si la corrida muere despues, el aviso no se repite
     await writeFile(AVISOS_TECNICOS_PATH, serializarHuellas(huellasAviso, hoy)).catch((err) =>
@@ -342,7 +353,7 @@ async function main() {
   // tanda de falsos "ya no aparece".
   const noVerificadas = new Set([...fallidas, ...redirigidas].map((f) => f.url));
 
-  const { catalogo, cambios, correccionesDePrecio, fueraDeAlcance } = comparar({
+  const { catalogo, cambios, correccionesDePrecio, fueraDeAlcance, rebotesDegradados, nuevosRebotando } = comparar({
     previo,
     observado,
     paginasFallidas: noVerificadas,
@@ -392,6 +403,17 @@ async function main() {
   //    alto, hay precios congelados por culpa del presupuesto y hay que subirlo.
   const precioDeclarado = Object.values(observado).filter((r) => r.precioDeclarado === true).length;
   const digitalDataSinAsentar = Object.values(observado).filter((r) => r.digitalDataSinAsentar === true).length;
+  // LOS DOS NUMEROS DEL ARREGLO DE LAS PAGINAS DE CONFIGURADOR (2026-09-13):
+  //  - stockDeSelector: lecturas de una /buy/ cuyo slug no nombra al SKU, o sea
+  //    donde el bloque de compra es el selector de la familia y el stock sale de
+  //    la API por codigo. Offline se contaron 11 SKU vivos; este es el numero
+  //    real, corrida a corrida.
+  //  - stockSinFuente: de esas, en cuantas la API tampoco respondio y el estado
+  //    quedo en "desconocido". TIENE QUE SER 0 o casi: si sube, hay
+  //    configuradores que no piden la API y esos SKU se quedaron sin ninguna
+  //    fuente de stock (no se inventa ninguna: quedan congelados y en silencio).
+  const stockDeSelector = Object.values(observado).filter((r) => r.stockDeSelector === true).length;
+  const stockSinFuente = Object.values(observado).filter((r) => r.stockSinFuente === true).length;
 
   // CLAVES ORDENADAS. El orden de las claves de latest.json seguia el orden en
   // que se visitaban las paginas, asi que reordenar el recorrido lo reordenaba
@@ -483,6 +505,12 @@ async function main() {
     precioCongelado,
     precioDeclarado,
     digitalDataSinAsentar,
+    stockDeSelector,
+    stockSinFuente,
+    // FRENO ANTI-PARPADEO (ver src/estabilidad.mjs). Los tres numeros los
+    // calcula una funcion PURA y PROBADA de comparar.mjs: aca queda una sola
+    // linea de cableado, que es todo lo que este archivo puede esconder.
+    ...resumenDeRebotes({ cambios, catalogo, nuevosRebotando, timestamp }),
     sinPrecioProlongado: sinPrecioMomificados.length,
     // SKU cuyo precio guardado se corrigio en silencio porque lo que habia
     // guardado era el tachado o el numero interno (migracion versionPrecio).
@@ -565,6 +593,35 @@ async function main() {
   // por que esta entero en mensajeCorreccionesDePrecio (src/discord.mjs).
   if (correccionesDePrecio.length > 0) {
     await notifyTecnico(webhook, mensajeCorreccionesDePrecio(correccionesDePrecio));
+  }
+
+  // PRODUCTOS QUE EMPEZARON A REBOTAR (freno anti-parpadeo). Va por el canal
+  // TECNICO porque no es una novedad del sitio sino una declaracion sobre la
+  // calidad de la lectura; sus avisos de PRODUCTO salen igual, compactos, en el
+  // resumen de arriba.
+  //
+  // LA LISTA SALE DEL CATALOGO, NO DE LA TRANSICION DE ESTA CORRIDA, y la huella
+  // se escribe SOLO si Discord confirmo la entrega. Antes era al reves: la lista
+  // traia unicamente la transicion y el resultado del envio se descartaba, asi
+  // que un hipo de Discord (o una corrida que muriera despues de guardar el
+  // catalogo) dejaba al producto rebotando en silencio y sin segunda
+  // oportunidad -- defecto confirmado por una verificacion independiente. Ahora
+  // la corrida siguiente vuelve a encontrarlo en el catalogo y lo reintenta.
+  if ((rebotesDegradados ?? []).length > 0 || (nuevosRebotando ?? []).length > 0) {
+    console.log(`INFO freno_parpadeo nuevos=${(nuevosRebotando ?? []).length} degradados=${(rebotesDegradados ?? []).length}`);
+  }
+  const rebotando = rebotesDe(catalogo, timestamp);
+  const porContar = rebotando.filter((r) => !yaSeAvisoAlguna(huellasAviso, claveRebote(r)));
+  if (porContar.length > 0) {
+    const { entregado } = await notifyTecnico(webhook, mensajeRebotando(porContar));
+    if (entregado) {
+      for (const r of porContar) huellasAviso.push({ clave: claveRebote(r), dia: hoy });
+      await writeFile(AVISOS_TECNICOS_PATH, serializarHuellas(huellasAviso, hoy)).catch((err) =>
+        console.error(`WARNING no se pudo guardar la huella del aviso de rebotes: ${err.message}`),
+      );
+    } else {
+      console.error(`WARNING el aviso de ${porContar.length} producto(s) rebotando no llego a Discord: se reintenta en la corrida siguiente`);
+    }
   }
 
   // DOS SECCIONES PELEANDOSE UN PRODUCTO (ver arriba). Una vez al dia por SKU:

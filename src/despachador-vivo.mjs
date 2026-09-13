@@ -31,6 +31,7 @@ import { appendFile, readFile } from "node:fs/promises";
 import { evaluarObservado } from "./comparar.mjs";
 import { esAccesorio, esFamiliaGenerica } from "./catalogo.mjs";
 import { estaSilenciado } from "./silenciados.mjs";
+import { esRebote } from "./estabilidad.mjs";
 import { enviarTandaVivo } from "./discord.mjs";
 import { reloj } from "./reloj.mjs";
 import { entorno as num } from "./entorno.mjs";
@@ -65,11 +66,29 @@ export function firmaCambio(c) {
 }
 
 /**
- * ¿Este cambio se le manda al operador? Son las dos reglas de PRODUCTO (no de
- * transporte): nada de accesorios, nada de Galaxy Book3.
+ * ¿Este cambio se le manda al operador? Son las reglas de PRODUCTO (no de
+ * transporte): nada de accesorios y nada de Galaxy Book3.
+ *
+ * UN REBOTE SI ES NOTIFICABLE, y eso es deliberado (2026-09-13, segunda vuelta).
+ * La version anterior del freno lo excluia de aca, o sea lo CALLABA, y medido
+ * sobre los 30 dias reales eso se tragaba 61 bajas de precio de verdad -- 49 de
+ * ellas del 20% o mas. Ahora un rebote sale igual, en la seccion compacta
+ * "🌀 Siguen rebotando" del resumen (ver src/estabilidad.mjs): el operador deja
+ * de recibir la alerta repetida pero nunca deja de saber el precio de hoy.
  */
 export function esNotificable(cambio) {
   return !esAccesorio(cambio?.categoria) && !estaSilenciado(cambio);
+}
+
+/**
+ * ¿Y se manda EN VIVO, a mitad de corrida? Todo lo notificable menos los
+ * rebotes: el aviso en vivo existe para lo urgente (una baja que hay que
+ * aprovechar hoy) y un rebote es, por definicion, un valor que el operador ya
+ * escucho. Mandarlo en vivo lo partiria en un mensaje propio y volveria a ser la
+ * "notificacion constante" que el pidio sacar; agrupado al cierre es UNA linea.
+ */
+export function esParaVivo(cambio) {
+  return esNotificable(cambio) && !esRebote(cambio);
 }
 
 /**
@@ -267,8 +286,12 @@ export function crearDespachadorVivo({ webhook, previo = {}, timestamp, rutaNoti
         for (const c of cambios) {
           // El filtro va al ENTRAR a la cola. Si se olvidara, el pico del
           // 2026-09-09 habria mandado 200 avisos de accesorios moviles y el
-          // operador recibiria el spam de Book3 que pidio no recibir.
-          if (esAccesorio(c.categoria) || estaSilenciado(c)) continue;
+          // operador recibiria el spam de Book3 que pidio no recibir. Es la
+          // MISMAS reglas que usa el cierre (esNotificable), mas la de en vivo:
+          // tenerlas duplicadas a mano hacia que el freno anti-parpadeo se
+          // pudiera aplicar en uno de los dos caminos y no en el otro, o sea que
+          // el rebote saldria igual, con su propio mensaje, a mitad de corrida.
+          if (!esParaVivo(c)) continue;
           // ...y dos guardas mas, porque la categoria del cambio es la que el
           // SKU tiene EN ESTE MOMENTO de la corrida, no la definitiva:
           //  a) un SKU que NUNCA se habia visto y que lo escribe primero una
