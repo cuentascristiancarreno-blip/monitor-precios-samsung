@@ -1506,3 +1506,206 @@ se agregan dos:
 7. **Mirar `sku-sin-pagina` en `ejecuciones.jsonl` la primera semana.** Hoy una revision sana deja 0
    productos sin pagina. Si aparece un numero distinto de 0 sin que el descubrimiento este caido, el
    umbral del 5% hay que revisarlo con el dato en la mano en vez de con la estimacion de hoy.
+
+---
+
+# 2026-09-13 — Precios congelados de mas: la llave es lo que declara la pagina, no digitalData
+
+El arreglo del vaiven (2026-09-12) exige que el monto este ESCRITO en la pagina antes de adoptarlo, y
+si no hay ninguno escrito la observacion va SIN precio. Eso cerro la carrera contra el render, pero
+dejo 94 SKU sin poder leer su precio nunca mas. Un producto sin precio legible queda con el ultimo
+precio bueno presentado como vigente y **no se puede enterar** de que Samsung se lo cambio.
+
+## Lo medido en produccion
+
+El contador `precioCongelado` del resumen fue **72 -> 85 -> 91 -> 94** en cuatro corridas seguidas
+(`ejecuciones.jsonl`, 2026-09-12). De esos 94, **57 llevan las 4 corridas seguidas sin poder leer el
+precio** (y son exactamente los 57 que siguen con `versionPrecio: 2`). Notificables son **47** con el
+filtro real del repo — 94 menos 45 accesorios y 2 Book3 silenciados —: Familia 11, Televisores 9, TV
+Lifestyle 7, Lavado y secado 3, Refrigeradores 3, LED Signage 2, Cocina 2, Proyectores 2, y 1 en cada
+una de Aire acondicionado (sistemas), SmartThings, Smartphones, Monitores, Audio y Galaxy Buds,
+Relojes, Signage, Aspiradoras.
+
+Los 94 estan `no-a-la-venta` (los 94, sin excepcion), tienen `rango: 3`, `url == paginaOrigen` y
+ningun `fuentePrecio`: su precio guardado salio de su propia ficha. Y ninguno llega jamas al aviso
+tecnico de momia de precio, porque `marcarSinPrecioProlongado` excluye a proposito los
+`no-a-la-venta`: el congelamiento era **silencioso**.
+
+Cuatro de esas fichas, cargadas en vivo el 2026-09-13:
+
+| SKU | guardado | model_price | list_price | bloque |
+|---|---|---|---|---|
+| NX52A5411CS/ZS | 479.990 | 479.990 | 479.990 | "No está a la venta" |
+| NP750XGJ-KS3CL | 899.990 | 899.990 | 899.990 | "No está a la venta" |
+| QN43LS03BAGXZS | 839.990 | 839.990 | 839.990 | "Dónde comprar" |
+| F-UN85MHWB450 | 1.099.990 | 1.099.990 | **1.659.980** | "Dónde comprar" |
+
+## El primer intento, y por que se cayo
+
+La primera version agregaba una linea en `precioVisiblePreferido`:
+
+    if (modelPrice === listPrice) return modelPrice;   // <- REFUTADA, no esta en el codigo
+
+con el argumento "con un solo candidato en digitalData no hay carrera posible". **El argumento es
+correcto sobre digitalData y falso sobre la pagina: hay un TERCER numero, el del bloque de compra
+(`precioDelBloqueCompra`), y es el que manda cuando se deja leer.** Que los dos campos de digitalData
+coincidan no lo elimina; y esa funcion no sabe si el bloque se dejo leer, asi que aplicaba la
+concesion tambien cuando la respuesta honesta era "no se".
+
+Medido con `extractSingleProduct`, `integrarVariantes` y `comparar()` REALES, sobre una ficha con
+oferta cuyo digitalData publica 839.990 en los dos campos (= el tachado) mientras el bloque cobra
+$599.990 — avisos falsos, o sea avisos que no corresponden a ningun cambio en Samsung:
+
+| escenario (5 o 4 corridas) | con la linea refutada | HEAD (sin nada) | con el arreglo de hoy |
+|---|---|---|---|
+| E1 render intermitente (bloque ilegible) | **4** | 0 | **0** |
+| E1b el mismo material al reves | **5** | 0 | **0** |
+| E3 digitalData iguales una vez y distintos la siguiente | **3** | 0 | **0** |
+| E3b simetria de E3 | **4** | 0 | **0** |
+| E7 congelado con `versionPrecio: 2`: la lectura ciega sella la version | **1 a Discord** | correccion tecnica | **correccion tecnica** |
+| E8a dos paginas del mismo SKU en la misma corrida | **1** (y el precio queda MAL) | 0 | **0** |
+| E2 control (el body si alcanzo a pintarse) | 0 | 0 | 0 |
+| E5 / E6 estreno y retiro de oferta reales | salen | salen | **salen** |
+
+E7 importa aparte: `comparar.mjs` preserva `ant.versionPrecio` solo cuando la observacion no trae
+precio. Con la linea refutada, una lectura totalmente ciega ya traia un numero, sellaba
+`versionPrecio: 3` y **cerraba la amnistia de `corrigeFuenteDePrecio`**; la primera lectura buena
+salia a Discord como "bajo 839.990 -> 599.990". Es el mismo defecto que la entrada del 2026-09-12
+(noche) dice haber arreglado, reabierto por el otro lado, y hoy hay 57 SKU reales en ese estado.
+
+Y una premisa del primer informe era **falsa**: "los 94 estan no-a-la-venta, por lo mismo no pueden
+tener descuento, y sin descuento los dos montos coinciden". Medido sobre `data/latest.json`: **16 de
+los 94 tienen guardado un precio con forma de descuento aplicado** (no termina en 990/980/000), y uno
+de ellos, `GP-FPS938OBJTW`, recibio un **-30% real el 2026-09-09** (39.990 -> 27.993) leido de su
+propia pagina. Ademas **18 de los 112 registros `no-a-la-venta` no estan congelados**: sus paginas si
+dibujan un monto. O sea que "no-a-la-venta" no implica ni "la pagina no dibuja monto" ni "no hay
+descuento". El arreglo que quedo no usa esa premisa en ninguna parte.
+
+## El segundo intento tampoco alcanzaba
+
+La contramedida propuesta era mover la concesion a `precioAdoptable` — que si sabe si el bloque se
+dejo leer — y gatearla en `bloqueLegible`. Cierra E1, E1b, E3, E3b, E7 y E8a, pero **medido, deja
+abierta la misma puerta un instante mas tarde**: un bloque que ya tiene texto pero todavia no
+escribio su monto es indistinguible de uno que no lo va a escribir nunca.
+
+| escenario (bloque LEGIBLE, sin monto) | con `bloqueLegible` | con el arreglo de hoy |
+|---|---|---|
+| E9 el bloque dice "Comprar" y el monto no llego | **4** | **0** |
+| E9b simetria de E9 | **5** | **0** |
+| E9c el bloque dice "Cargando..." | **3** | **0** |
+
+## El arreglo que quedo
+
+La concesion vive en `precioAdoptable` (`src/extract.mjs`) y su llave no es "el bloque se dejo leer"
+sino **"el bloque de compra declaro que Samsung no lo vende online"**:
+
+    if (!Number.isFinite(precioFinal) && !dosCandidatos && paginaNoLoVendeOnline
+        && Number.isFinite(modelPrice) && modelPrice > 0) {
+      if (esPrecioOriginalEscrito(modelPrice, bodyText)) return null;
+      return modelPrice;
+    }
+
+con `paginaNoLoVendeOnline = estadoDesdeBloqueCompra(bloque.texto, bloque.ctas) === NO_A_LA_VENTA` en
+`extractSingleProduct`. Es la pagina diciendo, en el mismo lugar donde escribiria el precio, que no
+hay precio de venta que leer ("Dónde comprar" / "No está a la venta", vocabulario cerrado de
+`src/stock.mjs`). Tres decisiones deliberadas, todas hacia el lado seguro:
+
+- **No la barra de precio pegajosa**, aunque sirva para el stock: no es donde va el precio y nadie
+  midio si puede decir "No está a la venta" mientras el bloque se termina de pintar.
+- **No la API por SKU**: describe el stock de una bodega, no lo que la ficha publica.
+- **Sigue exigiendo un solo candidato** (`!dosCandidatos`). Cualquier ficha con descuento tiene
+  `model_price != list_price` y cae sola del lado seguro — por eso los 16 congelados con precio
+  descontado no necesitan ninguna premisa sobre el catalogo.
+
+Las defensas del 2026-09-12 quedan intactas: con dos candidatos distintos el bloque ilegible sigue
+impidiendo adoptar el tachado, y un monto marcado "Precio original" sigue sin adoptarse aunque sea el
+unico candidato.
+
+## El efecto, por el pipeline real (`src/run.mjs` entero, sin red, sin webhook)
+
+Copia fuera del arbol con las dos puertas al exterior sustituidas (un doble de `procesarEntrada` que
+sirve las 4 fichas medidas y llama al `extractSingleProduct` REAL, y un stub de `playwright` que
+revienta si alguien intenta abrir una pagina), `CARPETA_DATOS` en carpeta temporal con copia del
+catalogo real, `SIN_DESCUBRIMIENTO=1`, sin `DISCORD_WEBHOOK_URL`:
+
+| corrida | `sinPrecioVisible` | `precioCongelado` | avisos | `history.jsonl` |
+|---|---|---|---|---|
+| HEAD (sin arreglo) | 4 de 4 | 94 | 0 | vacio |
+| con el arreglo | **1 de 4** (solo el control) | **91** | 0 | vacio |
+| con el arreglo + una baja de verdad inyectada | 1 de 4 | 91 | **1 baja** | 1 linea |
+| dos corridas: la ficha estrena oferta y despues se lee a medias — **con la linea refutada** | 1 | — | **1 "sube" FALSO 599.990 -> 839.990** | 1 linea |
+| las mismas dos corridas **con el arreglo de hoy** | 2 | — | **0** | vacio |
+
+Las tres fichas de montos iguales salen con su precio (479.990 / 899.990 / 839.990, los mismos que ya
+tenian), pierden `corridasSinPrecio` y sellan `versionPrecio: 3`. El control F-UN85MHWB450 sigue
+congelado: conserva su $1.099.990, contador 4 -> 5, `versionPrecio` sigue en 2. Ningun campo de
+diagnostico sobrevive al catalogo guardado. La tercera fila existe porque las dos primeras dan 0
+avisos las dos: sin ella, "0 avisos" no distingue "no hubo cambios" de "el canal estaba muerto".
+
+## Lo que NO esta medido, dicho con todas sus letras
+
+- **Cuantos de los 94 se van a destrabar no se sabe hasta la primera corrida real.** Depende de lo
+  que cada pagina declare y publique en esa lectura, no del catalogo. La proyeccion del primer
+  informe ("86 se destraban, 0 avisos") era **circular**: alimentaba como `model_price` el numero que
+  ya estaba guardado, asi que el 0 estaba garantizado por construccion. Lo unico medido de verdad son
+  las 4 fichas cargadas en vivo: 3 se destraban, 1 (el pack) no.
+- **Si una ficha destrabada publica un numero DISTINTO del guardado, sale un aviso normal**, medido:
+  `versionPrecio` 2 o 3 da lo mismo, porque `corrigeFuenteDePrecio` solo calla cuando el guardado es
+  exactamente el `precioTachado` o el `precioInterno` de esa lectura, y en una ficha de montos
+  iguales no hay ninguno de los dos. Eso **es** la cobertura que se recupera; tambien es el riesgo, si
+  el numero guardado estaba mal. Tasa medida de cambio de precio de este grupo: 15 eventos de precio
+  en 54,5 dias sobre 94 SKU = **2,9e-3 por SKU-dia**.
+- **El vaiven historico de este grupo es uno solo:** de los 94, ocho tienen algun evento de precio y
+  **solo `F-SMR640SML70` vuelve a un valor ya visto** — justo el pack medido el 2026-08-03 con los dos
+  montos distintos (555.980 contra 974.980), rebotando entre esos mismos dos numeros. El unico
+  congelado que bailo es el unico del que se sabe que tiene dos candidatos.
+- **Residual conocido (E10):** si una pagina alterna de verdad entre "no lo vendo online" y "lo vendo
+  con oferta", el precio va a alternar con ella (medido: 3 avisos en 4 corridas). No es la carrera de
+  render: son dos estados verdaderos distintos, de la misma familia que E5 (estrenar y retirar una
+  oferta), y el arreglo del 2026-09-12 los tapaba dejando el precio viejo para siempre.
+- **El agujero de la PRIMERA linea de `precioVisiblePreferido` sigue abierto, y es anterior a esto.**
+  Con `list_price` invalido ("", null, 0, NaN, ausente) se adopta el `model_price` aunque no este
+  escrito en ninguna parte; si ese campo aparece y desaparece entre lecturas, el vaiven entra por ahi:
+  medido, **2 avisos falsos por ciclo, identicos en HEAD, con la linea refutada y con el arreglo de
+  hoy**. Cerrarlo (pasar esa linea por la misma puerta) baja esos 10 avisos simulados a 0, pero rompe
+  4 pruebas que fijan paginas reales sin bloque legible: cambiaria un vaiven hipotetico por un
+  congelamiento medido, que es justo el defecto que esta entrada viene a arreglar. Queda como
+  pendiente con su medicion en vivo, no como decision de escritorio.
+
+## Verificacion
+
+- **`npm test`: 446 -> 466 verdes, 0 fallas.** Las 446 anteriores pasan sin tocar una linea. Archivo
+  nuevo `test/precio-congelado.test.mjs` (20 pruebas) con las cuatro fichas reales y sus numeros
+  literales, mas los escenarios E1, E1b, E9, E9c, E7 y E8a de arriba.
+- **MUTANTES sobre una copia fuera del arbol (suite entera por mutante, `src/extract.mjs` restaurado
+  y verificado por md5 despues de cada uno): 11 de 13 mueren.** Deshacer el arreglo (5 fallas), la
+  contramedida insuficiente `bloqueLegible` (3), el arreglo refutado de vuelta en
+  `precioVisiblePreferido` (10) y encima del bueno (9), sin la guarda de dos candidatos (3), aflojar
+  `!==` a `<` (1) y a `>` (5), sin la guarda de "Precio original" (1), la llave dada por cualquier
+  estado que no sea disponible (8), la llave siempre abierta (8), la llave tambien desde la barra o
+  desde la API (1 cada una). **Sobreviven 2 y los dos son equivalentes de verdad**: devolver
+  `listPrice` en vez de `modelPrice` cuando los dos son el mismo numero, y sacar la guarda
+  `!Number.isFinite(precioFinal)` (con un solo candidato, `precioFinal` finito ya es el
+  `model_price`). Quedan anotados en vez de inventarles una prueba.
+- **Cero requests a samsung.com** (toda la evidencia en vivo venia medida en el encargo; las paginas
+  de las pruebas y del pipeline son dobles y el stub de playwright revienta si alguien intenta abrir
+  una real) y **jamas el webhook real** (`env -u DISCORD_WEBHOOK_URL` en cada corrida).
+- **`data/` del repo intacta** (md5 de los 5 archivos iguales a los del principio) y **no se commiteo
+  nada**.
+
+## Pendientes
+
+1. **Mirar `precioCongelado` en la primera corrida real.** Hoy son 94. Cuanto baja no esta proyectado
+   a proposito (ver arriba): lo que hay que revisar es si baja *algo*. Si queda en 94, la llave es
+   demasiado estrecha y hay que mirar de a una que declara el bloque de esas fichas.
+2. **Y mirar `bajas` / `subes` de esa misma corrida.** Cada aviso de un SKU que estaba congelado es un
+   numero que llevaba dias sin verificarse: vale la pena abrir la ficha de los primeros y confirmar
+   contra la pagina antes de darlos por buenos.
+3. **Medir en vivo el agujero de la primera linea** cuando la revision de produccion libere el sitio:
+   cuantas fichas reales se leen con el bloque ilegible, y cuantas tienen `list_price` invalido. Con
+   eso se decide si esa linea pasa por la misma puerta o se queda como esta.
+4. **`data/latest.json` viene de una version anterior a la del alcance declarado**: sus 94 registros
+   congelados tienen `corridasSinPrecio` pero no `sinPrecioDesde` (el ancla de reloj se agrego en la
+   cuarta tanda del 12-09, que todavia no corrio en produccion). No rompe nada y se corrige solo en la
+   primera corrida con el codigo de hoy.
+5. Siguen los 7 pendientes de la entrada anterior.

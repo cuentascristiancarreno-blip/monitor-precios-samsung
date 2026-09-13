@@ -459,6 +459,22 @@ export function precioDelBloqueCompra(texto) {
  * en un precio ~75 corridas (2026-07-20 a 2026-08-08) y empezo a bailar el dia
  * que su ficha estreno precio tachado. Exigir visibilidad tambien ahi congelaria
  * fichas que hoy no producen ni un aviso falso.
+ *
+ * Y EL CASO "LOS DOS MONTOS IGUALES" NO SE RESUELVE ACA (2026-09-13, defecto
+ * medido). La primera version del arreglo de los precios congelados agregaba una
+ * segunda linea -- `if (modelPrice === listPrice) return modelPrice;` -- con el
+ * argumento de que, con un solo candidato en digitalData, no hay carrera posible.
+ * El argumento es correcto sobre digitalData y FALSO sobre la pagina: hay un
+ * TERCER numero, el del bloque de compra (ver precioDelBloqueCompra), y es el que
+ * manda cuando se deja leer. Con model_price === list_price === el TACHADO y el
+ * bloque a medio pintar, esa linea devolvia el tachado y el vaiven volvia con su
+ * forma de siempre -- medido, 4 avisos falsos en 5 corridas ("sube 599.990 ->
+ * 839.990", "baja 839.990 -> 599.990", ...) y 5 en el orden inverso.
+ *
+ * Esta funcion NO sabe si el bloque se dejo leer, asi que aca, con los dos
+ * numeros sin aparecer en ninguna parte del texto, la respuesta honesta sigue
+ * siendo `null`. La concesion vive en precioAdoptable, que si conoce el estado
+ * del bloque.
  */
 export function precioVisiblePreferido(modelPrice, listPrice, texto) {
   if (!Number.isFinite(listPrice) || listPrice <= 0) return modelPrice;
@@ -515,17 +531,70 @@ export function esPrecioOriginalEscrito(monto, texto) {
  * Con una excepcion que cruza los tres: un monto que la pagina marca como
  * "Precio original" NUNCA se adopta (ver esPrecioOriginalEscrito).
  *
- * Y una concesion medida, para no congelar fichas que hoy no producen ni un
- * aviso falso: si digitalData publica UN SOLO candidato (list_price invalido, o
- * igual al model_price) no hay carrera posible -- la pagina devuelve siempre lo
- * mismo --, asi que el bloque ilegible no bloquea la lectura. El vaiven
- * necesita dos numeros distintos para bailar.
+ * Y DOS CONCESIONES MEDIDAS, para no congelar fichas que hoy no producen ni un
+ * aviso falso. Las dos valen solo cuando digitalData publica UN SOLO numero:
+ *
+ *  1. LIST_PRICE INVALIDO. precioVisiblePreferido ya eligio el model_price en su
+ *     primera linea, asi que el bloque ilegible no lo bloquea. Es el
+ *     comportamiento de siempre y se deja como esta a proposito (ver esa
+ *     funcion). Tiene un agujero conocido, anterior a todo esto y medido en
+ *     simulacion: si list_price aparece y desaparece entre lecturas, el vaiven
+ *     entra por ahi (2 avisos falsos por ciclo, identicos antes y despues del
+ *     2026-09-13). Cerrarlo exige medir en vivo cuantas fichas reales se leen sin
+ *     bloque legible; ver la entrada del 2026-09-13 en BITACORA.md.
+ *
+ *  2. MODEL_PRICE === LIST_PRICE Y LA PAGINA DICIENDO QUE NO LO VENDE ONLINE
+ *     (2026-09-13). Los 94 SKU que el arreglo del vaiven dejo sin precio son, los
+ *     94 sin excepcion, "no-a-la-venta": su bloque dice "Dónde comprar" o "No
+ *     está a la venta" y por eso no publica ningun monto. Ahi el numero de
+ *     digitalData es el unico que existe y no hay tercer candidato con el cual
+ *     bailar -- la pagina no va a pintar un precio de venta que no tiene. Tres de
+ *     esas fichas, cargadas en vivo el 2026-09-13, publican model_price ===
+ *     list_price === el precio ya guardado (NX52A5411CS/ZS 479.990,
+ *     NP750XGJ-KS3CL 899.990, QN43LS03BAGXZS 839.990). La cuarta es el pack
+ *     F-UN85MHWB450, que publica 1.099.990 contra 1.659.980 (= 1.099.990 +
+ *     559.990, la suma de las partes): dos candidatos, carrera posible, sigue
+ *     congelado.
+ *
+ * NO ALCANZA CON "EL BLOQUE SE DEJO LEER", y esta medido. Un bloque que ya tiene
+ * texto pero todavia no escribio su monto ("Comprar" a secas, "Cargando...") es
+ * indistinguible de uno que no lo va a escribir nunca: gatear la concesion 2 solo
+ * en `bloqueLegible` devolvia 4 y 3 avisos falsos en esos dos escenarios. El
+ * estado "no-a-la-venta" sale de un vocabulario cerrado (estadoDesdeBloqueCompra
+ * en src/stock.mjs) y es la pagina diciendo que no hay precio de venta que leer.
+ *
+ * LA PREMISA QUE NO SE USA: "no-a-la-venta" NO implica "sin descuento". Medido
+ * sobre data/latest.json, 16 de los 94 congelados tienen guardado un precio con
+ * forma de descuento aplicado, y uno (GP-FPS938OBJTW) recibio un -30% real el
+ * 2026-09-09 leido de su propia pagina. Por eso la concesion 2 no extrapola de
+ * las 4 fichas cargadas a las 94: exige los dos montos iguales EN LA LECTURA, y
+ * cualquier ficha con descuento (model_price != list_price) cae sola del lado
+ * seguro.
  */
-export function precioAdoptable({ precioBloque, precioFinal, modelPrice, listPrice, bloqueLegible, bodyText }) {
+export function precioAdoptable({
+  precioBloque,
+  precioFinal,
+  modelPrice,
+  listPrice,
+  bloqueLegible,
+  paginaNoLoVendeOnline,
+  bodyText,
+}) {
   if (Number.isFinite(precioBloque) && precioBloque > 0) return precioBloque;
   const dosCandidatos =
     Number.isFinite(modelPrice) && Number.isFinite(listPrice) && listPrice > 0 && modelPrice !== listPrice;
   if (!bloqueLegible && dosCandidatos) return null;
+  // concesion 2: un solo candidato Y la pagina declarando que no lo vende online
+  if (
+    !Number.isFinite(precioFinal) &&
+    !dosCandidatos &&
+    paginaNoLoVendeOnline &&
+    Number.isFinite(modelPrice) &&
+    modelPrice > 0
+  ) {
+    if (esPrecioOriginalEscrito(modelPrice, bodyText)) return null;
+    return modelPrice;
+  }
   if (esPrecioOriginalEscrito(precioFinal, bodyText)) return null;
   return precioFinal;
 }
@@ -741,7 +810,8 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
   // una solo entra si la anterior no decidio, asi que agregar la barra no puede
   // quitarle un veredicto correcto a nadie.
   const bloque = await leerBloqueCompra(page);
-  let estado = estadoDesdeBloqueCompra(bloque.texto, bloque.ctas);
+  const estadoBloque = estadoDesdeBloqueCompra(bloque.texto, bloque.ctas);
+  let estado = estadoBloque;
   if (estado === ESTADO.DESCONOCIDO) estado = estadoDesdeBloqueCompra(null, bloque.ctasBarra);
   if (estado === ESTADO.DESCONOCIDO) estado = porCodigo.get(propio)?.estado ?? ESTADO.DESCONOCIDO;
 
@@ -780,6 +850,19 @@ export async function extractSingleProduct(page, url, respuestasApi = []) {
     modelPrice: precio,
     listPrice: precioLista,
     bloqueLegible: bloque.legible,
+    // EL BLOQUE DE COMPRA DICIENDO QUE NO HAY PRECIO DE VENTA QUE LEER. Es la
+    // llave de la concesion 2 de precioAdoptable y sale del vocabulario cerrado
+    // de estadoDesdeBloqueCompra ("Dónde comprar" / "No está a la venta"),
+    // aplicado al bloque de compra y a NADA MAS -- el mismo lugar donde la
+    // pagina escribiria el precio si lo tuviera:
+    //  - ni la barra pegajosa, aunque sirva para el stock: no es donde va el
+    //    precio y no se midio nunca si puede decir "No está a la venta"
+    //    mientras el bloque se termina de pintar;
+    //  - ni la API por SKU, que describe el stock de una bodega y no lo que la
+    //    ficha publica.
+    // Las dos son informacion de mas, y para ESTA decision "de mas" es "todavia
+    // no se": se prefiere seguir congelado a adoptar un numero que nadie vio.
+    paginaNoLoVendeOnline: estadoBloque === ESTADO.NO_A_LA_VENTA,
     bodyText,
   });
   const precioElegido =
