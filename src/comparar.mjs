@@ -12,9 +12,15 @@
 //    repita (solo existe mientras dure la espera)
 //  - corridasSinPrecio: corridas seguidas en que la pagina no escribio ningun
 //    monto y por eso se conservo el precio anterior (solo mientras dure)
+//  - sinPrecioDesde / precioDistintoDesde: desde cuando duran esas dos
+//    condiciones. Son el ancla de RELOJ de los contadores que las acompanan y
+//    viven y mueren con ellos (ver "los pisos de reloj" mas abajo)
 //  - versionStock: version del detector que produjo el estadoStock guardado
 //  - rango: de que tipo de pagina salio el registro (ver src/identidad.mjs)
 //  - ausencias: corridas confiables consecutivas en que NO se encontro
+//  - ausenciaEnCompleto: si alguna de esas ausencias la puso una revision que
+//    miro el catalogo ENTERO. Vive y muere con `ausencias` (ver
+//    ausenciaVerificada mas abajo)
 //  - notificadoDesaparecido: true si ya se aviso por Discord que desaparecio
 //  - ultimaVezVisto: timestamp de la ultima corrida en que SI aparecio
 //
@@ -22,7 +28,10 @@
 //  - "desaparecido" requiere >= UMBRAL_AUSENCIAS corridas confiables seguidas
 //    sin encontrarlo, y nunca cuenta una ausencia si su pagina fallo o la
 //    corrida completa es sospechosa (antes: 1 sola ausencia bastaba, y los
-//    timeouts diarios generaron ~150 avisos falsos en 4 dias).
+//    timeouts diarios generaron ~150 avisos falsos en 4 dias). Desde el
+//    2026-09-12 ademas exige que UNA de esas ausencias venga de una revision
+//    que miro el catalogo entero: una revision parcial no puede distinguir
+//    "ya no se vende" de "se mudo a una pagina que yo no miro".
 //  - un cambio de stock solo se notifica tras verse igual 2 corridas seguidas
 //    (el detector de stock lee texto de la pagina y puede parpadear).
 //  - un producto que reaparece tras ausencia corta NO se re-anuncia como nuevo.
@@ -34,10 +43,135 @@
 //  - un cambio de precio que ademas cambia de PAGINA o de RANGO no se avisa en
 //    el acto: espera a que una segunda corrida lo repita. El 97% de los cambios
 //    reales vienen de la misma pagina y salen al instante.
+import { enAlcance, horasEntre } from "./alcance.mjs";
 import { normalizar } from "./titulo.mjs";
 import { ESTADO, disponibleDe, estadoObservado } from "./stock.mjs";
 
 export const UMBRAL_AUSENCIAS = 2;
+
+/**
+ * ADEMAS DE LAS 2 AUSENCIAS: AL MENOS UNA TIENE QUE VENIR DE UNA CORRIDA QUE
+ * MIRO EL CATALOGO ENTERO.
+ *
+ * EL DEFECTO QUE CIERRA (encontrado por dos verificadores independientes el
+ * 2026-09-12, reproducido con comparar() real sobre el catalogo real). Un
+ * producto que NO desaparece sino que se MUDA a una pagina de otra seccion --
+ * fuera del bloque liviano -- recibia un "DESAPARECIDO" falso de una revision
+ * liviana y un "RECUPERADO" del completo siguiente. El filtro de alcance no lo
+ * protegia porque mira la `paginaOrigen` GUARDADA: mientras esa pagina siga
+ * dentro del bloque, las livianas lo cuentan como propio, no lo ven nunca
+ * (ya no se publica ahi) y le suman ausencias con todas las de la ley. El
+ * producto estuvo a la venta todo el tiempo. Es la forma exacta del incidente
+ * de los ~150 avisos falsos en 4 dias (BITACORA.md), y el sistema anterior --
+ * donde todas las corridas eran completas -- daba 0 eventos para ese mismo
+ * hecho: era una REGRESION introducida por las corridas parciales.
+ *
+ * POR QUE ESTA REGLA Y NO OTRA. Una corrida parcial no puede saber si el
+ * producto se mudo a una pagina que ella no visita; una completa SI, porque la
+ * visita y ahi lo observa (y entonces no suma ninguna ausencia). Exigir que una
+ * de las ausencias venga de una corrida completa convierte "no lo vi donde
+ * solia estar" en "no esta en ninguna parte del sitio", que es lo que la palabra
+ * "desaparecido" le promete al operador.
+ *
+ * LO QUE CUESTA, MEDIDO: una desaparicion de verdad DENTRO del bloque liviano se
+ * avisa entre 5 h y 12 h despues (antes de este freno eran 5-7 h), porque el
+ * primer completo que pasa aporta la ausencia que falta y cualquier liviana
+ * posterior ya puede declarar. Fuera del bloque no cambia nada: ahi las dos
+ * ausencias siempre vinieron de completos. Es silencio de unas horas contra un
+ * aviso falso: la regla de oro del proyecto elige silencio.
+ *
+ * EL CAMPO `ausenciaEnCompleto` VIVE Y MUERE CON EL CONTADOR `ausencias`: se
+ * escribe solo cuando hay ausencias acumuladas y se borra en cuanto el producto
+ * se vuelve a ver. Medido sobre data/latest.json: 0 de los 1.031 registros
+ * tienen ausencias > 0 sin estar ya declarados desaparecidos, asi que no le
+ * agrega un byte a ningun registro sano.
+ *
+ * COMPATIBILIDAD CON LOS REGISTROS VIEJOS: un registro escrito antes de este
+ * cambio no trae el campo, y si tiene ausencias acumuladas esas ausencias vienen
+ * necesariamente de corridas completas (hasta hoy no habia otras), asi que se
+ * cuentan como verificadas. Es lo mismo que hacen los pisos de reloj cuando no
+ * hay como medir el tiempo, y es lo que impide que un registro heredado quede
+ * inmortal.
+ */
+export function ausenciaVerificada(ant) {
+  return ant?.ausenciaEnCompleto ?? (ant?.ausencias ?? 0) > 0;
+}
+
+// ---------------------------------------------------------------------------
+// LOS PISOS DE RELOJ (2026-09-12, junto con el alcance declarado).
+//
+// POR QUE APARECEN AHORA. Todos los umbrales de este archivo cuentan CORRIDAS, y
+// hasta hoy eso alcanzaba porque todas las corridas eran iguales: 7 al dia,
+// separadas 3,08 h de mediana (medido sobre las 307 filas de
+// data/ejecuciones.jsonl). Con dos revisiones completas y hasta 18 livianas al
+// dia, "2 corridas" pasa a significar 1 hora para un Galaxy y 12 horas para un
+// televisor: el MISMO umbral con dos significados distintos, y el mas corto cae
+// justo sobre el bloque que mas se mira.
+//
+// Y ademas ya no se puede contar con que las 20 corridas ocurran: el grupo de
+// concurrencia de GitHub deja como maximo UNA corrida pendiente y descarta la
+// anterior, asi que la cantidad real de corridas diarias es variable. Contar
+// corridas dejo de ser una forma honesta de contar tiempo.
+//
+// LOS PISOS SOLO RETRASAN, NUNCA ADELANTAN: la corrida sigue necesitando las
+// mismas corridas de evidencia, y ademas tiene que haber pasado el tiempo. Es la
+// regla de oro del proyecto (mas vale callarse que inventar) puesta en horas.
+// Cuando el tiempo no se puede medir (un registro viejo sin `ultimaVezVisto`, o
+// un timestamp que no es una fecha), el piso se da por cumplido y todo se
+// comporta como antes de que existiera.
+// ---------------------------------------------------------------------------
+
+/**
+ * Horas minimas desde la ultima vez que se VIO un producto antes de poder
+ * declararlo desaparecido, ademas de las 2 ausencias de siempre.
+ *
+ * POR QUE 6 h. Es lo que ya rige hoy sin que nadie lo escribiera: con 7 corridas
+ * diarias separadas 3,08 h de mediana, las 2 ausencias tardan ~6,2 h. El piso no
+ * cambia el comportamiento de los completos y le devuelve al bloque liviano
+ * exactamente ese mismo margen, en vez de 1 hora.
+ *
+ * POR QUE HACE FALTA. Medido sobre los 19.286 eventos de data/history.jsonl: de
+ * los 157 "desaparecido" de la historia, 35 (22,3%) los desmintio un
+ * "recuperado" dentro de las 24 h, con mediana de 9,2 h. Es una regla que ya se
+ * equivoca 1 de cada 5 veces; con revisiones cada hora sobre las 5 categorias
+ * principales, los pares de corridas consecutivas que pueden gatillarla pasan de
+ * 6 a 19 por dia sobre justo ese bloque.
+ */
+export const HORAS_MIN_DESAPARICION = 6;
+
+/**
+ * Horas minimas antes de avisar por el canal tecnico que un producto lleva
+ * demasiado sin poder verificarse o sin publicar precio (las dos "momias").
+ *
+ * POR QUE 72 h. Es lo que el comentario de UMBRAL_SIN_VERIFICAR siempre quiso
+ * decir: "20 corridas son ~3 dias a 7 corridas diarias". A 3,08 h de separacion
+ * medida, 20 corridas son 62 h, asi que 72 h deja el aviso practicamente donde
+ * estaba y lo vuelve verdadero. Sin el piso, el mismo umbral significaria 1 dia
+ * para un producto de las 5 categorias y 10 dias para un televisor.
+ */
+export const HORAS_MIN_MOMIA = 72;
+
+/**
+ * Horas minimas antes de adoptar un precio que viene de otra pagina o de otro
+ * rango, ademas de las UMBRAL_PRECIO_OTRA_FUENTE corridas de siempre.
+ *
+ * POR QUE 6 h. La cuenta llega a 3 dos intervalos despues de la primera lectura
+ * distinta: hoy son ~6,2 h de mediana. Con revisiones cada hora serian 2 h de
+ * margen para que el sitio se estabilice, y el vaiven de precios ya costo ~8
+ * avisos falsos por dia durante un mes sin que nadie lo notara (BITACORA.md).
+ * Lo unico que cuesta el piso es dejar un precio viejo un rato mas: eso es
+ * silencio, no un aviso falso.
+ */
+export const HORAS_MIN_PRECIO_OTRA_FUENTE = 6;
+
+/**
+ * ¿Paso ya el tiempo minimo? `null` en horasEntre significa "no se puede medir",
+ * y ahi se conserva el comportamiento de siempre (ver la nota de arriba).
+ */
+function pasoElTiempo(desde, hasta, horasMinimas) {
+  const h = horasEntre(desde, hasta);
+  return h === null || h >= horasMinimas;
+}
 
 /**
  * Estado observado, o null cuando no se sabe. Acepta el campo nuevo
@@ -187,7 +321,13 @@ function mismaFuente(a, b) {
  * distinta que nunca se corrobora) publicar otro precio antes de que se adopte
  * igual, con aviso. Es el tope que le falta a la regla "un rango menor no toca
  * el precio": sin el, un SKU cuya ficha propia muera quedaria con su ultimo
- * precio para siempre. 3 corridas son ~9 h a 7 corridas diarias.
+ * precio para siempre.
+ *
+ * EL NUMERO SE QUEDA EN 3, pero ya no manda solo: desde que hay corridas
+ * livianas cada hora, 3 corridas podrian ser 3 horas. Ahora ademas tienen que
+ * pasar HORAS_MIN_PRECIO_OTRA_FUENTE horas desde la primera lectura distinta
+ * (campo `precioDistintoDesde`), que es lo que 3 corridas significaban cuando se
+ * escribio este umbral.
  */
 export const UMBRAL_PRECIO_OTRA_FUENTE = 3;
 
@@ -218,6 +358,20 @@ function borrarDiagnosticoDePrecio(rec) {
   delete rec.precioTachado;
   delete rec.precioInterno;
   delete rec.precioIlegible;
+}
+
+/**
+ * Se acabo la espera de "otra fuente": se borran JUNTOS el contador de corridas
+ * y la fecha en que empezo. Van en una sola funcion porque son un solo hecho
+ * ("este SKU esta en discusion desde tal momento") y si uno sobreviviera al otro
+ * la proxima discusion arrancaria con el reloj de la anterior. Los dos se BORRAN
+ * en vez de ponerse en cero para no agregarle dos campos a cada uno de los ~1.000
+ * registros sanos de data/latest.json (medido hoy: corridasPrecioDistinto > 0 en
+ * 0 de 1.031 registros).
+ */
+function olvidarPrecioDistinto(rec) {
+  delete rec.corridasPrecioDistinto;
+  delete rec.precioDistintoDesde;
 }
 
 // Datos que el mensaje de Discord necesita para armar el titulo legible del
@@ -326,6 +480,8 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
       // "disponible" y muchos (accesorios, kits, productos descontinuados)
       // simplemente no publican precio. Anunciarlos a todos seria ruido.
       rec.corridasSinPrecio = 1;
+      // desde cuando dura la condicion: el ancla de reloj del aviso de momia
+      rec.sinPrecioDesde = timestamp;
       if (rec.estadoStock === ESTADO.DISPONIBLE) {
         rec.nuevoSinPrecio = true;
         cambios.push({ tipo: "nuevo", modelo, ...paraTitulo(obs), precio: null, categoria: obs.categoria, url: obs.url });
@@ -373,6 +529,11 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
   // ~1000 registros sanos de data/latest.json.
   delete rec.corridasSinVerificar;
   delete rec.avisadoSinVerificar;
+  // La marca de "una de sus ausencias la puso una revision completa" vive y
+  // muere con el contador `ausencias`, que aca arriba vuelve a 0: si sobreviviera
+  // a la observacion, una racha vieja verificada le serviria de aval a una racha
+  // nueva puesta solo por revisiones livianas.
+  delete rec.ausenciaEnCompleto;
   // datos de diagnostico de ESTA lectura, no del producto: no se guardan
   borrarDiagnosticoDePrecio(rec);
 
@@ -385,9 +546,16 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
   // CUENTA TAMBIEN CUANDO NUNCA HUBO PRECIO (defecto medido): la condicion
   // anterior exigia `Number.isFinite(ant.precio)`, asi que un producto que
   // NUNCA logro publicar un precio no llegaba jamas al aviso tecnico.
+  //
+  // `sinPrecioDesde` es el ancla de RELOJ del mismo hecho: se escribe la primera
+  // corrida sin precio y se arrastra mientras dure. Sin el, el aviso de momia
+  // (20 corridas) significaria 1 dia para un producto del bloque liviano y 10
+  // dias para un televisor, que solo se mira en los dos completos.
   delete rec.corridasSinPrecio;
+  delete rec.sinPrecioDesde;
   if (!Number.isFinite(obs.precio)) {
     rec.corridasSinPrecio = (ant.corridasSinPrecio ?? 0) + 1;
+    rec.sinPrecioDesde = ant.sinPrecioDesde ?? timestamp;
     rec.avisadoSinPrecio = ant.avisadoSinPrecio ?? false;
   } else {
     delete rec.avisadoSinPrecio;
@@ -440,14 +608,14 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
   // que no pudo leer no borra nada: si lo hiciera, una ficha propia muerta que
   // alterna con corridas ilegibles dejaria el precio congelado para siempre.
   if (Number.isFinite(obs.precio) && obs.precio === precioAnt) {
-    delete rec.corridasPrecioDistinto;
+    olvidarPrecioDistinto(rec);
     const menorConfirma = fuenteAnt.rango !== null && fuenteObs.rango !== null && fuenteObs.rango < fuenteAnt.rango;
     if (!menorConfirma) fuentePrecio = fuenteObs;
   }
 
   if (!Number.isFinite(precioAnt) && Number.isFinite(obs.precio)) {
     fuentePrecio = fuenteObs;
-    delete rec.corridasPrecioDistinto;
+    olvidarPrecioDistinto(rec);
     if (!yaAnunciado) {
       // Si ya se habia anunciado SIN precio, este aviso no es "primera vez
       // visto": es "ya publicaron cuanto vale".
@@ -488,7 +656,7 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
       // correccion se cuenta por el canal TECNICO, con los dos numeros, y el
       // operador puede mirar las que le interesen.
       fuentePrecio = fuenteObs;
-      delete rec.corridasPrecioDistinto;
+      olvidarPrecioDistinto(rec);
       correcciones.push({ modelo, ...paraTitulo(rec), precioAnterior: precioAnt, precio: obs.precio, categoria, url: rec.url });
     } else if (!rangoMenor && (mismaFuente(fuenteAnt, fuenteObs) || corroborado)) {
       // MISMA PAGINA Y MISMO RANGO: se avisa AL TIRO, como siempre. Una baja de
@@ -498,7 +666,7 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
       // La segunda condicion es la corroboracion: un cambio que venia de otra
       // fuente y que se repite desde la misma pagina ya no es un rebote.
       fuentePrecio = fuenteObs;
-      delete rec.corridasPrecioDistinto;
+      olvidarPrecioDistinto(rec);
       cambios.push({
         tipo: obs.precio < precioAnt ? "baja" : "sube",
         modelo,
@@ -508,13 +676,20 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
         categoria,
         url: rec.url,
       });
-    } else if (corridasDistinto >= UMBRAL_PRECIO_OTRA_FUENTE) {
-      // SE ACABO LA ESPERA. Llevan UMBRAL corridas seguidas en que el precio
-      // guardado no se confirma y lo unico que se ve es otro numero. La pagina
-      // que escribio el precio guardado no volvio: aferrarse a el seria dejar un
-      // precio viejo presentado como vigente para siempre. Se adopta y se avisa.
+    } else if (corridasDistinto >= UMBRAL_PRECIO_OTRA_FUENTE && pasoElTiempo(ant.precioDistintoDesde ?? timestamp, timestamp, HORAS_MIN_PRECIO_OTRA_FUENTE)) {
+      // SE ACABO LA ESPERA. Llevan UMBRAL corridas seguidas Y al menos
+      // HORAS_MIN_PRECIO_OTRA_FUENTE horas en que el precio guardado no se
+      // confirma y lo unico que se ve es otro numero. La pagina que escribio el
+      // precio guardado no volvio: aferrarse a el seria dejar un precio viejo
+      // presentado como vigente para siempre. Se adopta y se avisa.
+      //
+      // El piso de horas existe porque con corridas livianas cada hora las 3
+      // corridas podrian ser 3 h, y este es justo el mecanismo que frena el
+      // vaiven de precios que costo ~8 avisos falsos diarios durante un mes. Si
+      // el tiempo todavia no alcanza, se cae al `else`: sigue pendiente, que es
+      // el lado silencioso.
       fuentePrecio = fuenteObs;
-      delete rec.corridasPrecioDistinto;
+      olvidarPrecioDistinto(rec);
       cambios.push({
         tipo: obs.precio < precioAnt ? "baja" : "sube",
         modelo,
@@ -535,6 +710,11 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
       rec.precioPendiente = obs.precio;
       if (fuenteObs.pagina) rec.precioPendienteDe = fuenteObs.pagina;
       rec.corridasPrecioDistinto = corridasDistinto;
+      // DESDE CUANDO dura la discusion. Se escribe una sola vez (la primera
+      // corrida distinta) y se arrastra: es el ancla de reloj que le falta al
+      // contador de corridas. Vive solo mientras dura la condicion, igual que el
+      // contador que lo acompana.
+      rec.precioDistintoDesde = ant.precioDistintoDesde ?? timestamp;
     }
   }
 
@@ -609,10 +789,17 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
   return { rec, cambios, correcciones };
 }
 
-export function comparar({ previo, observado, paginasFallidas, corridaConfiable, timestamp }) {
+/**
+ * @param alcance lo que ESTA corrida se propuso mirar (ver src/alcance.mjs). Sin
+ *   alcance -- o con uno completo -- todo el catalogo previo esta dentro, que es
+ *   el comportamiento de siempre y lo que siguen usando las pruebas y las
+ *   llamadas que no lo pasan.
+ */
+export function comparar({ previo, observado, paginasFallidas, alcance, corridaConfiable, timestamp }) {
   const catalogo = {};
   const cambios = [];
   const correccionesDePrecio = [];
+  let fueraDeAlcance = 0;
 
   for (const [modelo, obs] of Object.entries(observado)) {
     const { rec, cambios: propios, correcciones } = evaluarObservado({ modelo, ant: previo[modelo], obs, timestamp });
@@ -622,7 +809,45 @@ export function comparar({ previo, observado, paginasFallidas, corridaConfiable,
   }
 
   for (const [modelo, ant] of Object.entries(previo)) {
+    // ESTE `continue` VA PRIMERO, SIN EXCEPCION: lo que SE OBSERVO ya lo
+    // resolvio el primer bucle y este no lo vuelve a tocar.
+    //
+    // Un SKU puede estar publicado por una pagina que SI entro en el recorrido
+    // aunque el `paginaOrigen` que quedo GUARDADO sea otra (medido sobre el
+    // catalogo real: 115 SKU los publica mas de una pagina, y 23 registros
+    // tienen paginaOrigen distinto de url). Si el filtro de alcance se evaluara
+    // antes que este `continue`, a ese SKU se le pisaria el registro recien
+    // calculado con el dato viejo: el precio y el stock que la pagina acaba de
+    // publicar se tirarian a la basura DESPUES de que el aviso ya salio, y la
+    // corrida siguiente volveria a detectar el mismo cambio y a avisarlo. Es
+    // exactamente la forma del defecto que mando ~8 avisos falsos por dia
+    // durante un mes sin que nadie lo notara (BITACORA.md).
     if (observado[modelo]) continue;
+
+    // FUERA DEL ALCANCE: esta corrida NO se propuso mirar su pagina, asi que no
+    // hay ninguna observacion nueva sobre este producto -- ni buena ni mala. El
+    // registro anterior se copia tal cual: misma presencia, mismas ausencias,
+    // mismo stockPendiente, mismos contadores. No es "activo" ni
+    // "error_verificacion"; es el dato de antes, intacto.
+    //
+    // POR QUE NO SE REUSA LA RAMA DE PAGINAS FALLIDAS, QUE "SE PARECE": porque
+    // "no lo revise" no es "fallo". Medido simulando 2 dias de la cadencia
+    // nueva: pasar los 733 SKU de fuera por la rama de fallidas los dejaria en
+    // presencia "error_verificacion" en cada corrida liviana, convertiria el
+    // indicador `sinVerificar` del resumen de 1 en 733 (dejando de servir para
+    // lo unico que sirve) y, si dos completos seguidos se perdieran, dispararia
+    // un aviso tecnico nombrando 733 productos que nadie dejo de vender. Ademas
+    // hace que cada corrida liviana toque 1.125 lineas de data/latest.json en
+    // vez de 430, y que el completo siguiente las revierta.
+    //
+    // La frescura del dato no se pierde: `ultimaVezVisto` y `ultimaRevision`
+    // quedan tal como estaban y dicen exactamente cuando fue la ultima vez que
+    // alguien miro de verdad.
+    if (!enAlcance(ant, alcance)) {
+      catalogo[modelo] = { ...ant };
+      fueraDeAlcance += 1;
+      continue;
+    }
 
     const paginaFallo = ant.paginaOrigen && paginasFallidas.has(ant.paginaOrigen);
     if (paginaFallo || !corridaConfiable) {
@@ -653,27 +878,81 @@ export function comparar({ previo, observado, paginasFallidas, corridaConfiable,
     }
 
     const ausencias = (ant.ausencias ?? 0) + 1;
-    if (ausencias >= UMBRAL_AUSENCIAS && !ant.notificadoDesaparecido) {
-      catalogo[modelo] = { ...ant, presencia: "desaparecido", ausencias, notificadoDesaparecido: true };
+    // ¿ALGUNA DE ESTAS AUSENCIAS LA PUSO UNA CORRIDA QUE MIRO TODO EL SITIO?
+    // (ver ausenciaVerificada arriba). Una corrida parcial no puede distinguir
+    // "ya no se vende" de "se mudo a una pagina que yo no miro", y esa confusion
+    // es un aviso falso con la forma exacta del incidente de los ~150.
+    const verificada = ausenciaVerificada(ant) || !alcance?.parcial;
+    // EL PISO DE RELOJ (ver HORAS_MIN_DESAPARICION). Las 2 ausencias siguen
+    // siendo obligatorias; ademas tiene que haber pasado el tiempo desde la
+    // ultima vez que el producto SI se vio. Con la cadencia de hoy esto no
+    // cambia nada (2 ausencias ya son ~6,2 h); lo que evita es que dos corridas
+    // livianas seguidas, separadas por 1 hora, declaren desaparecido un Galaxy
+    // -- sobre una regla que en la historia real se equivoco el 22,3% de las
+    // veces.
+    const bastanteTiempo = pasoElTiempo(ant.ultimaVezVisto, timestamp, HORAS_MIN_DESAPARICION);
+    if (ausencias >= UMBRAL_AUSENCIAS && verificada && bastanteTiempo && !ant.notificadoDesaparecido) {
+      catalogo[modelo] = { ...ant, presencia: "desaparecido", ausencias, ausenciaEnCompleto: true, notificadoDesaparecido: true };
       cambios.push({ tipo: "desaparecido", modelo, ...paraTitulo(ant), precioAnterior: ant.precio, categoria: ant.categoria, url: ant.url });
     } else {
       catalogo[modelo] = {
         ...ant,
         presencia: ant.notificadoDesaparecido ? "desaparecido" : "ausente",
         ausencias,
+        // Se escribe SIEMPRE que haya ausencias acumuladas, incluso en false: sin
+        // el campo explicito, un registro con ausencias puestas por revisiones
+        // livianas no se distinguiria de uno heredado de la version anterior (que
+        // si cuenta como verificado), y el freno no frenaria nada.
+        ausenciaEnCompleto: verificada,
       };
     }
   }
 
-  return { catalogo, cambios, correccionesDePrecio };
+  // `fueraDeAlcance` es cuantos productos esta corrida no se propuso mirar.
+  // Queda en el resumen de data/ejecuciones.jsonl para que las filas de una
+  // revision completa y una liviana dejen de ser incomparables entre si: sin el,
+  // `productosEncontrados` pasa de 929 a 196 sin ninguna explicacion en el
+  // archivo.
+  return { catalogo, cambios, correccionesDePrecio, fueraDeAlcance };
 }
 
 /**
  * Cuantas corridas seguidas puede un SKU quedar sin verificarse antes de que
- * valga la pena decirlo. 20 son ~3 dias a 7 corridas diarias: lo bastante como
- * para descartar los timeouts esporadicos y las caidas de un dia.
+ * valga la pena decirlo.
+ *
+ * BAJO DE 20 A 6 EL 2026-09-12, Y NO ES UN AJUSTE COSMETICO. El que manda ahora
+ * es el piso de reloj (HORAS_MIN_MOMIA = 72 h); este contador quedo como la
+ * evidencia que lo acompana. Con 20 y dos cadencias distintas, el MISMO umbral
+ * significaba dos cosas y la segunda estaba rota:
+ *
+ *  - dentro del bloque liviano (196 productos, hasta 20 miradas al dia) 20
+ *    corridas son ~1 dia, y ahi el piso de 72 h hacia todo el trabajo;
+ *  - fuera del bloque (733 productos, 2 miradas al dia) 20 corridas son ~10
+ *    DIAS, y ahi mandaba el contador: el aviso se atrasaba de los ~3 dias que su
+ *    propio comentario prometia a 9,6 dias MEDIDOS. Los pisos de reloj solo
+ *    retrasan, nunca adelantan, asi que 72 h no podia arreglarlo.
+ *
+ * Con 6: dentro del bloque son ~7 h y manda el piso (72 h = 3 dias); fuera son
+ * ~3 dias y coinciden con el piso. Las dos puntas del catalogo avisan a los 3
+ * dias, que es lo que este umbral quiso decir siempre.
+ *
+ * NO PRODUCE NINGUNA RAFAGA AL DESPLEGARSE, medido sobre data/latest.json del
+ * 2026-09-12: el maximo de `corridasSinPrecio` en los 1.031 registros es 4 (60
+ * registros en 3) y el de `corridasSinVerificar` es 5, o sea ninguno cruza el 6
+ * y todos tienen que volver a acumular con el reloj corriendo.
  */
-export const UMBRAL_SIN_VERIFICAR = 20;
+export const UMBRAL_SIN_VERIFICAR = 6;
+
+/**
+ * Las dos funciones de abajo aceptan tanto `(catalogo, 3)` como
+ * `(catalogo, {umbral: 3, timestamp})`. La forma con numero es la que ya usaban
+ * las pruebas y el codigo anterior; se mantiene para no cambiar 371 pruebas por
+ * un parametro.
+ */
+function opcionesMomia(arg, porDefecto) {
+  if (typeof arg === "number") return { umbral: arg, timestamp: null };
+  return { umbral: arg?.umbral ?? porDefecto, timestamp: arg?.timestamp ?? null };
+}
 
 /**
  * SKU que llevan demasiadas corridas seguidas sin poder verificarse (su pagina
@@ -687,11 +966,15 @@ export const UMBRAL_SIN_VERIFICAR = 20;
  * Muta `catalogo` marcando los que ya se avisaron, asi que se llama ANTES de
  * escribir latest.json.
  */
-export function marcarSinVerificarProlongado(catalogo, umbral = UMBRAL_SIN_VERIFICAR) {
+export function marcarSinVerificarProlongado(catalogo, opciones = {}) {
+  const { umbral, timestamp } = opcionesMomia(opciones, UMBRAL_SIN_VERIFICAR);
   const nuevos = [];
   for (const [modelo, rec] of Object.entries(catalogo ?? {})) {
     if (rec?.presencia !== "error_verificacion") continue;
     if ((rec.corridasSinVerificar ?? 0) < umbral) continue;
+    // El piso de reloj: 20 corridas ya no son "3 dias" para todo el catalogo.
+    // Sin `timestamp` (las llamadas viejas) manda solo el contador, como antes.
+    if (timestamp && !pasoElTiempo(rec.ultimaVezVisto, timestamp, HORAS_MIN_MOMIA)) continue;
     if (rec.avisadoSinVerificar) continue;
     rec.avisadoSinVerificar = true;
     nuevos.push({ modelo, corridas: rec.corridasSinVerificar, url: rec.url ?? null, paginaOrigen: rec.paginaOrigen ?? null });
@@ -721,10 +1004,14 @@ export function marcarSinVerificarProlongado(catalogo, umbral = UMBRAL_SIN_VERIF
  * El caso que SI hay que ver es el contrario: un producto a la venta cuyo precio
  * no se logra leer, porque ahi la espera del render se quedo corta.
  */
-export function marcarSinPrecioProlongado(catalogo, umbral = UMBRAL_SIN_VERIFICAR) {
+export function marcarSinPrecioProlongado(catalogo, opciones = {}) {
+  const { umbral, timestamp } = opcionesMomia(opciones, UMBRAL_SIN_VERIFICAR);
   const nuevos = [];
   for (const [modelo, rec] of Object.entries(catalogo ?? {})) {
     if ((rec?.corridasSinPrecio ?? 0) < umbral) continue;
+    // El piso de reloj, anclado en `sinPrecioDesde` (la primera corrida sin
+    // precio). Sin `timestamp` manda solo el contador, como antes.
+    if (timestamp && !pasoElTiempo(rec.sinPrecioDesde, timestamp, HORAS_MIN_MOMIA)) continue;
     // Se avisa de los productos que Samsung VENDE (con o sin unidades). Los
     // "no a la venta" y los "desconocido" quedan fuera a proposito: son 426 de
     // los ~1000 activos y muchos simplemente no publican precio (medido en vivo

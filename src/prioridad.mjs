@@ -14,6 +14,7 @@
 // LO QUE ESTE MODULO NO HACE: no agrega, no saca ni cambia ninguna pagina. Solo
 // las reordena. Que el RESULTADO no dependa del orden es lo que se verifica en
 // test/orden-recorrido.test.mjs.
+import { alcanceDe, MODO_COMPLETO, MODO_LIVIANO } from "./alcance.mjs";
 import { esFamiliaGenerica } from "./catalogo.mjs";
 import { seccionDeUrl } from "./identidad.mjs";
 
@@ -54,6 +55,41 @@ export const CATEGORIAS_PRINCIPALES = [
 ];
 
 /**
+ * EL BLOQUE DEL MODO CYBER: mas chico todavia, para poder ir cada media hora.
+ *
+ * LA ARITMETICA, MEDIDA, ES LA RAZON DE QUE ESTA LISTA EXISTA. Una revision
+ * liviana de las 5 categorias son 347 paginas, y el costo real por pagina esta
+ * medido sobre las 307 corridas de data/ejecuciones.jsonl: mediana 9,0 s, mejor
+ * caso reciente 6,4 s. O sea 37-52 min mas ~5 min de preparacion del job: NO
+ * CABE en una ventana de 30 min. Acortar el intervalo sin achicar el bloque no
+ * da mas revisiones, da mas corridas descartadas (ver README).
+ *
+ * Con Smartphones + Computadores son 216 paginas (91+94 y 17+14), o sea 23-32
+ * min: eso si entra, justo. Lo que se pierde mientras el Cyber esta encendido:
+ * Tablets, Audio y Relojes pasan a verse solo en los dos completos del dia.
+ * Es un canje deliberado y reversible desde la interfaz de GitHub, sin tocar
+ * codigo (ver README).
+ */
+export const CATEGORIAS_CYBER = [
+  { categoria: "Smartphones", seccion: "smartphones" },
+  { categoria: "Computadores", seccion: "computers" },
+];
+
+/** Los dos bloques posibles, con el nombre con que quedan escritos en ejecuciones.jsonl. */
+export const BLOQUE_PRINCIPAL = { etiqueta: "principales", categorias: CATEGORIAS_PRINCIPALES };
+export const BLOQUE_CYBER = { etiqueta: "cyber", categorias: CATEGORIAS_CYBER };
+
+/**
+ * Que bloque usa esta corrida. Sale de la variable de repositorio MODO_CYBER,
+ * que el operador prende y apaga desde la interfaz de GitHub sin tocar codigo ni
+ * horarios. Cualquier valor que no sea "on" (incluida la variable inexistente)
+ * deja el bloque normal: encender es explicito, apagar es el default.
+ */
+export function bloqueDelEntorno(env = {}) {
+  return String(env.MODO_CYBER ?? "").trim().toLowerCase() === "on" ? BLOQUE_CYBER : BLOQUE_PRINCIPAL;
+}
+
+/**
  * ¿Esta entrada la trajo el descubrimiento por sitemap (src/discover.mjs) o el
  * listado? Se miran las dos marcas que deja discover.mjs -- el campo `tipo` y la
  * categoria generica -- para que renombrar una no deje la deteccion coja.
@@ -71,12 +107,12 @@ function esDescubierta(entry) {
  * dia en que el listado le cambie el nombre a una categoria: esas paginas
  * siguen entrando temprano por su URL mientras alguien corrige la lista.
  */
-function indicePrincipal(entry) {
-  const porNombre = CATEGORIAS_PRINCIPALES.findIndex((c) => c.categoria === entry?.categoria);
+function indicePrincipal(entry, categorias = CATEGORIAS_PRINCIPALES) {
+  const porNombre = categorias.findIndex((c) => c.categoria === entry?.categoria);
   if (porNombre !== -1) return porNombre;
   const seccion = seccionDeUrl(entry?.url);
   if (!seccion) return -1;
-  return CATEGORIAS_PRINCIPALES.findIndex((c) => c.seccion === seccion);
+  return categorias.findIndex((c) => c.seccion === seccion);
 }
 
 /**
@@ -133,18 +169,27 @@ function indicePrincipal(entry) {
  * el mismo insumo da siempre el mismo recorrido.
  *
  * @param entries entradas ya deduplicadas (listado + familia), en su orden crudo
+ * @param categorias el bloque que se recorre PRIMERO (las 5 normales, o las 2
+ *   del modo Cyber)
+ * @param vigiladas las categorias sobre las que se DENUNCIA una ausencia. Son
+ *   SIEMPRE las 5 principales, tambien con el Cyber encendido: el bloque decide
+ *   que se mira seguido, no que se vigila. Antes se usaba `categorias` para las
+ *   dos cosas, y eso apagaba en silencio el aviso de "Tablets ya no esta en el
+ *   listado" mientras el Cyber durara -- y lo apagaba tambien en las revisiones
+ *   COMPLETAS, que son las que si recorren Tablets (defecto medido por los
+ *   verificadores el 2026-09-12).
  * @returns {{recorrido: object[], paginasPrincipales: number,
  *            porCategoria: {categoria: string, listado: number, familia: number}[],
  *            ausentes: {categoria: string, seccion: string, paginasEnLaSeccion: number}[]}}
  */
-export function ordenarRecorrido(entries) {
+export function ordenarRecorrido(entries, categorias = CATEGORIAS_PRINCIPALES, vigiladas = CATEGORIAS_PRINCIPALES) {
   const lista = entries ?? [];
   // dos baldes por categoria principal: [0] listado, [1] familia descubierta
-  const baldes = CATEGORIAS_PRINCIPALES.map(() => [[], []]);
+  const baldes = categorias.map(() => [[], []]);
   const resto = [];
 
   for (const entry of lista) {
-    const i = indicePrincipal(entry);
+    const i = indicePrincipal(entry, categorias);
     if (i === -1) resto.push(entry);
     else baldes[i][esDescubierta(entry) ? 1 : 0].push(entry);
   }
@@ -161,7 +206,7 @@ export function ordenarRecorrido(entries) {
   // paginas siguen ahi, hay que corregir el nombre en este archivo); 0 es que la
   // categoria de verdad ya no existe en el sitio.
   const ausentes = [];
-  for (const { categoria, seccion } of CATEGORIAS_PRINCIPALES) {
+  for (const { categoria, seccion } of vigiladas) {
     const enListado = lista.filter((e) => !esDescubierta(e) && e?.categoria === categoria).length;
     if (enListado > 0) continue;
     ausentes.push({ categoria, seccion, paginasEnLaSeccion: lista.filter((e) => seccionDeUrl(e?.url) === seccion).length });
@@ -170,7 +215,7 @@ export function ordenarRecorrido(entries) {
   return {
     recorrido: [...principales, ...resto],
     paginasPrincipales: principales.length,
-    porCategoria: CATEGORIAS_PRINCIPALES.map((c, i) => ({
+    porCategoria: categorias.map((c, i) => ({
       categoria: c.categoria,
       listado: baldes[i][0].length,
       familia: baldes[i][1].length,
@@ -263,15 +308,39 @@ export function skusQueCambiaronDeSeccion(previo, catalogo) {
  *    es cuantas de esas alcanza a visitar esta corrida. Confundirlos hacia que
  *    una corrida recortada informara un bloque mas chico y una duracion como si
  *    lo hubiera terminado (defecto medido en la revision del 2026-09-12).
+ *
+ * EL MODO LIVIANO ES UN PREFIJO DEL MISMO RECORRIDO ORDENADO, no una lista
+ * aparte. Eso no es cosmetico: el invariante que sostiene todo el reordenamiento
+ * es que no invierte NINGUN par de paginas de la misma seccion (medido: 0 de
+ * 273.380), y un prefijo de una secuencia conserva el orden relativo de todo lo
+ * que contiene. Armar la lista liviana por separado reabriria el defecto del
+ * 2026-09-12 (el precio de LISTA de una pagina familia firmado como si fuera de
+ * la ficha propia).
+ *
+ * EL ALCANCE SE ARMA DESPUES DEL RECORTE, con las paginas que de verdad quedaron
+ * en `entries`. Si se declarara el bloque teorico y LIMITE_PAGINAS dejara el
+ * bloque a medias, los SKU de las paginas no visitadas acumularian ausencias sin
+ * que nadie los haya mirado.
  */
-export function prepararRecorrido({ seedRaw = [], familyEntries = [], limite } = {}) {
+export function prepararRecorrido({ seedRaw = [], familyEntries = [], limite, modo = MODO_COMPLETO, bloque = BLOQUE_PRINCIPAL } = {}) {
   const vistas = new Set();
   const unicas = [...seedRaw, ...familyEntries].filter((e) => e?.url && !vistas.has(e.url) && vistas.add(e.url));
-  const { recorrido, paginasPrincipales, porCategoria, ausentes } = ordenarRecorrido(unicas);
+  // Las categorias VIGILADAS son siempre las 5, aunque el bloque que se recorra
+  // primero sea el del Cyber (ver ordenarRecorrido).
+  const { recorrido, paginasPrincipales, porCategoria, ausentes } = ordenarRecorrido(unicas, bloque.categorias, CATEGORIAS_PRINCIPALES);
   const tope = Number(limite);
-  const entries = Number.isFinite(tope) && tope > 0 ? recorrido.slice(0, tope) : recorrido;
+  const porLimite = Number.isFinite(tope) && tope > 0 ? tope : Infinity;
+  const porModo = modo === MODO_LIVIANO ? paginasPrincipales : Infinity;
+  const corte = Math.min(porLimite, porModo);
+  const entries = Number.isFinite(corte) ? recorrido.slice(0, corte) : recorrido;
   return {
     entries,
+    // El modo definitivo NO se devuelve aca: lo decide src/alcance.mjs y lo lee
+    // run.mjs de ahi. Devolverlo tambien en este objeto era un campo que nadie
+    // consumia -- un mutante que lo fijaba en "completo" dejaba las 411 pruebas
+    // en verde porque no lo mira nadie (verificadores, 2026-09-12). El modo de
+    // ESTA corrida esta en `alcance.modo`, que si se usa.
+    alcance: alcanceDe({ modo, etiqueta: bloque.etiqueta, entries }),
     paginasPrincipales,
     recorridasPrincipales: Math.min(paginasPrincipales, entries.length),
     bloquePrincipalCompleto: entries.length >= paginasPrincipales,

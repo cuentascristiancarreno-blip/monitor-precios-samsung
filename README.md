@@ -15,11 +15,12 @@ Revisa el precio, stock y catálogo de los productos de samsung.com/cl y avisa p
 - `src/despachador-vivo.mjs`: los **avisos en vivo** — ver la sección siguiente.
 - `data/latest.json`: catálogo con el último estado conocido de cada producto (precio, stock confirmado, presencia). El historial git de este archivo es el snapshot completo de cada revisión.
 - `data/history.jsonl`: eventos de cambio (una línea por cambio detectado, con campo `tipo`).
-- `data/ejecuciones.jsonl`: registro de cada corrida — duración, páginas, errores, conteos por tipo de cambio, si fue confiable, y **cuánto tardó el bloque de categorías principales** (`paginasPrincipales`, `duracionPrincipalesMin`).
+- `data/ejecuciones.jsonl`: registro de cada corrida — duración, páginas, errores, conteos por tipo de cambio, si fue confiable, **cuánto tardó el bloque de categorías principales** (`paginasPrincipales`, `duracionPrincipalesMin`) y **qué se propuso mirar** (`modo`, `alcance`, `paginasDelAlcance`, `noVerificadosPorAlcance`, `productosEsperados`, `escaladoACompleto`). Sin esos últimos, una revisión completa y una liviana no se podrían comparar entre sí: `productosEncontrados` pasa de ~929 a ~196 sin ninguna explicación en el archivo.
 - `data/notificados.jsonl`: apunte temporal de lo que ya se avisó en vivo. Se borra solo al terminar cada revisión; solo sirve para que una revisión que se muere a mitad no haga que la siguiente te avise dos veces lo mismo.
 - `data/pendientes.jsonl`: avisos que Discord nunca llegó a aceptar (por ejemplo, Discord caído durante toda la revisión). Se mandan al principio del resumen de la revisión siguiente y ahí se borran.
 - `data/avisos-tecnicos.jsonl`: qué avisos técnicos ya salieron hoy, para que una condición que dura días (por ejemplo, una categoría que Samsung renombró) no te mande 7 mensajes idénticos por día. Se poda solo a los 7 días.
-- `.github/workflows/monitor.yml`: la tarea programada (7 veces al día, hora Chile: 01, 04, 10, 13, 16, 19, 22). Corre las pruebas antes de cada revisión, sube los datos actualizados y dispara los avisos.
+- `src/alcance.mjs`: **qué se propuso mirar cada revisión.** Desde el 2026-09-12 hay dos tipos de revisión (completa y liviana) y este módulo es el que decide cuál corre, qué páginas entran y contra qué se juzga si la revisión fue confiable. Ver la sección "Dos tipos de revisión" más abajo.
+- `.github/workflows/monitor.yml`: la tarea programada. **2 revisiones completas y hasta 18 livianas al día** (ver "Dos tipos de revisión"). Corre las pruebas antes de cada revisión, sube los datos actualizados y dispara los avisos.
 
 ## Avisos en vivo (2026-09-11)
 
@@ -60,17 +61,19 @@ Nunca se pasa de 3 mensajes en 2 segundos ni de 28 en 60 segundos (los topes de 
 
 ## Reglas anti-falsas-alertas (auditoría 2026-07-24)
 
-- Un producto se declara **desaparecido** solo tras 2 revisiones confiables seguidas sin encontrarlo, con su página cargando bien — y se avisa una sola vez. Si reaparece después, se avisa "recuperado".
+- Un producto se declara **desaparecido** solo tras 2 revisiones confiables seguidas sin encontrarlo, con su página cargando bien, **y solo si pasaron al menos 6 horas desde la última vez que se vio** — y se avisa una sola vez. Si reaparece después, se avisa "recuperado".
 - Si la **página de un producto falló** (timeout, error de red), se conserva su último dato bueno y no se cuenta como ausencia.
-- Si la **corrida completa es sospechosa** (muchos errores, o aparecen >20% menos productos que la vez anterior), no se declara nada desaparecido y llega una alerta técnica a Discord en vez de avisos falsos.
+- Si la revisión **ni siquiera se propuso mirar** esa página (revisión liviana), el producto conserva su último dato tal cual y no cuenta ausencias. "No lo revisé" no es "no apareció" — ver "Dos tipos de revisión".
+- Si la **corrida es sospechosa** (muchos errores, o aparecen >20% menos productos de los que se propuso mirar), no se declara nada desaparecido y llega una alerta técnica a Discord en vez de avisos falsos.
 - Un **cambio de stock** se avisa solo tras verse igual en 2 revisiones seguidas (el detector puede parpadear).
 - Los productos de categorías de **accesorios nunca notifican** a Discord (pedido del operador), aunque su historial sí se guarda.
 - Detalle completo: `docs/auditoria-2026-07-24.md`.
 
 ## Diagnóstico rápido
 
-- ¿Dudas de una corrida? Mirar la última línea de `data/ejecuciones.jsonl` (confiable sí/no, motivos, URLs con error).
-- ¿Probar sin tocar los datos reales? `CARPETA_DATOS=<carpeta-temporal> SIN_DESCUBRIMIENTO=1 LIMITE_PAGINAS=6 node src/run.mjs`
+- ¿Dudas de una corrida? Mirar la última línea de `data/ejecuciones.jsonl` (confiable sí/no, motivos, URLs con error) y el campo `modo`, que dice si esa revisión fue completa o liviana.
+- ¿Por qué hay corridas grises en Actions? Porque una revisión se atrasó y se comió esa hora. Es normal: ver "Dos tipos de revisión".
+- ¿Probar sin tocar los datos reales? `CARPETA_DATOS=<carpeta-temporal> SIN_DESCUBRIMIENTO=1 LIMITE_PAGINAS=6 node src/run.mjs` (agregar `MODO=liviano` para probar el recorrido corto).
 - Pruebas: `npm test` (también corren solas antes de cada revisión programada).
 
 Las páginas de producto individuales necesitan un navegador real (Playwright/Chromium) porque Samsung arma el precio con JavaScript en el momento de la navegación — confirmado con pruebas directas, no es un bloqueo anti-bot, así que no estamos evadiendo ningún control técnico.
@@ -215,6 +218,127 @@ Medido con el código real, 5 revisiones seguidas alternando solo si el bloque s
 **7. Dos cosas de fondo, medidas.** El tiempo máximo que el monitor esperaba por el precio de cada página **nunca se estaba aplicando**: por un error de una línea, en vez de esperar los 3 segundos configurados esperaba **30**. Eso significa que cada una de las ~150 páginas que legítimamente no publican precio costaba medio minuto — unos 75 minutos por revisión. Ya está corregido, y de paso la pausa entre visitas subió de 2 a 2,5 segundos, que es lo que pide la política de scraping del proyecto. En neto, la revisión debería **acortarse**, no alargarse; hay que confirmarlo con el reloj en la primera corrida real.
 
 ---
+
+## Dos tipos de revisión: completa y liviana (2026-09-12)
+
+Pediste que el recorrido entero se hiciera **dos veces al día** y que el resto de las veces, lo más seguido posible, se revisaran **solo las 5 categorías principales**, porque son las que te importan y ese recorrido es mucho más corto.
+
+Ahora hay dos tipos de revisión:
+
+| | Revisión **completa** | Revisión **liviana** |
+|---|---|---|
+| Qué mira | las ~1.185 páginas del catálogo | las 347 páginas de las 5 categorías principales |
+| Cuánto tarda (medido) | 126 a 242 min, lo típico 176 | 37 a 62 min, lo típico ~52 |
+| Cuántas al día | 2 | hasta 18 |
+| A qué hora (Chile) | **02:07 y 14:07** | **a las :23 de cada hora**, de 05:23 a 13:23 y de 17:23 a 01:23 |
+| Puede declarar desaparecido | cualquier producto | solo productos de las 5 categorías, **y solo si una revisión completa vio antes la misma ausencia** |
+
+Las 5 categorías principales son las de siempre: Smartphones, Tablets, Audio y Galaxy Buds, Relojes (Galaxy Watch) y Computadores.
+
+**Los avisos en vivo funcionan igual en los dos tipos.** Una baja de precio de un Galaxy te llega al toque tanto en una revisión completa como en una liviana.
+
+### Lo importante: una revisión liviana no inventa nada sobre lo que no miró
+
+Una revisión liviana no ve **733 de los 929 productos vivos** del catálogo (todos los televisores, la línea blanca, los monitores, los accesorios…). El sistema antes daba por sentado que cada revisión veía el catálogo entero: a lo que no encontraba le sumaba una ausencia, y a las 2 ausencias lo declaraba desaparecido. Con revisiones livianas cada hora, eso habría declarado **~700 productos desaparecidos en dos horas** — el incidente de los ~150 avisos falsos en 4 días, multiplicado por cinco.
+
+La regla nueva es simple y es la que te importa: **cada revisión declara qué se propuso mirar.**
+
+- Lo que **sí** miró sigue las reglas de siempre, incluida la desaparición.
+- Lo que **no** miró queda con su último dato intacto — mismo precio, mismo stock, misma presencia — y no acumula nada. No aparece como "error" ni como "no verificado": aparece como estaba.
+
+Eso se comprueba solo, en cada `npm test`, corriendo la secuencia real (completa → 9 livianas → completa → 9 livianas) sobre una copia del catálogo de verdad y exigiendo **cero desaparecidos falsos y cero avisos que no correspondan**. Y su contraparte: un televisor que desaparece **de verdad** tiene que seguir avisándose, en la segunda revisión completa (unas 12 horas después), no antes.
+
+### De qué DEJAS de enterarte, dicho antes y no después
+
+Esta es la parte incómoda del cambio y no hay forma de arreglarla con código: es aritmética. **733 de los 929 productos vivos pasan de mirarse 7 veces al día a mirarse 2.** Los productos de esas categorías (televisores, línea blanca, monitores, soundbars y torres de sonido, y todos los accesorios) se miran cada 12 horas, así que un hecho que **empieza y termina dentro de esas 12 horas no lo ve nadie**.
+
+Medido con el código real, barriendo 72 momentos de inicio distintos por cada duración. El número es **de cada 100 veces que pasa, cuántas te enteras**:
+
+| Lo que pasa, y cuánto dura | Antes (7 revisiones) | Ahora, **fuera** de las 5 categorías | Ahora, **dentro** de las 5 categorías |
+|---|---|---|---|
+| Se agota 4 horas | 25 | **0** | 97 |
+| Se agota 8 horas | 92 | **0** | 100 |
+| Se agota 12 horas | 100 | **0** | 100 |
+| Se agota 16 horas | 100 | 33 | 100 |
+| Se agota 1 día o más | 100 | 100 | 100 |
+| Oferta de 2 horas | 58 | **17** | 89 |
+| Oferta de 4 horas | 92 | **33** | 100 |
+| Oferta de 8 horas | 100 | 67 | 100 |
+| Oferta de 12 horas o más | 100 | 100 | 100 |
+
+En una frase: **un quiebre de stock de menos de medio día en algo que no sea de las 5 categorías ya no te va a llegar nunca, y una oferta de 4 horas en un televisor te va a llegar 1 de cada 3 veces.** (Los quiebres de stock son los que peor quedan porque, para no avisarte parpadeos del sitio, un cambio de stock necesita verse igual **dos revisiones seguidas** — y dos revisiones seguidas ahora son 12 horas.)
+
+Lo que se gana está en la última columna, y es lo que pediste: dentro de las 5 categorías **un quiebre de 2 horas pasa de 0 a 75 de cada 100**, y una oferta de 2 horas de 58 a 89.
+
+**Si ese canje no te sirve, la palanca es barata y es una sola línea.** Agregar una tercera revisión completa (cada 8 horas en vez de cada 12) es agregar una línea `- cron:` en `.github/workflows/monitor.yml` y borrar una liviana. Medido, eso recupera: oferta de 4 h de 33 a 50, de 6 h de 50 a 75, de 8 h a 100; y los quiebres de stock de 10 h de 0 a 25 y de 12 h de 0 a 50. Sigue sin recuperar los quiebres de menos de 10 horas: para eso harían falta revisiones completas cada 3 horas, que es exactamente lo que había antes.
+
+### Qué pasa si algo falla
+
+- **Ves corridas grises (⊘ "cancelled") en la pestaña Actions: es normal, no está roto.** Solo puede haber una revisión corriendo a la vez (si no, dos revisiones se pisarían los datos y además se saltarían la pausa de cortesía con el sitio de Samsung). Si una revisión completa se atrasa y se come la hora de una liviana, esa liviana aparece gris y no corre. No manda nada a Discord y no deja rastro en los datos. El día se endereza solo en el primer hueco.
+- **Si se pierden las dos revisiones completas**, la primera liviana que se dé cuenta (más de 16 horas sin una completa) **se amplía sola a completa** y te avisa por Discord por qué lo hizo. Esa revisión va a tardar ~3 horas en vez de una. Es a propósito: cobertura antes que frecuencia.
+- **Si una revisión liviana falla de verdad** (por ejemplo, 300 de sus 347 páginas caídas), te llega la alerta técnica de siempre. Una revisión liviana **normal** ya **no** manda esa alerta: antes la habría mandado 18 veces al día, porque el sistema la comparaba contra el catálogo entero.
+- **Si la lista de páginas que el monitor arma al empezar se achica de golpe** (Samsung publica un índice, el "sitemap", del que salen 162 de las 1.185 páginas; si ese índice falla, el monitor se queda ciego para 160 productos), la revisión se marca sospechosa **y no declara nada desaparecido**, y te llega la alerta técnica. Sin eso, una caída de ese índice durante un día entero se convertía en **160 avisos de "desapareció"** de productos que seguían a la venta. Mientras la caída dure, la alerta se repite una vez al día y esos 160 productos terminan saliendo por el canal correcto ("no se pueden verificar hace 3 días"), no por el incorrecto.
+- Cada alerta técnica sale **una vez al día por tipo de falla y por gravedad**. Dos fallas distintas el mismo día llegan las dos; la misma falla repetida llega una. La gravedad está separada a propósito: una revisión con 36 de 347 páginas caídas en la mañana **no** silencia una con 340 de 347 caídas en la tarde.
+
+### Cuánto cabe en un día, dicho con franqueza
+
+Con las duraciones medidas sobre las 307 revisiones de `data/ejecuciones.jsonl` (mediana 176 min la completa, ~52 min la liviana, más ~5 min de preparación), las 20 revisiones piden unas **23 horas de un día de 24**. En un día normal van a correr casi todas; en un día lento, **2 a 4 livianas se van a descartar solas** y las vas a ver grises.
+
+Por eso **ninguna regla del sistema cuenta revisiones**: todas cuentan horas (ver la sección siguiente). Que falten tres livianas no cambia el significado de nada.
+
+Si alguna vez quieres bajarle una marcha, se borran las líneas `- cron: "23 ..."` que sobren en `.github/workflows/monitor.yml` — una línea menos es una revisión menos, y no hay que tocar nada más.
+
+### Los umbrales, ahora contados en días y no en revisiones
+
+Antes todas las revisiones eran iguales (7 al día, cada ~3 horas), así que "2 revisiones" y "6 horas" eran lo mismo. Ahora no: para un Galaxy, 2 revisiones pueden ser 1 hora; para un televisor, 12. Cada umbral quedó con un **piso de reloj** que le devuelve el significado que tenía:
+
+| Qué decide | Regla nueva | Antes significaba | Ahora significa |
+|---|---|---|---|
+| Declarar un producto **desaparecido** | 2 ausencias **y** 6 horas **y** que una revisión completa haya visto una de esas ausencias | ~6 h | 6 h para todos (antes habrían sido 1 h para un Galaxy) |
+| Avisar que un producto **no se puede verificar hace rato** | 6 revisiones **y** 3 días | ~2,6 días | 3 días para todos |
+| Avisar que un producto **hace rato no muestra precio** | 6 revisiones **y** 3 días | ~2,6 días | 3 días para todos |
+| Adoptar un precio que **viene de otra página** | 3 revisiones **y** 6 horas | ~6 h | 6 h para todos (antes habrían sido 3 h para un Galaxy) |
+
+El "6 revisiones" de las dos filas del medio era **20** hasta el 2026-09-12. Con 20, ese umbral significaba dos cosas distintas y la segunda estaba rota: ~1 día para un Galaxy (donde el piso de 3 días hacía todo el trabajo) pero **~10 días** para un televisor, que solo se mira 2 veces al día. Como los pisos de reloj solo pueden retrasar, el piso de 3 días no podía arreglar ese lado. Con 6, las dos puntas del catálogo avisan a los 3 días.
+
+Los pisos **solo pueden retrasar un aviso, nunca adelantarlo**. Es la regla de oro del proyecto puesta en horas: más vale callarse que inventar. Con las dos revisiones completas del día, nada de esto cambia respecto de como venía funcionando.
+
+El más importante de los cuatro es el primero: de los 157 "desaparecido" de toda la historia del monitor, **35 (el 22%) los desmintió un "recuperado" dentro de las 24 horas**. Es la regla que más se equivoca, y sin el piso de 6 horas dos revisiones livianas seguidas la habrían disparado en una hora.
+
+### Modo Cyber: revisiones cada media hora (apagado hasta que lo enciendas)
+
+Para el Cyber (o cualquier día de ofertas fuertes) se puede pasar a **una revisión liviana cada media hora**. Son **dos pasos**, y hay que hacer los dos:
+
+**Para ENCENDERLO:**
+
+1. Entrar al repositorio en GitHub.
+2. Arriba, pestaña **Settings** (el engranaje, a la derecha de "Insights").
+3. En el menú de la izquierda: **Secrets and variables** → **Actions**.
+4. Arriba de la lista, elegir la pestaña **Variables** (no "Secrets").
+5. Botón verde **New repository variable**.
+6. En **Name** escribir exactamente: `MODO_CYBER`
+7. En **Value** escribir exactamente: `on`
+8. Botón **Add variable**.
+9. Y después, en `.github/workflows/monitor.yml`, **borrar el `# ` del principio de las 18 líneas** que están bajo el título "MODO CYBER: la media hora intermedia (APAGADO)" y guardar. Están juntas y todas dicen `- cron: "53 ...`.
+
+**Para APAGARLO:** volver a poner el `# ` en esas 18 líneas, y en **Settings → Secrets and variables → Actions → Variables** dejar `MODO_CYBER` en `off` (o borrarla con el tacho).
+
+**Por qué los horarios no pueden quedar escritos todo el año** (esto se midió el 2026-09-12): solo puede haber una revisión a la vez, y GitHub decide eso **antes** de mirar si la revisión se va a saltar. Una revisión de las y media que no va a hacer nada igual **le quita el turno** a una revisión liviana de verdad que estaba esperando. O sea: dejarlas escritas con el Cyber apagado te daría *menos* revisiones, no las mismas.
+
+Tres cosas más que conviene saber:
+
+- **El cambio empieza a regir en la revisión siguiente**, no en la que esté corriendo.
+- **Con el Cyber encendido, la revisión liviana se achica a Smartphones + Computadores** (216 páginas en vez de 347). No es un capricho: 347 páginas son 37 a 62 minutos y **no caben en media hora**. Si no se achicara el recorrido, cada revisión se comería la siguiente y recibirías *menos* revisiones, no más.
+- **Lo que cuesta mientras esté encendido: Tablets, Audio y Relojes** (77 productos vivos) **se miran solo en las 2 revisiones completas del día**, y les pasa a aplicar entera la tabla de "de qué dejas de enterarte" de más arriba — justo en la semana del año con más cambios de precio. Lo que **no** se apaga es la vigilancia: si Samsung le cambia el nombre a Tablets, Audio o Relojes en el listado, el aviso llega igual, con el Cyber encendido o apagado.
+
+Si quieres cambiar qué categorías entran al bloque del Cyber, la lista está en `src/prioridad.mjs` (`CATEGORIAS_CYBER`), justo debajo de la lista normal.
+
+### Lanzar una revisión a mano
+
+En la pestaña **Actions** → **Monitor de precios Samsung** → botón **Run workflow**. Aparece un desplegable **"Qué revisar en esta revisión hecha a mano"**:
+
+- **completo** (lo que viene puesto): ~3 horas, mira el catálogo entero, y se va a comer las 2 revisiones livianas siguientes. Es el que viene puesto a propósito: hasta que existieron los dos tipos, una revisión lanzada a mano miraba **todo**, y si el desplegable viniera en "liviano" apretarías "Run workflow" sin tocar nada y revisarías el 21% del catálogo creyendo haber revisado todo.
+- **liviano**: ~50 minutos, solo las 5 categorías principales.
 
 ## Por dónde empieza cada revisión (2026-09-12)
 

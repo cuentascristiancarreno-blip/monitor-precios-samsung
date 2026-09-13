@@ -5,26 +5,142 @@ permissions:
 
 on:
   schedule:
-    # Chile continental esta en UTC-4 (verano) / UTC-3 (invierno) -- estos
-    # horarios en UTC estan calculados para invierno (UTC-3, vigente en julio).
-    # Van a correr 1 hora antes/despues de lo pedido durante el horario de
-    # verano hasta que se reajuste (pedido operador 2026-07-21: 01, 04, 10,
-    # 13, 16, 19, 22 hora Chile -- todas separadas por >=3h para no toparse
-    # con corridas de ~130-170 min).
-    - cron: "0 4 * * *"  # 01:00 Chile
-    - cron: "0 7 * * *"  # 04:00 Chile
-    - cron: "0 13 * * *" # 10:00 Chile
-    - cron: "0 16 * * *" # 13:00 Chile
-    - cron: "0 19 * * *" # 16:00 Chile
-    - cron: "0 22 * * *" # 19:00 Chile
-    - cron: "0 1 * * *"  # 22:00 Chile
-  workflow_dispatch: {}
+    # ------------------------------------------------------------------
+    # HORA DE CHILE = UTC - 3.
+    #
+    # Esa es la hora de VERANO, vigente desde el primer sabado de septiembre
+    # de 2026 hasta el primer sabado de abril de 2027. En invierno Chile es
+    # UTC-4 y todo esto ocurre una hora ANTES en hora local. No se reajusta:
+    # no hay ninguna persona esperando a una hora fija, y tocar 20 lineas dos
+    # veces al ano es mas riesgo que beneficio.
+    # (El comentario anterior de este archivo decia que UTC-3 era "invierno,
+    # vigente en julio". Era falso desde julio: en julio Chile es UTC-4.)
+    #
+    # NINGUN HORARIO VA EN EL MINUTO 0, A PROPOSITO. La documentacion de
+    # GitHub avisa que el schedule se atrasa en las horas de mas carga y que
+    # "las horas de mas carga incluyen el comienzo de cada hora". Medido sobre
+    # las 306 transiciones de data/ejecuciones.jsonl con los 7 horarios en
+    # punto anteriores: atraso mediano 68 min, p90 172 min, maximo 342 min. Y
+    # no es culpa de la saturacion propia: mirando SOLO las corridas que
+    # arrancaron con la maquina libre (mas de 30 min sin correr nada), el
+    # atraso mediano sigue siendo 74 min y el p90 222 min.
+    # ------------------------------------------------------------------
+
+    # ---------- REVISION COMPLETA: las ~1.185 paginas del catalogo ----------
+    # Duracion medida sobre 307 corridas: minimo 126 min, mediana 176, p90 194,
+    # maximo 242. Son las UNICAS corridas que pueden declarar desaparecido un
+    # producto que no este en las 5 categorias principales. Van separadas 12 h a
+    # proposito: con UMBRAL_AUSENCIAS = 2, un desaparecido de fuera del bloque
+    # tarda ~24 h en confirmarse; con un solo completo diario tardaria ~48 h.
+    - cron: "7 5 * * *"    # 02:07 Chile
+    - cron: "7 17 * * *"   # 14:07 Chile
+
+    # ---------- REVISION LIVIANA: solo las 5 categorias principales ----------
+    # 347 paginas medidas (Smartphones 91+94, Tablets 45+23, Audio 14+0,
+    # Relojes 18+31, Computadores 17+14), o sea 37-52 min segun el costo por
+    # pagina medido (6,4 s en el mejor caso reciente, 9,0 s de mediana).
+    # Una por hora, salvo las horas que ocupan los completos.
+    - cron: "23 8 * * *"   # 05:23 Chile
+    - cron: "23 9 * * *"   # 06:23 Chile
+    - cron: "23 10 * * *"  # 07:23 Chile
+    - cron: "23 11 * * *"  # 08:23 Chile
+    - cron: "23 12 * * *"  # 09:23 Chile
+    - cron: "23 13 * * *"  # 10:23 Chile
+    - cron: "23 14 * * *"  # 11:23 Chile
+    - cron: "23 15 * * *"  # 12:23 Chile
+    - cron: "23 16 * * *"  # 13:23 Chile
+    - cron: "23 20 * * *"  # 17:23 Chile
+    - cron: "23 21 * * *"  # 18:23 Chile
+    - cron: "23 22 * * *"  # 19:23 Chile
+    - cron: "23 23 * * *"  # 20:23 Chile
+    - cron: "23 0 * * *"   # 21:23 Chile
+    - cron: "23 1 * * *"   # 22:23 Chile
+    - cron: "23 2 * * *"   # 23:23 Chile
+    - cron: "23 3 * * *"   # 00:23 Chile
+    - cron: "23 4 * * *"   # 01:23 Chile
+
+    # ---------- MODO CYBER: la media hora intermedia (APAGADO) ----------
+    # Los 18 horarios del minuto 53 estan COMENTADOS a proposito, y agregarlos es
+    # parte de encender el Cyber (el paso a paso esta en README.md).
+    #
+    # POR QUE NO PUEDEN QUEDAR ESCRITOS PERMANENTEMENTE (defecto medido por los
+    # verificadores el 2026-09-12). El `if` que salta estas corridas esta a nivel
+    # de JOB, pero la concurrencia esta a nivel de WORKFLOW: GitHub mete la
+    # corrida al grupo ANTES de evaluar el `if`, y el grupo deja como maximo UNA
+    # pendiente, reemplazando a la anterior. O sea que una corrida del minuto 53
+    # que no va a hacer NADA puede desalojar de la ranura pendiente a una
+    # revision liviana de verdad. Con el atraso medido de GitHub (mediana 68 min)
+    # las corridas se pisan seguido, asi que la ranura se quemaria a menudo con
+    # un no-op: exactamente lo contrario de lo que pidio el operador ("la mayor
+    # cantidad de veces posible").
+    #
+    # PARA ENCENDER EL CYBER hay que hacer las dos cosas, en este orden:
+    #   1. poner la variable de repositorio MODO_CYBER en "on" (Settings →
+    #      Secrets and variables → Actions → Variables), y
+    #   2. borrar el "# " del principio de las 18 lineas de abajo y guardar.
+    # Para apagarlo, al reves: volver a poner el "# " y dejar la variable en
+    # "off". El `if` del job se queda igual como red de seguridad, por si alguien
+    # agrega los horarios y se olvida de la variable.
+    #
+    # Cuando el Cyber esta encendido, la revision liviana ademas se achica a
+    # Smartphones + Computadores (216 paginas, 23-32 min). Sin achicarla, media
+    # hora no alcanza: 347 paginas son 37-52 min mas ~5 min de preparacion del
+    # job, asi que cada corrida se comeria la siguiente y el operador recibiria
+    # menos revisiones, no mas. Lo que se pierde mientras dure: Tablets, Audio y
+    # Relojes pasan a mirarse solo en las dos revisiones completas del dia.
+    #
+    # - cron: "53 8 * * *"   # 05:53 Chile
+    # - cron: "53 9 * * *"   # 06:53 Chile
+    # - cron: "53 10 * * *"  # 07:53 Chile
+    # - cron: "53 11 * * *"  # 08:53 Chile
+    # - cron: "53 12 * * *"  # 09:53 Chile
+    # - cron: "53 13 * * *"  # 10:53 Chile
+    # - cron: "53 14 * * *"  # 11:53 Chile
+    # - cron: "53 15 * * *"  # 12:53 Chile
+    # - cron: "53 16 * * *"  # 13:53 Chile
+    # - cron: "53 20 * * *"  # 17:53 Chile
+    # - cron: "53 21 * * *"  # 18:53 Chile
+    # - cron: "53 22 * * *"  # 19:53 Chile
+    # - cron: "53 23 * * *"  # 20:53 Chile
+    # - cron: "53 0 * * *"   # 21:53 Chile
+    # - cron: "53 1 * * *"   # 22:53 Chile
+    # - cron: "53 2 * * *"   # 23:53 Chile
+    # - cron: "53 3 * * *"   # 00:53 Chile
+    # - cron: "53 4 * * *"   # 01:53 Chile
+
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "Qué revisar en esta revisión hecha a mano"
+        type: choice
+        # COMPLETO ES EL DEFAULT A PROPOSITO. Hasta que existieron los dos modos,
+        # una revision lanzada a mano recorria siempre el catalogo entero. Si el
+        # desplegable viniera en "liviano", el operador que entra a Actions y
+        # aprieta "Run workflow" sin tocar nada -- que es lo que hizo siempre,
+        # porque antes no habia desplegable -- obtendria una revision del 21% del
+        # catalogo creyendo haber revisado todo. Una revision a mano casi siempre
+        # se lanza para mirar algo entero AHORA; el que quiera la rapida la elige.
+        default: completo
+        options:
+          - completo
+          - liviano
 
 # La concurrencia va a nivel de WORKFLOW, no de job: a nivel de job no impidio
 # que dos corridas se solaparan (medido: la corrida del 01-08 09:40 arranco 43 s
 # despues del commit de la anterior, o sea su checkout era mas viejo que ese
 # push). Dos corridas solapadas comparan contra un catalogo viejo y reenvian
-# avisos ya mandados.
+# avisos ya mandados. Y no es solo higiene de datos: dos corridas simultaneas
+# rompen la politica de scraping del proyecto (>= 2,5 s entre requests al mismo
+# host).
+#
+# NO AGREGAR "queue: max". Con el valor por defecto queda como maximo UNA
+# corrida pendiente y la siguiente la reemplaza, asi que un completo atrasado se
+# come 1-2 revisiones livianas y el dia se endereza solo en el primer hueco.
+# Con "queue: max" se acumularian hasta 100 pendientes y un completo atrasado
+# arrastraria el dia entero en fila india. Las corridas descartadas aparecen
+# grises (⊘ cancelled) en la pestana Actions: es normal, esta explicado en
+# README.md, y por eso NINGUNA regla del sistema cuenta corridas (cuentan horas,
+# ver "los pisos de reloj" en src/comparar.mjs).
 concurrency:
   group: monitor-samsung
   cancel-in-progress: false
@@ -32,13 +148,59 @@ concurrency:
 jobs:
   revisar:
     runs-on: ubuntu-latest
-    # 330 min es red de seguridad, no el objetivo (la corrida normal tarda
-    # 130-175 min). Con 240 min una corrida lenta se pasaba y GitHub la mataba
-    # SIN dejar datos ni avisos: peor una corrida larga que una muerta.
+    # RED DE SEGURIDAD DEL MODO CYBER. Los horarios del minuto 53 estan
+    # comentados arriba, asi que hoy esto no se evalua nunca. Se queda por si
+    # alguien los agrega y se olvida de poner la variable MODO_CYBER en "on": en
+    # ese caso la corrida se salta sin consumir minutos ni mandar nada a Discord.
+    # Lo que este `if` NO puede hacer es evitar que esas corridas ocupen la
+    # ranura de la cola de concurrencia -- por eso los horarios no se dejan
+    # escritos (ver la nota larga arriba). En workflow_dispatch
+    # `github.event.schedule` viene vacio, asi que una revision a mano nunca se
+    # salta.
+    if: ${{ !startsWith(github.event.schedule, '53 ') || vars.MODO_CYBER == 'on' }}
+    # 330 min es red de seguridad, no el objetivo (la revision completa tarda
+    # 126-242 min medidos). Con 240 min una corrida lenta se pasaba y GitHub la
+    # mataba SIN dejar datos ni avisos: peor una corrida larga que una muerta.
     # Incidente del 2026-08-02, ver BITACORA.md.
+    #
+    # Es el MISMO tope para los dos modos, aunque una revision liviana que pase
+    # de 2 h ya este rota. Se evaluo poner un tope por modo con una expresion
+    # (`${{ ... && 330 || 150 }}`): se descarto porque si esa expresion no
+    # evaluara bien, el archivo no se parsea y el monitor deja de correr ENTERO,
+    # y el operador no programa. Una liviana colgada cuesta 5 franjas del dia y
+    # se recupera sola; un YAML roto cuesta el monitor completo.
     timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
+
+      # QUE VA A REVISAR ESTA CORRIDA. Sale del horario que la disparo
+      # (`github.event.schedule` trae el string literal del cron) o del
+      # desplegable cuando se lanza a mano. Va en un paso con nombre y no en una
+      # expresion escondida para que quede impreso en el log y para que el
+      # ::notice se vea como una banda arriba de la pagina de la corrida, sin
+      # abrir ningun log.
+      #
+      # CAE EN "liviano" CUANDO NO RECONOCE EL CRON, y eso es a proposito por un
+      # lado y peligroso por el otro: protege contra fantasmas (una revision
+      # liviana no puede declarar desaparecido lo que no miro) pero, si alguien
+      # edita un horario de completo y se equivoca, el 70% del catalogo dejaria
+      # de mirarse en silencio. Por eso el yml solo declara una INTENCION: la
+      # ultima palabra la tiene src/alcance.mjs, que asciende la corrida a
+      # completa sola si hace mas de 16 h que no hay una completa.
+      - name: Decidir el alcance de esta revisión
+        env:
+          CRON: ${{ github.event.schedule }}
+          MANUAL: ${{ github.event.inputs.modo }}
+        run: |
+          if [ -n "$MANUAL" ]; then
+            MODO="$MANUAL"
+          elif [ "$CRON" = "7 5 * * *" ] || [ "$CRON" = "7 17 * * *" ]; then
+            MODO="completo"
+          else
+            MODO="liviano"
+          fi
+          echo "MODO=$MODO" >> "$GITHUB_ENV"
+          echo "::notice title=Alcance de esta revision::$MODO (horario='$CRON', a mano='$MANUAL')"
 
       - uses: actions/setup-node@v4
         with:
@@ -54,13 +216,19 @@ jobs:
       # El checkout puede ser mas viejo que el ultimo push de datos (el job queda
       # encolado, o corre justo detras de otra corrida). Comparar contra un
       # catalogo viejo hace que el monitor reenvie avisos ya mandados y que
-      # productos ya conocidos se anuncien como "nuevo".
+      # productos ya conocidos se anuncien como "nuevo". Con hasta 20 corridas
+      # diarias esto pasa a ser MAS importante, no menos: el checkout llega
+      # viejo mucho mas seguido.
       - name: Traer el ultimo catalogo antes de comparar
         run: git pull --ff-only origin main
 
       - name: Revisar precios
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # lo escribio el paso "Decidir el alcance" mas arriba
+          MODO: ${{ env.MODO }}
+          # variable de repositorio que enciende el modo Cyber (ver README)
+          MODO_CYBER: ${{ vars.MODO_CYBER }}
         run: npm run run
 
       # always(): antes este paso se SALTABA ante cualquier falla del paso

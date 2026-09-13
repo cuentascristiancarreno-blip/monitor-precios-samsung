@@ -12,7 +12,8 @@ import { mensajeCorreccionesDePrecio, notifyDiscord, notifyTecnico } from "./dis
 import { crearDespachadorVivo, repartirCierre } from "./despachador-vivo.mjs";
 import { leerPendientes, serializarPendientes } from "./pendientes.mjs";
 import { entorno } from "./entorno.mjs";
-import { medicionPrincipales, prepararRecorrido, skusQueCambiaronDeSeccion } from "./prioridad.mjs";
+import { bloqueDelEntorno, medicionPrincipales, prepararRecorrido, skusQueCambiaronDeSeccion } from "./prioridad.mjs";
+import { claveNoConfiable, decidirModo, evaluarConfiabilidad, modoPedido, MODO_LIVIANO, ultimoCompleto, ultimoRecorrido } from "./alcance.mjs";
 import { diaDe, leerHuellas, serializarHuellas, yaSeAviso } from "./avisos-repetidos.mjs";
 import { masCorridas, muestraDeUrls } from "./muestras.mjs";
 
@@ -59,20 +60,55 @@ async function main() {
     }
   }
 
+  // QUE ALCANCE TIENE ESTA CORRIDA (ver src/alcance.mjs). El workflow declara
+  // una INTENCION segun que horario la disparo (variable MODO); la ultima
+  // palabra la tiene decidirModo(), que ademas asciende un liviano a completo
+  // cuando hace mas de HORAS_SIN_COMPLETO que no hay uno.
+  //
+  // Por que no basta con el horario: el paso del workflow cae en "liviano"
+  // cuando no reconoce el cron. Eso protege contra fantasmas (un liviano no
+  // puede declarar desaparecido lo que no miro) pero deja desprotegida la
+  // cobertura: si alguien edita un horario y se equivoca, el 70% del catalogo
+  // dejaria de mirarse EN SILENCIO, que es la peor falla posible en este
+  // proyecto. La escalada cierra ese lado, y el PRIMER liviano tras un completo
+  // perdido lo recupera.
+  const ejecucionesPrevias = await readFile(EJECUCIONES_PATH, "utf-8").catch(() => "");
+  const decision = decidirModo({
+    pedido: modoPedido(process.env),
+    ultimoCompletoFin: ultimoCompleto(ejecucionesPrevias),
+    ahora: timestamp,
+  });
+  const modo = decision.modo;
+  // Que categorias entran al bloque liviano. Lo decide la variable de
+  // repositorio MODO_CYBER, que el operador prende y apaga desde la interfaz de
+  // GitHub sin tocar codigo ni horarios (ver README).
+  const bloque = bloqueDelEntorno(process.env);
+
   // EL RECORRIDO ARRANCA POR LAS CATEGORIAS PRINCIPALES (ver src/prioridad.mjs).
   // Todo el armado -- juntar, deduplicar por URL, reordenar y recortar -- vive
   // en prepararRecorrido() y no aca, porque este archivo arranca main() al
   // importarse y nada de lo que este adentro lo puede cubrir una prueba.
   const {
     entries,
+    alcance,
     paginasPrincipales,
     recorridasPrincipales,
     bloquePrincipalCompleto,
     porCategoria,
     ausentes,
     inversiones,
-  } = prepararRecorrido({ seedRaw, familyEntries, limite: process.env.LIMITE_PAGINAS });
+  } = prepararRecorrido({ seedRaw, familyEntries, limite: process.env.LIMITE_PAGINAS, modo, bloque });
 
+  // CONTRA QUE SE COMPARA EL TAMANO DEL RECORRIDO DE HOY. Un alcance que se
+  // achica se justifica solo -- `esperados` se achica junto con `encontrados` y
+  // la heuristica de "faltan productos" no ve nada --, asi que sin esto una
+  // caida del descubrimiento por sitemap (162 paginas, el 47% del bloque
+  // liviano) dejaria 160 productos mirandose 2 veces al dia en vez de 20,
+  // durante dias, sin un solo aviso. Y en modo completo esa misma caida, dos
+  // veces seguidas, son 160 desaparecidos falsos. Ver TOLERANCIA_ENCOGIMIENTO en
+  // src/alcance.mjs.
+  const recorridoAnterior = ultimoRecorrido(ejecucionesPrevias, { modo, etiqueta: alcance.etiqueta });
+  console.log(`INFO modo=${modo} bloque=${bloque.etiqueta} paginas_del_alcance=${alcance.paginas.size} (la anterior del mismo tipo: ${recorridoAnterior ?? "no hay"})${decision.escalado ? ` (ESCALADO a completo: ${decision.motivo})` : ""}`);
   console.log(`INFO paginas=${entries.length} (listado=${seedRaw.length}, familia=${familyEntries.length})`);
   // El tamano REAL del bloque y cuantas de esas alcanza a visitar esta corrida
   // son dos numeros distintos (con LIMITE_PAGINAS no coinciden). Imprimir uno
@@ -138,6 +174,19 @@ async function main() {
     );
   }
 
+  // UN COMPLETO PERDIDO SE RECUPERA, Y SE DICE. La escalada arregla la
+  // cobertura sola, pero callarla seria esconder que un horario dejo de
+  // funcionar: el operador tiene que poder ir a mirar por que se perdio el
+  // completo. Una vez al dia, porque mientras la condicion dure (por ejemplo un
+  // cron roto) cada corrida liviana la volveria a encontrar.
+  if (decision.escalado) {
+    console.error(`WARNING esta corrida se pedia liviana y se ascendio a completa: ${decision.motivo}`);
+    await avisarUnaVezAlDia(
+      "escalada-a-completo",
+      `🛡️ **Monitor Samsung — esta revisión se amplió sola a catálogo completo**\n${decision.motivo}.\nSe pidió una revisión liviana (solo las 5 categorías principales), pero hace demasiado que no se hace una completa, así que esta se amplió para no dejar de mirar el resto del catálogo.\nVa a tardar unas 3 horas en vez de una, y puede que la siguiente revisión de la hora no alcance a correr.\nSi esto se repite todos los días, algo está impidiendo que corran las dos revisiones completas (02:00 y 14:00): hay que mirar la pestaña Actions en GitHub.\nEste aviso sale una vez al día mientras la condición dure.`,
+    );
+  }
+
   // EL GUARDIAN DEL INVARIANTE DEL ORDEN (ver inversionesIntraSeccion en
   // src/prioridad.mjs). Que reordenar el recorrido no cambie el RESULTADO se
   // apoya en un hecho: el reordenamiento no invierte nunca dos paginas de la
@@ -161,18 +210,21 @@ async function main() {
   // notificables). Al final eso son ~93 mensajes agrupados, molesto pero
   // legible; en vivo serian ~650 avisos goteando durante 3 horas y el canal
   // queda inutilizable justo el dia de Cyber. Ademas los tres motivos de
-  // "corrida no confiable" fallan con previo vacio (el guard prevRelevantes > 0
+  // "corrida no confiable" fallan con previo vacio (el guard esperados > 0
   // desactiva el unico que aplicaria), asi que nadie lo detecta.
   // NO se aborta la corrida: el scraping es lo mas valioso y el resumen final
   // agrupado sigue siendo perfectamente legible. Solo se apaga el vivo.
   const minPrevio = entorno("VIVO_MIN_PREVIO", 500);
   const previoChico = Object.keys(previo).length < minPrevio;
   const vivoActivo = process.env.VIVO !== "0" && !previoChico;
+  // El aviso pasa por el freno de una vez al dia: la condicion dura hasta que
+  // alguien restaure el catalogo, y con hasta 20 corridas diarias serian 20
+  // mensajes identicos en vez de 7.
   if (previoChico) {
     console.error(`WARNING catalogo anterior con ${Object.keys(previo).length} registros (< ${minPrevio}): avisos en vivo apagados en esta corrida`);
-    await notifyTecnico(
-      webhook,
-      `⚠️ **Monitor Samsung — catálogo anterior vacío o incompleto**\nSe encontraron ${Object.keys(previo).length} productos en el estado anterior (se esperaban al menos ${minPrevio}).\nLos avisos en vivo quedaron apagados en esta revisión para no inundar el canal: todo llegará agrupado al final.`,
+    await avisarUnaVezAlDia(
+      "catalogo-chico",
+      `⚠️ **Monitor Samsung — catálogo anterior vacío o incompleto**\nSe encontraron ${Object.keys(previo).length} productos en el estado anterior (se esperaban al menos ${minPrevio}).\nLos avisos en vivo quedaron apagados en esta revisión para no inundar el canal: todo llegará agrupado al final.\nEste aviso sale una vez al día mientras la condición dure.`,
     );
   }
 
@@ -263,19 +315,24 @@ async function main() {
   const statsVivo = await despachador.cerrar();
   console.log(`INFO vivo ${JSON.stringify(statsVivo)}`);
 
-  // una corrida sospechosa NO puede declarar productos desaparecidos ni
-  // gatillar avisos masivos: conserva el ultimo estado confiable
-  const encontrados = Object.keys(observado).length;
-  const prevRelevantes = Object.values(previo).filter((r) => r.presencia !== "desaparecido").length;
-  const motivos = [];
-  if (fallidas.length > Math.max(5, entries.length * 0.1)) {
-    motivos.push(`demasiadas paginas con error (${fallidas.length} de ${entries.length})`);
-  }
-  if (prevRelevantes > 0 && encontrados < prevRelevantes * 0.8) {
-    motivos.push(`se encontraron muchos menos productos que la vez anterior (${encontrados} vs ${prevRelevantes})`);
-  }
-  if (encontrados === 0) motivos.push("no se encontro ningun producto");
-  const corridaConfiable = motivos.length === 0;
+  // UNA CORRIDA SOSPECHOSA NO PUEDE DECLARAR PRODUCTOS DESAPARECIDOS ni gatillar
+  // avisos masivos: conserva el ultimo estado confiable.
+  //
+  // Se juzga CONTRA EL ALCANCE DECLARADO, no contra el catalogo entero (ver
+  // evaluarConfiabilidad en src/alcance.mjs). Sin eso, toda corrida liviana
+  // seria sospechosa por definicion -- ve 196 de 929 productos vivos -- y
+  // mandaria un aviso tecnico cada hora.
+  const { confiable: corridaConfiable, motivos, esperados, encontrados } = evaluarConfiabilidad({
+    previo,
+    observado,
+    alcance,
+    fallidas: fallidas.length,
+    paginas: entries.length,
+    // el tamano del recorrido de hoy contra el de la ultima corrida del MISMO
+    // tipo: es lo unico que hace visible un alcance que se encogio solo
+    recorrido: { actual: alcance.paginas.size, anterior: recorridoAnterior },
+  });
+  const textosMotivos = motivos.map((m) => m.texto);
 
   // "paginas no verificadas" = las que fallaron + las que Samsung redirigio a la
   // ficha de otro producto. En ambos casos NO hay evidencia de que sus productos
@@ -285,10 +342,14 @@ async function main() {
   // tanda de falsos "ya no aparece".
   const noVerificadas = new Set([...fallidas, ...redirigidas].map((f) => f.url));
 
-  const { catalogo, cambios, correccionesDePrecio } = comparar({
+  const { catalogo, cambios, correccionesDePrecio, fueraDeAlcance } = comparar({
     previo,
     observado,
     paginasFallidas: noVerificadas,
+    // LO QUE ESTA CORRIDA SE PROPUSO MIRAR. Lo que queda fuera conserva su
+    // ultimo dato intacto y no acumula ausencias: no lo revise no es lo mismo
+    // que no aparecio.
+    alcance,
     corridaConfiable,
     timestamp,
   });
@@ -308,14 +369,14 @@ async function main() {
   // evidencia de que se haya ido), pero entonces puede quedar congelado para
   // siempre con su precio viejo presentado como vigente. Esto no cambia esa
   // regla: solo lo hace visible, una vez por SKU y por el canal tecnico.
-  const momificados = marcarSinVerificarProlongado(catalogo);
+  const momificados = marcarSinVerificarProlongado(catalogo, { timestamp });
   const sinVerificar = Object.values(catalogo).filter((r) => r.presencia === "error_verificacion").length;
 
   // MOMIAS DE PRECIO: el SKU aparecio, pero su pagina no escribio ningun monto y
   // se conservo el precio anterior (ver precioVisiblePreferido en extract.mjs).
   // Es la contracara del arreglo del vaiven y hay que vigilarla: si este numero
   // se dispara, la espera del render se quedo corta y hay precios congelados.
-  const sinPrecioMomificados = marcarSinPrecioProlongado(catalogo);
+  const sinPrecioMomificados = marcarSinPrecioProlongado(catalogo, { timestamp });
   const sinPrecioVisible = Object.values(observado).filter((r) => !Number.isFinite(r.precio)).length;
   const precioCongelado = Object.values(catalogo).filter((r) => (r.corridasSinPrecio ?? 0) > 0).length;
 
@@ -352,6 +413,21 @@ async function main() {
     fin: fin.toISOString(),
     duracionMin: Math.round((fin - inicio) / 60000),
     paginas: entries.length,
+    // QUE SE PROPUSO MIRAR ESTA CORRIDA. Sin estos campos, las filas de una
+    // revision completa y una liviana son incomparables entre si:
+    // `productosEncontrados` pasa de ~929 a ~196 sin explicacion, y no habria
+    // forma de responder "por que el 3 de noviembre corrio 20 veces".
+    // Ademas es de donde lee decidirModo() para saber cuando fue el ultimo
+    // completo, asi que este campo es load-bearing, no decorativo.
+    modo,
+    alcance: alcance.etiqueta,
+    paginasDelAlcance: alcance.paginas.size,
+    // productos del catalogo que esta corrida no se propuso mirar: conservan su
+    // ultimo dato y no acumulan ausencias
+    noVerificadosPorAlcance: fueraDeAlcance,
+    // true cuando el horario pedia una revision liviana y se amplio sola a
+    // completa porque hacia demasiado que no habia una completa
+    escaladoACompleto: decision.escalado,
     // La promesa "primero las categorias principales", medible: cuantas paginas
     // tenia ese bloque y cuanto tardo en quedar listo. `paginasPrincipales` es el
     // tamano REAL del bloque (no el recortado por LIMITE_PAGINAS) y
@@ -399,6 +475,9 @@ async function main() {
     // tapando cambios de precio de verdad.
     correccionesDePrecio: correccionesDePrecio.length,
     productosEncontrados: encontrados,
+    // cuantos productos vivos DENTRO del alcance esperaba encontrar esta
+    // corrida: es la vara contra la que se juzga si fue confiable
+    productosEsperados: esperados,
     nuevos: porTipo("nuevo"),
     bajas: porTipo("baja"),
     subes: porTipo("sube"),
@@ -409,7 +488,7 @@ async function main() {
     mensajesEnVivo: statsVivo.mensajes,
     vivoApagadoPor: statsVivo.apagadoPor,
     confiable: corridaConfiable,
-    motivos,
+    motivos: textosMotivos,
   };
 
   // El filtro de notificacion va DESPUES de escribir catalogo e historial: los
@@ -487,10 +566,25 @@ async function main() {
     console.error(`WARNING ${cambiosDeSeccion.length - 5} SKU mas cambiaron de seccion (no se avisan uno por uno)`);
   }
 
+  // REVISION SOSPECHOSA. Dos cosas cambiaron con los dos modos de corrida:
+  //
+  //  1. El aviso pasa por el freno de una vez al dia, con una clave que lleva el
+  //     MOTIVO Y SU GRAVEDAD ademas del modo. La clave con el motivo es a
+  //     proposito: si fuera solo el modo, la primera falla del dia taparia una
+  //     falla DISTINTA tres horas despues. Y la gravedad esta porque sin ella
+  //     una anomalia leve de la manana (36 de 347 paginas caidas) silenciaba una
+  //     catastrofe de la tarde del mismo tipo (340 de 347) -- medido por los
+  //     verificadores el 2026-09-12. Los numeros crudos no entran en la clave
+  //     porque cambian en cada corrida y el freno no frenaria nada.
+  //  2. El texto dice DE QUE BLOQUE habla. Antes decia "no se marcaron productos
+  //     como desaparecidos" a secas, y con dos modos eso es media verdad: una
+  //     revision liviana confiable SI marca desaparecidos, dentro de sus 5
+  //     categorias.
   if (!corridaConfiable) {
-    await notifyTecnico(
-      webhook,
-      `⚠️ **Monitor Samsung — revisión marcada como NO confiable**\n${motivos.join("; ")}.\nNo se marcaron productos como desaparecidos y se conservó el último estado confiable. Revisar los logs de la corrida en GitHub Actions.\nLos avisos que llegaron durante la revisión siguen siendo válidos: salen de observaciones reales de la página y no dependen de esto. Lo único que se suspendió es la detección de productos desaparecidos.`,
+    const queMiraba = modo === MODO_LIVIANO ? `las ${bloque.categorias.length} categorías principales (${entries.length} páginas)` : `el catálogo completo (${entries.length} páginas)`;
+    await avisarUnaVezAlDia(
+      claveNoConfiable(modo, motivos),
+      `⚠️ **Monitor Samsung — revisión marcada como NO confiable**\nEsta revisión iba a mirar ${queMiraba}.\n${textosMotivos.join("; ")}.\nNo se marcaron productos como desaparecidos y se conservó el último estado confiable. Revisar los logs de la corrida en GitHub Actions.\nLos avisos que llegaron durante la revisión siguen siendo válidos: salen de observaciones reales de la página y no dependen de esto. Lo único que se suspendió es la detección de productos desaparecidos.\nEste aviso sale una vez al día por cada tipo de falla.`,
     );
   }
   const envio = await notifyDiscord(webhook, {

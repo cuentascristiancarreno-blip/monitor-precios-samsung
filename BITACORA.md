@@ -1126,3 +1126,383 @@ README y pendientes dicen ahora **"entre 37 y 62 min, del orden de 53"**, y los 
 3. **`categoriasPrincipalesAusentes`, `inversionesIntraSeccion` y `skusQueCambiaronDeSeccion` tienen que quedarse en vacio/0.** Si `inversionesIntraSeccion` deja de ser 0, el orden del recorrido volvio a poder cambiar resultados y hay que mirarlo el mismo dia.
 4. **Sigue sin cubrir `npm test`**: las pocas lineas que quedan en `run.mjs` (llamar a `prepararRecorrido`, el instante en que se marca el fin del bloque, y el envio de los tres avisos tecnicos). Quedaron verificadas con las corridas reales de arriba, incluida la del webhook falso.
 5. **Si el operador quiere agregar "Audio (Soundbars/Torres)"** (14 paginas, seccion `audio-devices`) es una linea en `src/prioridad.mjs`, explicada en el README.
+
+---
+
+# 2026-09-12 (noche, cuarta tanda) — Dos tipos de revision: el ALCANCE declarado
+
+Pedido del operador, textual: *"Me gustaria que solo 2 veces al dia hagamos el recorrido y revision
+de todas las categorias. Y el resto de las veces, la mayor cantidad de veces posible, solo estas 5
+categorias que te mencionaba."* Eligio la propuesta de 20 ciclos: 2 completos + 18 livianos.
+
+## El problema de fondo, que no es el horario
+
+El horario es lo facil. Lo dificil es que **todo el sistema daba por sentado que cada corrida veia el
+catalogo COMPLETO**. `comparar()` recorria todo el catalogo previo y a lo que no habia observado le
+sumaba una ausencia; a las 2 ausencias lo declaraba desaparecido.
+
+Medido sobre `data/latest.json` (1.031 registros, 102 ya desaparecidos): una corrida liviana ve 196
+productos vivos y **no ve 733**. Sin arreglar nada, dos livianas seguidas habrian declarado
+desaparecidos ~700 productos vivos en una hora: el incidente de los ~150 avisos falsos en 4 dias,
+multiplicado por cinco.
+
+**Hoy eso no pasa, pero por accidente**, y ese accidente era el que habia que sacar: la heuristica de
+"corrida sospechosa" (encontrados < 80% de lo esperado) marcaba como NO confiable a toda corrida
+liviana (196 de 929 es 21%), y una corrida no confiable no declara desaparecidos. El precio del
+accidente: **un aviso tecnico "revision NO confiable" en cada corrida liviana** (18 al dia, por el
+mismo canal donde llegan las bajas de precio), la deteccion de desaparecidos apagada en 18 de 20
+corridas incluso para lo que SI se reviso, y 797 registros de `latest.json` cambiando a
+`error_verificacion` en cada liviana para que el completo siguiente los revirtiera.
+
+## Lo que se hizo
+
+**`src/alcance.mjs` (nuevo, puro).** Una corrida DECLARA su alcance: `{modo, etiqueta, parcial,
+paginas}`, donde `paginas` son las URL que esta corrida va a visitar **de verdad** (armadas DESPUES
+del recorte por modo y por `LIMITE_PAGINAS`; declarar el bloque teorico habria hecho acumular
+ausencias a SKU de paginas nunca visitadas). Ademas: `decidirModo()` con la escalada, `enAlcance()`,
+`evaluarConfiabilidad()` y `claveNoConfiable()`. Vive en un modulo aparte y no en `run.mjs` porque
+`run.mjs` arranca `main()` al importarse y nada de lo que este ahi lo puede cubrir una prueba
+(leccion del cambio anterior).
+
+**`comparar()`** recibe `alcance` (opcional, default = todo dentro, asi las 371 pruebas viejas y
+todas las llamadas actuales siguen igual). El unico cambio de logica esta en el segundo bucle, y el
+ORDEN importa:
+
+1. `if (observado[modelo]) continue;` **va primero, sin excepcion**.
+2. fuera del alcance -> `catalogo[modelo] = {...ant}` y `continue`. Byte por byte igual.
+3. pagina fallida o corrida sospechosa -> la rama de siempre.
+4. ausencia normal, ahora con piso de reloj.
+
+**Por que NO se reuso la rama de paginas fallidas para "fuera del alcance"**, que era el atajo
+obvio: "no lo revise" no es "fallo". Medido: dejaria 733 SKU en `error_verificacion` por liviana,
+convertiria `resumen.sinVerificar` de 1 en 733 (dejando de servir para lo unico que sirve) y, si dos
+completos seguidos se perdieran, dispararia un aviso tecnico nombrando 733 productos que nadie dejo
+de vender. **Verificado en la corrida real**: `sinVerificar` da 1 en la liviana y 924 en la completa
+recortada.
+
+**La confiabilidad se juzga contra el alcance.** `prevRelevantes` (previo no-desaparecido) paso a ser
+`esperados` (previo no-desaparecido **y dentro del alcance**). El umbral de errores ya escalaba solo
+con `entries.length`. Y el aviso de "NO confiable" pasa por `avisarUnaVezAlDia()` con clave
+`no-confiable:<modo>:<tipos de motivo>`: **con el motivo y sin los numeros**. Con los numeros, cada
+corrida tendria clave distinta y el freno no frenaria nada; con solo el modo, la primera falla del
+dia taparia una falla DISTINTA tres horas despues. El aviso de `previoChico` tambien pasa por el
+freno (clave `catalogo-chico`).
+
+**Los cuatro umbrales que contaban corridas ahora cuentan horas** (`src/comparar.mjs`, "los pisos de
+reloj"). Los pisos **solo retrasan, nunca adelantan**: la evidencia en corridas sigue siendo
+obligatoria y ademas tiene que pasar el tiempo. Con la cadencia de hoy ninguno cambia nada.
+
+| Umbral | Piso nuevo | Argumento en dias |
+|---|---|---|
+| `UMBRAL_AUSENCIAS = 2` (desaparecido) | 6 h sobre `ultimaVezVisto` | Hoy 2 ausencias ya son ~6,2 h (separacion mediana medida: 3,08 h). Sin piso serian **1 h** para un Galaxy. Y es la regla que mas se equivoca: de los 157 "desaparecido" de `history.jsonl`, **35 (22,3%) los desmintio un "recuperado" en <= 24 h**, mediana 9,2 h. Los pares de corridas consecutivas que pueden gatillarla pasan de 6 a 19 por dia sobre justo el bloque liviano. |
+| `UMBRAL_SIN_VERIFICAR = 20` (momia sin verificar) | 72 h sobre `ultimaVezVisto` | El comentario del codigo prometia "~3 dias a 7 corridas diarias"; a 3,08 h medidas, 20 corridas son 62 h. 72 h vuelve verdadero el comentario. Sin piso: 1 dia para un Galaxy, 10 dias para un televisor. |
+| `corridasSinPrecio >= 20` (momia de precio) | 72 h sobre `sinPrecioDesde` (campo nuevo) | Igual que el anterior. No tenia ancla de ningun tipo. |
+| `UMBRAL_PRECIO_OTRA_FUENTE = 3` | 6 h sobre `precioDistintoDesde` (campo nuevo) | La cuenta llega a 3 dos intervalos despues de la primera lectura distinta: hoy ~6,2 h. Con livianas cada hora serian 3 h de margen para que el sitio se estabilice, y el vaiven ya costo ~8 avisos falsos diarios durante un mes. |
+
+Los dos campos nuevos **viven y mueren con el contador que acompanan** (`olvidarPrecioDistinto()`
+los borra juntos), asi que los ~940 registros sanos de `latest.json` no engordan ni un byte. Cuando
+el tiempo no se puede medir (registro viejo sin `ultimaVezVisto`, o un `timestamp` que no es fecha),
+el piso se da por cumplido: es lo que deja intacto el comportamiento de las 371 pruebas anteriores y
+lo que impide que un registro legado quede inmortal.
+
+**El workflow**: 38 horarios (2 completos + 18 livianos + 18 de modo Cyber). El modo sale de
+`github.event.schedule` en un paso con nombre que ademas emite un `::notice`. **Escalada automatica**:
+si hace mas de 16 h que no hay un completo, la liviana se amplia sola y lo avisa. Cubre los tres
+modos de perder un completo — que la cola de GitHub lo descarte, que lo cancele la corrida anterior,
+y que alguien rompa el string del cron — y este ultimo es el que importa, porque el paso del yml cae
+en "liviano" cuando no reconoce el cron: eso protege contra fantasmas pero deja la cobertura
+desprotegida, y perder el 70% del catalogo en silencio es la peor falla posible aca.
+
+**Modo Cyber**: variable de repositorio `MODO_CYBER=on`, dos clicks, paso a paso en el README. Los 18
+horarios de media hora estan escritos permanentemente y el job se salta solo con un `if` a nivel de
+job. Y `MODO_CYBER=on` **ademas achica el bloque** a Smartphones + Computadores (216 paginas): sin
+eso el modo Cyber es aritmeticamente imposible — 347 paginas son 37-62 min y no caben en media hora,
+asi que cada corrida se comeria la siguiente y el operador recibiria MENOS revisiones, no mas.
+
+## Tres premisas del encargo que resultaron falsas (medidas)
+
+1. **"si uno se atrasa el siguiente QUEDA EN COLA"** — no. El grupo de concurrencia deja como maximo
+   UNA corrida pendiente y la siguiente la reemplaza. No hay cola larga posible: hay **perdida
+   silenciosa de franjas**, que el operador va a ver como filas grises en Actions. Esta explicado
+   en el README y es la razon principal de que ninguna regla pueda contar corridas.
+2. **"corridas reales recientes: 126, 134, 134 min"** — son las unicas 3 asi, todas de hoy y
+   posteriores a los arreglos de hoy. Sobre las 307 corridas de `ejecuciones.jsonl`: **minimo 126,
+   mediana 176, p90 194, maximo 242**. A 9,0 s/pagina (mediana medida) el bloque liviano son **52
+   min, no 37**. Cuentas honestas: 2x176 + 18x52 + 20x5 de preparacion = **~23 h de un dia de 24**.
+   En un dia lento se van a descartar solas 2-4 livianas. Se entrega igual la cadencia que el
+   operador eligio, pero el diseno no depende de que las 20 ocurran.
+3. **"los comentarios del cron usan UTC-3 (invierno, vigente en julio)"** — el archivo mentia desde
+   julio: en julio Chile es UTC-4. UTC-3 SI es correcto hoy (Chile entro en horario de verano el
+   05-09-2026) y lo sera hasta el primer sabado de abril de 2027. El comentario ahora dice la verdad.
+
+## Una decision que se desvia del encargo, con su medicion
+
+El encargo pedia los horarios en punto (`"0 5 * * *"`). **Quedaron en el minuto 7, 23 y 53.** La
+documentacion de GitHub avisa que el schedule se atrasa en las horas de mas carga y que "las horas
+de mas carga incluyen el comienzo de cada hora". Medido sobre las 306 transiciones de
+`ejecuciones.jsonl` con los 7 horarios en punto anteriores: atraso mediano **68 min**, p90 172,
+maximo 342. Y mirando SOLO las corridas que arrancaron con la maquina libre (mas de 30 min sin
+correr nada), para descartar la saturacion propia: mediana **74 min**, p90 222. O sea no es culpa de
+la cola propia. **Las HORAS acordadas con el operador no se tocaron** (completos 02 y 14, livianos
+cada hora): solo el minuto.
+
+## Verificacion
+
+- **`npm test`: 371 -> 411 verdes, 0 fallas.** Las 371 anteriores siguen pasando sin tocar una linea:
+  `alcance` es opcional en `comparar()` y las funciones de momia aceptan la forma vieja `(catalogo, 3)`.
+- **MUTANTES: 18 corridos sobre una copia fuera del arbol, 0 SOBREVIVEN.** Uno por cada pieza nueva:
+  borrar la rama de fuera-de-alcance, tratarla como pagina fallida, mover el filtro antes del
+  `continue`, borrar cada uno de los cuatro pisos de reloj, no escribir `sinPrecioDesde`, no borrar
+  el ancla junto con el contador, dar por dentro un registro sin pagina, juzgar la confiabilidad
+  contra el catalogo entero, sacarle el motivo a la clave del aviso, no escalar nunca, contar las
+  corridas viejas como livianas, armar el alcance antes del recorte, no recortar en modo liviano, y
+  tres del modo Cyber. **En la primera pasada sobrevivio 1**: mover el filtro de alcance antes del
+  `if (observado[modelo]) continue;`. Mi razonamiento inicial (y el de uno de los informes) decia que
+  eso emitiria un "nuevo" falso, y es **falso**: los dos bucles son independientes y el primero
+  siempre usa `previo[modelo]`. Lo que de verdad rompe es peor y mas silencioso: le **pisa el
+  registro recien calculado con el dato viejo**, o sea tira a la basura el precio que la pagina acaba
+  de publicar DESPUES de que el aviso ya salio, y la corrida siguiente vuelve a detectar el mismo
+  cambio y a avisarlo, para siempre. Es la forma del defecto que mando ~8 avisos falsos por dia
+  durante un mes. La prueba nueva lo mata (afirma que el catalogo se queda con lo observado y que la
+  misma baja no se avisa dos veces) y el comentario del codigo quedo corregido.
+- **La prueba que mas importa**: `completo -> liviano x9 -> completo -> liviano x9` sobre una copia del
+  catalogo REAL (1.031 registros), con `comparar()` real y un sitio perfectamente estable:
+  **0 eventos de cualquier tipo, 0 desaparecidos falsos, 0 corridas marcadas como sospechosas**, el
+  catalogo conserva sus 1.031 registros, y los 797 registros de fuera del alcance salen
+  `deepStrictEqual` al de antes en cada liviana. Su contraparte tambien verde: un televisor que
+  desaparece DE VERDAD se avisa **en el segundo completo** (hora 12), no antes, y durante las 9
+  livianas del medio no se le movio ni una ausencia.
+- **Fragilidad corregida sobre la marcha**: las primeras aserciones de esa prueba eran numeros exactos
+  (1185, 347, 797). `npm test` corre en el workflow ANTES de scrapear y **bloquea la corrida si
+  falla**, y `data/latest.json` cambia hasta 20 veces al dia: una asercion exacta habria convertido
+  "Samsung publico tres paginas nuevas" en "el monitor dejo de correr". Ahora van con holgura del
+  25% (`cercaDe()`), con el numero medido en el mensaje de error.
+- **Corrida real del pipeline en los DOS modos**, contra copias del catalogo real en carpetas
+  temporales, `LIMITE_PAGINAS=6`, sin `DISCORD_WEBHOOK_URL`:
+  - **completo**: `alcance:"todo"`, `noVerificadosPorAlcance:0`, `productosEsperados:929`,
+    `sinVerificar:924`, `confiable:false` (correcto: con 6 paginas ve 5 productos de 929), 0
+    desaparecidos, 0 avisos. Huella del freno escrita una vez:
+    `{"clave":"no-confiable:completo:faltan-productos","dia":"2026-09-12"}`. **928 de 1.031 registros
+    cambiaron** (a `error_verificacion`, comportamiento de siempre para una corrida que no vio nada).
+  - **liviano**: `alcance:"principales"`, `noVerificadosPorAlcance:1026`, `sinVerificar:1`,
+    `confiable:true`, 0 desaparecidos, 0 avisos, **ningun aviso tecnico** (`avisos-tecnicos.jsonl` ni
+    se creo). **1.026 de 1.031 registros byte por byte identicos**; solo cambiaron los 5 observados.
+  - Los dos numeros juntos son el cambio entero en una linea: la liviana toca 5 registros donde antes
+    habria tocado 1.031, y no manda el aviso tecnico que habria mandado 18 veces al dia.
+- **Politica de scraping**: UA `CazadorBot/1.0`, `DELAY_MS` 2500 sin tocar, **cero requests extra**
+  (el recorrido liviano es un subconjunto estricto del completo). Volumen diario con el plan:
+  2x1.185 + 18x347 = **8.616 paginas/dia contra 8.281 hoy, +4%**. Las dos corridas de verificacion
+  fueron 12 cargas de pagina + 8 sitemaps en total. **Jamas se toco el webhook real.**
+- **`data/` del repo intacta** y **no se commiteo nada** (`git status`: solo los 4 archivos
+  modificados y los 2 nuevos).
+- **Avisos en vivo**: `src/despachador-vivo.mjs` no se toco ni una linea. Solo necesita `previo[sku]`
+  y lo recien observado, asi que funciona igual sin saber de que modo es la corrida; `totalPaginas`
+  ya sale de `entries.length`, asi que el encabezado "revisando pagina X de 347" queda correcto
+  gratis. Meterle el alcance habria duplicado la decision en el unico lugar donde hoy no puede
+  divergir de `comparar()`.
+
+## Lo que sigue pendiente
+
+1. **Medir `duracionPrincipalesMin` de verdad.** El campo ya existe desde el cambio anterior y cada
+   revision completa lo escribe: **es la duracion exacta del bloque liviano, medida, no estimada**.
+   A la semana de correr esto hay que mirarlo. Si da cerca de 40 min, los 18 livianos entran comodos;
+   si da 60, hay que sacar algunas lineas de cron. **No hace falta adivinar: el dato se recolecta
+   solo desde la primera corrida.**
+2. **Mirar cuantas livianas se descartan de verdad** (filas grises en Actions) durante la primera
+   semana. Si son mas de 4-5 por dia, la cadencia real es de ~1,5 h y conviene bajar a livianos cada
+   2 h (9 en vez de 18): se borran 9 lineas de cron y nada mas.
+3. **`data/history.jsonl` va en 9,64 MB** (19.286 lineas) y crece 173 KB/dia con 7 corridas. Con 20
+   no se triplica (los cambios de fondo son los mismos eventos) pero si captura parpadeos intradia:
+   estimacion 260-350 KB/dia. Cruza el aviso de GitHub de 50 MB por archivo en ~5 meses y el limite
+   duro de 100 MB (que RECHAZA el push) en ~10. **No lo causa este cambio, pero le acorta la mecha a
+   la mitad.** La salida limpia es rotar por mes a `data/historial/AAAA-MM.jsonl` — sigue siendo
+   append-only, y la regla `merge=union` de `.gitattributes` hay que extenderla al patron nuevo EN EL
+   MISMO cambio o se vuelve al `-X theirs` que borraba lineas. No se hizo aca para no mezclar dos
+   cosas.
+4. **Cachear `~/.cache/ms-playwright`** con `actions/cache`: `npx playwright install --with-deps
+   chromium` pasa de correr 7 a 20 veces al dia (~1-3 min cada vez). Son ~20-60 min/dia de reloj que
+   salen justo del margen que no sobra. Opcional hoy; deja de serlo si la duracion vuelve a los 176
+   min medianos.
+5. **`run.mjs` sigue sin cubrir `npm test`** en las lineas de cableado (llamar a `decidirModo`,
+   `prepararRecorrido`, y el envio de los avisos tecnicos). Quedaron verificadas con las dos corridas
+   reales de arriba — en particular el freno del aviso de no confiable, que dejo su huella en
+   `avisos-tecnicos.jsonl` de la corrida completa.
+
+---
+
+# 2026-09-12 (cierre) — Lo que encontraron tres verificaciones independientes, y como quedo
+
+El cambio del alcance declarado (entrada anterior) se sometio a tres revisiones independientes. Una
+lo **refuto**. Las tres encontraron defectos reales y reproducibles. Esta entrada es el cierre: que se
+arreglo, que se midio de nuevo, y que queda sabido.
+
+## Los defectos, y el arreglo de cada uno
+
+**1. Un producto que se MUDA de seccion recibia un DESAPARECIDO falso** (lo encontraron DOS
+verificadores por separado, con `comparar()` real sobre el catalogo real). El filtro de alcance mira
+la `paginaOrigen` GUARDADA: mientras esa pagina siga dentro del bloque liviano, las livianas cuentan
+el SKU como propio, no lo ven nunca (ya se publica desde otra pagina, de fuera del bloque) y le suman
+ausencias con todas las de la ley. A las 6 h: "DESAPARECIDO". El completo siguiente: "RECUPERADO". El
+producto estuvo a la venta todo el tiempo. **Es la forma exacta del incidente de los ~150 avisos
+falsos en 4 dias, y era una REGRESION**: el sistema anterior, con todas las corridas completas, daba 0
+eventos para ese mismo hecho.
+
+Arreglo (`ausenciaVerificada` en `src/comparar.mjs`): ademas de las 2 ausencias, **al menos una tiene
+que venir de una revision que miro el catalogo ENTERO**. Una corrida parcial no puede distinguir "ya
+no se vende" de "se mudo a una pagina que yo no miro"; una completa si, porque la visita. El campo
+`ausenciaEnCompleto` vive y muere con el contador `ausencias`. Cuesta: una desaparicion real DENTRO
+del bloque se avisa entre 5 y 12 h en vez de 5-7 h. Fuera del bloque no cambia nada.
+
+**2. Encogimiento silencioso del alcance.** Juzgar la confiabilidad contra el alcance DECLARADO abrio
+un agujero: un alcance que se achica **se justifica solo** (`esperados` se achica junto con
+`encontrados`). Si el descubrimiento por sitemap devuelve menos paginas, el liviano pasa de 347 a 185
+y 160 productos caen de 20 miradas diarias a 2, con 0 corridas sospechosas y 0 avisos durante dias. El
+sistema anterior convertia esa caida en 160 avisos falsos: ruidoso y equivocado, pero VISIBLE.
+
+Arreglo (`TOLERANCIA_ENCOGIMIENTO` + `ultimoRecorrido`, `src/alcance.mjs`): el tamano del recorrido de
+hoy se compara con el de la ultima corrida **del mismo tipo**, leido de `data/ejecuciones.jsonl`, y un
+encogimiento de mas del 10% marca la corrida sospechosa.
+
+**2bis. Y ESE ARREGLO NO ALCANZABA — lo encontre yo al re-verificar, simulando 7 dias de la cadencia
+real.** El encogimiento se mide contra la corrida anterior, asi que **la vara se mueve sola**: con el
+sitemap caido, la primera completa se marca sospechosa y no declara nada, pero la segunda ya compara
+1.023 contra 1.023, se da por sana, y **a la tercera salen 160 desaparecidos falsos**, a las ~24 h del
+corte. Medido: `eventos={"desaparecido":160}` en 7 dias simulados.
+
+Arreglo (`TOLERANCIA_SIN_PAGINA = 0.05`): una revision COMPLETA cuenta cuantos productos vivos del
+catalogo se quedaron **sin ninguna pagina en su recorrido**. Se juzga contra el CATALOGO y no contra
+la corrida anterior, asi que **no se normaliza**: mientras el sitemap siga caido, cada completa vuelve
+a encontrar los mismos 160 y sigue sin declarar nada. Los tres numeros que fijan el 5%: una completa
+SANA deja **0** de 929 sin pagina; con el sitemap caido son **160 (17%)**; y el peor dia de
+desapariciones reales de toda la historia (`history.jsonl`, 157 eventos en 26 dias) son **29 (3,1%)**,
+mediana 4. Solo aplica a las completas: en una liviana "sin pagina" es la normalidad (733) y lo
+resuelve `enAlcance()`. Resultado medido: los mismos 7 dias pasan de **160 desaparecidos falsos a 0**,
+con las 14 completas correctamente marcadas sospechosas, y los 160 productos saliendo por el canal
+correcto ("no se pueden verificar hace 3 dias") en vez del incorrecto.
+
+**3. El aviso de momia se atrasaba de ~3 dias a ~9,6 dias para el 73% del catalogo**, y el comentario
+del codigo decia lo contrario. `corridasSinVerificar` solo avanza cuando la corrida MIRA al producto:
+con 20, dentro del bloque son ~1 dia (y mandaba el piso de 72 h) pero fuera son ~10 DIAS (y mandaba el
+contador). Los pisos de reloj solo retrasan, nunca adelantan, asi que 72 h no podia arreglarlo.
+Arreglo: **`UMBRAL_SIN_VERIFICAR` de 20 a 6**. A 2 miradas diarias, 6 corridas son 3 dias = el piso.
+Las dos puntas del catalogo avisan a los 3 dias. Verificado que no produce ninguna rafaga al
+desplegarse: hoy el maximo de `corridasSinPrecio` es 3 y el de `corridasSinVerificar` es 5, ninguno
+cruza el 6, y el unico que esta en 5 se vio hace 26 h (el piso de 72 h lo sostiene igual).
+
+**4. La clave del freno diario no distinguia gravedad.** Una liviana con 36 de 347 paginas caidas a
+las 05:23 consumia la clave del dia y **silenciaba** una con 340 de 347 caidas a las 13:23: mismo tipo
+de motivo. Arreglo: los motivos viajan como `{tipo, gravedad, texto}` y la clave lleva
+`tipo:gravedad`. Dos baldes (leve/grave, corte en el 50%) frenan el ruido diario y dejan pasar el
+empeoramiento.
+
+**5. El modo Cyber apagaba en silencio la vigilancia de 3 categorias**, y la apagaba **tambien en las
+revisiones completas**. `ordenarRecorrido` usaba la misma lista para dos cosas distintas. Arreglo:
+`ordenarRecorrido(entries, categorias, vigiladas)` — el bloque decide que se mira seguido, las
+vigiladas son SIEMPRE las 5. Lo que el Cyber si cuesta (77 productos vivos pasan a 2 miradas diarias)
+quedo escrito en el README, que es donde el operador lo va a leer.
+
+**6. Los 18 horarios del Cyber se disparaban aunque el Cyber estuviera apagado.** El `if` que los
+salta esta a nivel de JOB y `concurrency` a nivel de WORKFLOW: GitHub mete la corrida al grupo ANTES
+de evaluar el `if`, y el grupo deja como maximo UNA pendiente. O sea que una corrida del minuto 53 que
+no va a hacer nada **desaloja de la ranura pendiente a una liviana de verdad** — lo contrario de lo
+que pidio el operador. Arreglo: los 18 horarios quedan **comentados**; encender el Cyber es la
+variable `MODO_CYBER=on` **y** descomentarlos. El `if` se queda como red de seguridad. El README tiene
+el paso a paso y una prueba vigila que los dos digan lo mismo.
+
+**7. "Run workflow" venia con `default: liviano`.** El operador que aprieta el boton sin tocar el
+desplegable — que es lo que hizo siempre, porque antes no habia desplegable — se llevaba el 21% del
+catalogo creyendo haber revisado todo. Arreglo: `default: completo`.
+
+**8, 9, 10. Tres piezas sin prueba que las sostuviera** (mutantes que sobrevivian con la suite en
+verde): `ultimoCompleto` no tenia ningun caso con DOS filas completas, asi que invertir el bucle — que
+convierte toda liviana en una completa de 3 h mas un aviso diario — dejaba las pruebas verdes; la
+prueba del umbral de escalada era **tautologica** (derivaba su entrada de la propia constante, asi que
+pasaba con `HORAS_SIN_COMPLETO = 9999`); y `alcanceDe` podia mentir la etiqueta, `prepararRecorrido`
+devolvia un campo `modo` que no consumia nadie, y `claveNoConfiable` podia perder su `.sort()`.
+Arreglo: una prueba por cada uno, y el campo muerto borrado.
+
+**11. EL QUE NO TIENE ARREGLO DE CODIGO, y es el mas importante para el operador.** Un quiebre de
+stock TEMPORAL de menos de ~12 h en un producto que no sea de las 5 categorias pasa de avisarse el
+75-100% de las veces a avisarse el **0%**. No es un atraso: es silencio. La confirmacion de stock
+exige 2 observaciones seguidas, y para los 733 productos de fuera del bloque dos observaciones
+seguidas ahora estan a 12 h. Lo reproduje por mi cuenta, con `comparar()` real de las dos versiones y
+las dos agendas reales, barriendo 72 momentos de inicio x 8 duraciones, y **me dio exactamente lo
+mismo** que el verificador (de cada 100 veces que pasa, cuantas se entera el operador):
+
+| duracion del hecho (h) | 2 | 4 | 6 | 8 | 10 | 12 | 16 | 24 |
+|---|---|---|---|---|---|---|---|---|
+| quiebre de stock, TV — VIEJO | 0 | 25 | 75 | 92 | 100 | 100 | 100 | 100 |
+| quiebre de stock, TV — NUEVO | 0 | 0 | 0 | 0 | 0 | 0 | 33 | 100 |
+| oferta, TV — VIEJO | 58 | 92 | 100 | 100 | 100 | 100 | 100 | 100 |
+| oferta, TV — NUEVO | 17 | 33 | 50 | 67 | 83 | 100 | 100 | 100 |
+| quiebre de stock, Galaxy — NUEVO | **75** | 97 | 100 | 100 | 100 | 100 | 100 | 100 |
+| oferta, Galaxy — NUEVO | **89** | 100 | 100 | 100 | 100 | 100 | 100 | 100 |
+
+Las dos ultimas filas son lo que se gana, y es exactamente lo que el operador pidio: dentro del bloque
+un quiebre de 2 h pasa de 0 a 75. Lo de arriba es aritmetica de muestreo con 2 completas al dia: no se
+arregla en el codigo, se DICE. Quedo escrito en el README con esta tabla, en castellano y antes de que
+pase, junto con la palanca medida: **una tercera completa** (cada 8 h en vez de cada 12) recupera las
+ofertas (4 h de 33 a 50, 6 h de 50 a 75, 8 h a 100) pero casi nada de los quiebres de stock (10 h de 0
+a 25, 12 h de 0 a 50). Una prueba fija las dos mitades: el comportamiento medido **y** que la
+advertencia siga en el README.
+
+## Verificacion de este cierre
+
+- **`npm test`: 411 -> 446 verdes, 0 fallas.** Las 371 originales siguen intactas.
+- **MUTANTES: 33 corridos sobre una copia fuera del arbol, uno por arreglo. 32 mueren.**
+  - El unico que sobrevive a `npm test` es **"run.mjs no le pasa el recorrido anterior"**, y es el
+    hueco conocido: `run.mjs` arranca `main()` al importarse, asi que ninguna prueba lo alcanza. **No
+    quedo sin verificar**: lo mata la corrida real del pipeline (abajo), donde el motivo "(1023 vs
+    1183)" desaparece en cuanto se aplica el mutante.
+  - Uno sobrevivio en la primera pasada y vale contarlo: **"ultimoRecorrido ignora el modo"**. Es casi
+    un mutante equivalente (hoy la etiqueta ya determina el modo), pero `ejecuciones.jsonl` se
+    commitea y se fusiona **por union** entre corridas concurrentes, asi que una fila mezclada es
+    posible — y con un solo filtro, una completa se compararia contra un recorrido liviano (1.185 vs
+    347 = "encogimiento" del 71%) y quedaria sospechosa sin motivo, que es como se apaga la deteccion
+    de desaparecidos sin que nadie lo pida. Prueba agregada; el mutante muere.
+- **SIMULACION DE 7 Y 30 DIAS DE LA CADENCIA REAL** (2 completos + 18 livianos) sobre una copia del
+  catalogo REAL, con `comparar()`, `alcance.mjs` y `prioridad.mjs` de verdad, y el simulador fuera del
+  repo. El modelo se valido primero: reproduce 1.185 paginas, 347, 929 vivos, 196 dentro, 733 fuera, y
+  el recorrido liviano es prefijo exacto del completo.
+  - baseline 7 dias (140 corridas) y 30 dias (600 corridas): **0 eventos de cualquier tipo, 0 corridas
+    sospechosas, 1.031 registros, ausencia maxima 0**. El contador de ausencias no deriva.
+  - saltar 1 completo / los 2 de un dia / los 4 de dos dias / **los 14 de la semana entera**: 0 falsos
+    en todos; 1, 2, 3 y 10 escaladas automaticas respectivamente. La escalada no se gatillo ni una vez
+    de gratis en 30 dias de baseline.
+  - una pagina principal caida todos los livianos de un dia: 0 falsos. Las 94 paginas /buy/ de
+    smartphones caidas: 0 falsos y 18 corridas correctamente sospechosas. 2% de paginas al azar 7
+    dias: 0 falsos.
+  - **descubrimiento caido**: solo en livianos, 0 falsos; **en todas las corridas 7 dias, 0 falsos**
+    (eran 160 antes del arreglo 2bis) con las 14 completas marcadas sospechosas; solo en los 2
+    completos de un dia, 0 falsos.
+  - modo Cyber encendido 7 dias: 0 falsos.
+- **PIPELINE REAL (`src/run.mjs` entero) EN LOS DOS MODOS, SIN RED.** Copia fuera del arbol
+  sustituyendo solo las tres puertas al exterior (`procesarEntrada`, `discoverFamilyUrls` y el
+  navegador). **Cero requests a samsung.com, webhook vacio.**
+  - **completo**: 1.185 paginas, `alcance:"todo"`, `noVerificadosPorAlcance:0`,
+    `productosEsperados:929`, `encontrados:929`, `confiable:true`, 0 desaparecidos, ningun aviso
+    tecnico.
+  - **liviano**: 347 paginas, `alcance:"principales"`, `noVerificadosPorAlcance:797`,
+    `productosEsperados:196` (juzgado contra su alcance, no contra 929), `confiable:true`,
+    `motivos:[]`, 0 desaparecidos, `avisos-tecnicos.jsonl` ni se creo, y **797 de 1.031 registros byte
+    por byte identicos**. El recorrido liviano es subconjunto estricto del completo: cero requests
+    nuevos.
+  - **completo con el descubrimiento caido** (la tercera, la que cubre el cableado): 1.023 paginas,
+    `confiable:false` con los DOS motivos nuevos, **0 desaparecidos**, 160 en `sinVerificar` (el canal
+    correcto), y la huella del freno escrita una vez:
+    `{"clave":"no-confiable:completo:recorrido-encogido:leve|sku-sin-pagina:leve"}`.
+- **`data/` del repo intacta**: `git status --porcelain data/` vacio, y los md5 de `latest.json`,
+  `ejecuciones.jsonl` e `history.jsonl` identicos a los del principio. **No se commiteo nada.**
+
+## Lo que queda pendiente
+
+Siguen los 5 de la entrada anterior (medir `duracionPrincipalesMin`, contar las livianas descartadas,
+rotar `history.jsonl` antes de los 50 MB, cachear Playwright, y el hueco de cobertura de `run.mjs`), y
+se agregan dos:
+
+6. **Decidir si hace falta la tercera revision completa.** La tabla del punto 11 es el insumo: si al
+   operador le importan los quiebres de stock cortos de televisores y linea blanca, la palanca es una
+   linea de cron. Si no, no se toca nada. **Es una decision de producto, no tecnica.**
+7. **Mirar `sku-sin-pagina` en `ejecuciones.jsonl` la primera semana.** Hoy una revision sana deja 0
+   productos sin pagina. Si aparece un numero distinto de 0 sin que el descubrimiento este caido, el
+   umbral del 5% hay que revisarlo con el dato en la mano en vez de con la estimacion de hoy.
