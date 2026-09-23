@@ -208,6 +208,33 @@ jobs:
 
       - run: npm install
 
+      # SIGUE BLOQUEANDO, Y AHORA SI CORRESPONDE QUE BLOQUEE (2026-09-23).
+      #
+      # Este paso apago el monitor 30 horas el 2026-09-22 sin que nadie tocara
+      # una linea de codigo, y la reaccion facil habria sido ponerle
+      # `continue-on-error: true`. No se hizo, porque el candado defiende algo
+      # que sigue haciendo falta: si el codigo esta roto, fallar aca en 40 s
+      # evita 1.185 requests inutiles a samsung.com -- la politica de scraping del
+      # propio proyecto -- y evita escribir un data/latest.json malo, que segun la
+      # bitacora del 2026-09-11 obliga a revertir DATOS ademas de codigo.
+      #
+      # Lo que cambio no es el candado: es lo que hay adentro. La suite ya no
+      # abre `data/` (test/candado-offline.test.mjs lo vigila y muere si alguien
+      # lo vuelve a cablear), asi que solo puede ponerse roja si una persona
+      # cambia codigo. Medido: la suite pasa contra los 532 snapshots historicos
+      # del catalogo -- antes tumbaban 340 de 532 -- y pasa incluso sin carpeta
+      # `data/` en absoluto.
+      #
+      # Y porque ahora si puede bloquear sin riesgo, el mismo candado se puso
+      # ademas donde bloquear es gratis: .github/workflows/pruebas.yml lo corre
+      # en cada push. Hasta hoy las 550 pruebas NO corrian nunca al cambiar
+      # codigo -- este era el unico lugar donde corrian, o sea que frenaban el
+      # monitoreo en vez de frenar al autor.
+      #
+      # OJO CON EL ORDEN: este paso corre ANTES del `git pull --ff-only` de mas
+      # abajo. Mientras las pruebas leian `data/`, eso significaba que juzgaban un
+      # catalogo del checkout que podia ser mas viejo que el de la corrida. Ya no
+      # importa, porque no leen nada de ahi.
       - name: Pruebas automatizadas (bloquean la corrida si fallan)
         run: npm test
 
@@ -230,6 +257,35 @@ jobs:
           # variable de repositorio que enciende el modo Cyber (ver README)
           MODO_CYBER: ${{ vars.MODO_CYBER }}
         run: npm run run
+
+      # EL CENSO: LAS PREGUNTAS QUE ANTES VIVIAN EN `npm test` Y PODIAN APAGAR
+      # EL MONITOR.
+      #
+      # Cuantas paginas mide el recorrido, cuanto aporta el descubrimiento,
+      # cuanto margen queda antes de la raya del 80% que tumbo la corrida del
+      # 2026-09-22. Son preguntas sobre el SITIO DE HOY, no sobre el codigo: su
+      # respuesta cambia sola, asi que no pueden decidir si el monitor arranca.
+      # Ahora se miden en cada revision, sus doce numeros quedan en la serie
+      # (data/censo.jsonl, de donde sale la deriva) y salen por el canal tecnico
+      # cuando alguno CAMBIA de estado -- no una vez al dia, que con una
+      # condicion que dura serian 365 mensajes identicos al ano.
+      #
+      # DOS CANDADOS ABIERTOS A PROPOSITO, no uno: `continue-on-error` aca y
+      # `process.exitCode` intocado en src/censo-cli.mjs. Si el censo pudiera
+      # fallar seria otra vez un canario cableado al interruptor, con la
+      # diferencia de que se llamaria distinto y nadie lo relacionaria con el
+      # incidente. Hay una prueba que corre el CLI de verdad y exige que se vaya
+      # en cero incluso en alarma y con los datos rotos.
+      #
+      # VA DESPUES DEL SCRAPE para medir el catalogo que esta corrida acaba de
+      # escribir, y con `if: always()` para que tambien hable cuando el scrape
+      # se cayo -- que es justo cuando mas sirve saber como quedaron los numeros.
+      - name: Censo del catálogo (avisa, nunca bloquea)
+        if: always()
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: npm run censo
 
       # always(): antes este paso se SALTABA ante cualquier falla del paso
       # anterior, incluido el timeout del job (que GitHub trata como cancelacion

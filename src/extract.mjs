@@ -198,6 +198,37 @@ export function especificacionesDesdeHtml(html, sku) {
 }
 
 /**
+ * LOS SELECTORES DEL BLOQUE DE COMPRA, DEL MAS ESTRECHO AL MAS AMPLIO.
+ *
+ * EL ORDEN ES LA PIEZA CRITICA, NO LA LISTA. Medido en vivo el 2026-09-11: en
+ * las paginas /buy/ con plantilla "hubble" el PRIMER `[class*='buying']` del
+ * documento es la seccion entera (1.356 caracteres) y arrastra el pie
+ * promocional, donde Samsung escribe "¡Al comprar tu Galaxy Z Flip7!". Buscar
+ * "comprar" ahi daba DISPONIBLE para un producto que la API daba agotado, y
+ * encima de forma intermitente segun si el pie alcanzaba a renderizarse. Si
+ * `buying` a secas quedara delante de los dos estrechos, el defecto vuelve
+ * entero.
+ *
+ * POR QUE ESTA LISTA VIVE ACA AFUERA Y NO ADENTRO DEL `page.evaluate` (movida
+ * el 2026-09-23, defecto medido por un verificador): adentro del cuerpo que se
+ * serializa al navegador no la puede fijar ninguna prueba. Se comprobo:
+ * invirtiendo el orden, la suite entera quedaba VERDE -- 0 de 550 antes del
+ * arreglo del incidente y 0 de 586 despues. Un defecto documentado como critico
+ * y sin una sola prueba que lo cercara. Ahora se pasa como argumento y
+ * test/vaiven-bloque-de-compra.test.mjs fija el orden, sin Playwright y sin
+ * tocar la red.
+ */
+export const SELECTORES_BLOQUE_COMPRA = [
+  "[class*='pd-buying-price']", // barra de precio + CTA (pdd39-anchor-nav__price pd-buying-price)
+  "[class*='buying-tool__summary']", // cost-box: "Agregar al carro" / "Dónde comprar"
+  "[class*='pd-buy']",
+  "[class*='buying']",
+];
+
+/** El unico selector verificado en vivo como la barra de precio de UN producto. */
+export const SELECTOR_BARRA_DE_PRECIO = "[class*='pd-buying-price']";
+
+/**
  * BLOQUE DE COMPRA: su texto y, sobre todo, sus BOTONES. Es lo unico que se
  * puede leer en la pagina para decidir el stock.
  *
@@ -227,15 +258,7 @@ export function especificacionesDesdeHtml(html, sku) {
  */
 async function leerBloqueCompra(page) {
   const datos = await page
-    .evaluate(() => {
-      // del mas estrecho al mas amplio; la lista va escrita aca adentro porque
-      // este cuerpo se serializa y se ejecuta en el navegador
-      const selectores = [
-        "[class*='pd-buying-price']", // barra de precio + CTA (pdd39-anchor-nav__price pd-buying-price)
-        "[class*='buying-tool__summary']", // cost-box: "Agregar al carro" / "Dónde comprar"
-        "[class*='pd-buy']",
-        "[class*='buying']",
-      ];
+    .evaluate((selectores) => {
       let el = null;
       let usado = null;
       for (const s of selectores) {
@@ -268,7 +291,7 @@ async function leerBloqueCompra(page) {
         ctasBarra: barra.slice(0, 12),
         selector: usado,
       };
-    })
+    }, SELECTORES_BLOQUE_COMPRA)
     .catch(() => null);
   return {
     texto: datos?.texto ?? null,
@@ -307,7 +330,7 @@ async function leerBloqueCompra(page) {
     // unico producto (TV F6000, Book4 15,6", soporte WMN-M13EA y el monitor
     // LS32DG300ELXZS: su innerText es exactamente precio + CTA). Ante la duda,
     // el lado seguro es exigir que el monto señale a un candidato.
-    barraDePrecio: datos?.selector === "[class*='pd-buying-price']",
+    barraDePrecio: datos?.selector === SELECTOR_BARRA_DE_PRECIO,
     // "NO PUDE LEER" NO ES LO MISMO QUE "LEI Y NO DICE PRECIO" (2026-09-12,
     // defecto medido por los tres verificadores). Este evaluate va envuelto en
     // `.catch(() => null)` y hasta hoy los dos casos salian identicos: `texto:

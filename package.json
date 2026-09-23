@@ -6,6 +6,7 @@
   "description": "Monitorea precios, stock y catalogo de samsung.com/cl y avisa por Discord cuando algo cambia.",
   "scripts": {
     "run": "node src/run.mjs",
+    "censo": "node src/censo-cli.mjs",
     "test": "node --test"
   },
   "dependencies": {

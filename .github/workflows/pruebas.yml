@@ -1,0 +1,59 @@
+# EL CANDADO, PUESTO DONDE BLOQUEAR ES GRATIS.
+#
+# HASTA EL 2026-09-23 LAS PRUEBAS NO CORRIAN NUNCA AL CAMBIAR CODIGO. Medido:
+# `.github/workflows/monitor.yml` era el UNICO workflow del repo y solo se
+# dispara por `schedule` y `workflow_dispatch` -- no habia `on: push` ni
+# `on: pull_request` en ninguna parte. O sea que las 550 pruebas solo corrian
+# como candado de la corrida de PRODUCCION: un commit malo entraba igual, y lo
+# unico que el candado podia hacer era apagar el monitoreo horas despues.
+#
+# Eso esta al reves. Aca el mismo `npm test` frena al AUTOR, que es a quien hay
+# que frenar, y no al monitoreo.
+#
+# El costo esta medido y es despreciable: la suite entera corre en ~2,5 s de
+# node (medido el 2026-09-23). No se escribe aca cuantas pruebas son a proposito:
+# ese numero cambia con cada cambio de codigo y un numero que envejece solo, en
+# un proyecto donde los comentarios de los workflows SON la documentacion
+# operativa, desgasta la convencion de que cada cifra viene con su medicion. El
+# numero de verdad lo imprime `npm test`.
+#
+# Y ES LO QUE PERMITE QUE EL CANDADO DE monitor.yml SIGA BLOQUEANDO sin ser una
+# trampa: como la suite ya no abre `data/` (test/candado-offline.test.mjs lo
+# vigila), solo puede ponerse roja si alguien toca codigo -- y si alguien toca
+# codigo, se entera aca primero.
+#
+# NO TOCA SAMSUNG.COM NI DISCORD: `npm test` corre offline y no lee nada de
+# `data/`. `DISCORD_WEBHOOK_URL` no se le pasa a este job a proposito.
+name: Pruebas
+
+on:
+  push:
+    branches: [main]
+    # Los commits de datos del propio monitor no traen codigo: correr la suite en
+    # cada uno serian 20 corridas diarias de un workflow que no puede encontrar
+    # nada. El candado de monitor.yml igual las corre antes de cada revision.
+    paths-ignore:
+      - "data/**"
+      - "**.md"
+  pull_request:
+    branches: [main]
+
+concurrency:
+  # Una sola corrida por rama: un push encima de otro cancela el anterior, que
+  # aca no cuesta nada (a diferencia del grupo de monitor.yml, donde cancelar
+  # una revision a medias si costaria).
+  group: pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - name: Pruebas automatizadas
+        run: npm test

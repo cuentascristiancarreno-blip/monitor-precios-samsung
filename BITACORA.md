@@ -2995,3 +2995,663 @@ Corregido en `src/extract.mjs`, en el README y acá.
    cachear Playwright, medir `duracionPrincipalesMin`, contar las livianas
    descartadas, las 126 `/buy/` duplicadas, el precio de LISTA que la API entrega
    a las páginas de grupo, y la decisión sobre una tercera revisión completa.
+
+---
+
+# 2026-09-23 — El monitor se apagó solo 30 horas, y nadie avisó
+
+Dos defectos distintos, uno adentro del otro. El primero apagó el monitor. El
+segundo hizo que estuviera apagado 30 horas antes de que alguien se diera cuenta.
+
+## LO QUE PASÓ
+
+Última revisión buena: **2026-09-22T07:47Z**. Después, **24 corridas fallidas
+seguidas durante 29,5 horas**, cero avisos a Discord, y el operador se enteró por
+un correo de GitHub. **Nadie cambió una línea de código.**
+
+La causa inmediata: la prueba *"con el descubrimiento caído, una revisión COMPLETA
+no declara ni un desaparecido"* (`test/alcance-revision.test.mjs`) leía
+`data/latest.json` — el catálogo de PRODUCCIÓN, que las propias corridas
+reescriben y commitean 20 veces al día. Esa prueba vigila el agujero del umbral
+del 80% y necesita que la caída simulada deje MÁS del 80% de los SKU observables.
+Traía su propia guarda que lo comprobaba, y la guarda hizo lo correcto: avisar que
+la prueba dejó de medir lo que dice medir. Pero el paso `npm test` del workflow es
+un **candado que bloquea la corrida**, así que un aviso se convirtió en 30 horas
+sin monitoreo.
+
+Reconstruido snapshot a snapshot desde git, el cruce exacto:
+
+```
+2026-09-22T07:02:54Z   1046 SKU   948 vivos   82,1% observables   -> pasa
+2026-09-22T08:27:50Z   1077 SKU   981 vivos   79,5% observables   -> FALLA (<80%)
+```
+
+La última corrida buena cae justo entre esas dos. **Una revisión completa agregó
+33 SKU vivos y movió la razón 2,6 puntos más allá de una pared del 80%.** El
+monitor estaba a 2,1 puntos del borde y nadie lo sabía, porque nadie lo estaba
+midiendo.
+
+Ese caso puntual ya se había arreglado el 22-09 (`57d5bd8`, construyendo el
+escenario en vez de heredar la proporción del día) y **no se rehízo**.
+
+## EL PROBLEMA DE FONDO, MEDIDO
+
+**La premisa del encargo era falsa, y estaba en el mensaje del commit `57d5bd8`.**
+No son 11 archivos de prueba que leen `data/latest.json`. Son **2 de 28**:
+`alcance.test.mjs` y `alcance-revision.test.mjs`. Los otros 9 solo lo NOMBRAN en
+comentarios; sus datos ya estaban congelados como literales. Un literal puede
+quedar obsoleto; no puede tumbar la corrida. Comprobado cargando el catálogo vacío
+(`{}`) en una copia del árbol: fallan **exactamente 11 pruebas de 550**, las 11 en
+esos 2 archivos. Más `data/ejecuciones.jsonl`, que lo lee **1** prueba: **12 de
+550 tocaban datos de producción**.
+
+**EL BARRIDO QUE DIMENSIONA EL DAÑO.** Se cargaron los **532 snapshots** de
+`data/latest.json` del historial de git (2026-07-19 a 2026-09-22), uno por uno, en
+árboles fuera del repo, y se corrió la **suite entera** contra cada uno (4 workers;
+piso de ruido verificado antes: con catálogo fijo, 550/550):
+
+```
+snapshots corridos:   532   (2026-07-19 -> 2026-09-22)
+tumbaban npm test:    340   (63,9%)
+verdes:               192
+por mes:  jul 62/66 (94%)  ·  ago 199/199 (100%)  ·  sep 79/267 (30%)
+racha verde más reciente: los últimos 188 snapshots
+```
+
+O sea: **la suite estaba verde solo para la forma de catálogo que existe desde el
+2026-09-12/13 — 10 días de los 65 del historial.** De las 11 pruebas acopladas,
+solo 4 fallan contra catálogos reales; las otras 7 solo caen con el catálogo vacío:
+
+```
+340 de 340  el bloque del modo Cyber es más chico…            (cercaDe 216)
+340 de 340  con el descubrimiento caído, una revisión COMPLETA…
+237 de 340  una revisión liviana recorre exactamente el bloque principal…
+237 de 340  el alcance se arma DESPUÉS del recorte…
+```
+
+**Y EL ARREGLO DEL 22-09 NO DESACOPLÓ ESA PRUEBA: LE MOVIÓ LA MECHA.** Sigue
+fallando en los mismos 340 snapshots, pero ahora en otra guarda — la que compara
+la proporción de **PÁGINAS** que aporta el descubrimiento (`TOLERANCIA_ENCOGIMIENTO`
+= 10%). El arreglo congeló la proporción de SKU y dejó heredada la de páginas.
+Deriva medida: del 2026-07-23 al 09-11 el descubrimiento aportaba **5,0%-7,4%** de
+las páginas (o sea, por DEBAJO del piso durante casi todo el historial); el
+2026-09-12/13 saltó de 7,3% a 13,7% **en un día**; hoy va en 13,5%, con 3,5 puntos
+de margen sobre una raya que la serie muestra que se puede mover 6 puntos en una
+jornada.
+
+## LA SEPARACIÓN, EN UNA LÍNEA
+
+> **`npm test` no abre `data/`.** Una prueba pregunta *"¿el código hace lo que
+> dice?"* — su insumo puede congelarse y su respuesta solo cambia si alguien toca
+> código, así que puede vivir en el candado. Un censo pregunta *"¿el mundo sigue
+> estando donde el código supone?"* — su insumo es mutable por definición, así que
+> **no puede vivir en el candado**.
+
+## LO QUE SE HIZO
+
+**1. Fixtures congeladas** (`test/fixtures/catalogo.json`, `ejecuciones.jsonl`,
+`LEEME.md`). Las dos pruebas acopladas leen una foto del catálogo real del
+2026-09-22 en vez del archivo vivo. **Se congeló entero, sin tocar un byte**, y eso
+es una decisión con su medición: quitarle los campos descriptivos lo deja en 806 KB
+(−18%) y sigue verde, pero una submuestra del 25% (203 KB) **rompe 5 pruebas** y
+acortar las URL a ids opacos rompe 8 — las URL no son relleno, hacen el join con
+`src/seed.json` y llevan la sección de la que depende `src/prioridad.mjs`. Entera,
+**ninguna aserción tuvo que cambiar**; y 980 KB una sola vez no es nada al lado de
+los 980 KB que el repo commitea 20 veces por día.
+
+**2. El vigilante** (`test/candado-offline.test.mjs`). Una prueba que revisa la
+propia suite y falla si algún archivo de `test/` vuelve a abrir `data/` o a
+importar `src/run.mjs` / `src/discover.mjs`. Si alguien vuelve a cablear el canario
+al interruptor, se entera **en ese commit** y no 30 horas después. Se revisa a sí
+misma: el nombre de la carpeta prohibida se arma en pedazos para que el archivo no
+se denuncie solo y no haya que excluirlo (es decir, para no dejar sin vigilancia
+justo al vigilante).
+
+**3. El censo** (`src/censo.mjs` + `src/censo-cli.mjs`, `npm run censo`). Doce
+indicadores con su margen y su historia, que corren al final de cada revisión y
+salen por el canal técnico, con el freno de una vez al día por clave. **Dos
+candados abiertos a propósito**: `continue-on-error: true` en el paso y
+`process.exitCode` intocado en el CLI.
+
+**4. El aviso de que la corrida no arrancó**
+(`.github/workflows/avisar-falla.yml`). Ver más abajo.
+
+**5. El candado, además, donde bloquear es gratis** (`.github/workflows/pruebas.yml`).
+
+## DÓNDE QUEDÓ CADA COMPROBACIÓN QUE SALIÓ DEL CANDADO
+
+Ninguna se borró. `test/censo.test.mjs` tiene una prueba cuyo único trabajo es
+fijar esta lista: si alguien saca un indicador, esa pregunta deja de hacerse en
+todo el sistema y la prueba lo caza.
+
+> **Corrección del 2026-09-23 (segunda vuelta), porque la versión anterior de
+> esta tabla decía "Vivía en → Ahora vive en" y eso era falso.** Las aserciones
+> **no se mudaron: se duplicaron.** Los seis `cercaDe` siguen en
+> `test/alcance.test.mjs` y la guarda de `TOLERANCIA_ENCOGIMIENTO` sigue en
+> `test/alcance-revision.test.mjs`, o sea **dentro de `npm test`**, que sigue
+> bloqueando la corrida. Hoy no hace daño porque su entrada está congelada y solo
+> una persona puede moverla — pero cambia lo que hay que decirle a quien refresque
+> la fixture, y eso está corregido en `test/fixtures/LEEME.md`.
+
+| Sigue en el candado, contra la fixture congelada | Y además se vigila en vivo, en el censo |
+|---|---|
+| `cercaDe(1185)` / `cercaDe(347)` / `cercaDe(216)` | `recorrido-completo`, `bloque-liviano`, `bloque-cyber` |
+| `cercaDe(797)` / `cercaDe(733)` | `registros-fuera-del-bloque`, `vivos-fuera-del-bloque` |
+| la guarda de páginas del descubrimiento (la mecha de `57d5bd8`) | `aporte-descubrimiento` (piso 10%, **hoy 13,5%**) |
+| **la guarda del 80%: LA QUE TUMBÓ EL MONITOR** | `observables-sin-descubrimiento` (raya 80%, **hoy 79,5%**) |
+| "no se encontró un televisor fuera del bloque" / "un SKU vivo dentro" | `premisa-tele-fuera-del-bloque`, `premisa-sku-dentro-del-bloque` |
+| `ultimoCompleto` sobre el `ejecuciones.jsonl` real | `ejecuciones-con-completa` |
+| — (nuevo) | `fixture-al-dia`, `completas-sospechosas` |
+
+**Una guarda NO se mudó, y hay que decirlo: no se podía.** La de *"una revisión
+completa SANA no dispara el chequeo de productos sin página"* (`sinPagina <= 2,5%
+de vivos`) **es vacua por construcción**: las páginas familia se reconstruyen DEL
+MISMO catálogo, así que todo producto vivo tiene su página en el recorrido por
+definición. Medido sobre el catálogo real: 981 vivos, **0 sin página, 0 páginas
+descartadas**, y daría 0 con cualquier catálogo. Quedó en el archivo con esa
+advertencia escrita encima, en vez de disimulada. La pregunta de verdad — *"¿el
+recorrido REAL, el que arma el sitemap, dejó productos sin mirar?"* — solo se puede
+contestar durante la corrida, y la corrida ya la contesta (motivo `sku-sin-pagina`);
+lo que el censo mira es ese **veredicto ya escrito**: `completas-sospechosas`.
+
+## EL SEGUNDO DEFECTO: EL OPERADOR NO SE ENTERÓ
+
+**Medido sobre las 594 corridas del repo** (`gh run list`, 2026-07-20 a 2026-09-23):
+
+- 525 success · 32 failure · 35 cancelled.
+- Rachas de fallas: 2, 1, 1, 1, 1, 1, 1… y **24**. Nunca antes hubo una mayor a 2.
+- Hueco entre corridas buenas: mediana **2,91 h**, p90 4,81 h. El del incidente:
+  **29,5 h — el más grande de la historia del proyecto** (el récord anterior eran
+  20,8 h, el timeout del 2026-08-02, que tampoco se vio).
+- **De las 32 fallas: las 24 de la racha murieron en "Pruebas automatizadas"** (job
+  de 0 min, antes de tocar samsung.com) y **7 de las 8 anteriores murieron en
+  "Guardar historial"**, o sea DESPUÉS de revisar y DESPUÉS de que los avisos
+  salieran. Son incidentes de gravedad **opuesta** y el aviso los tiene que
+  distinguir.
+- De las 35 canceladas: **15 son descartes de concurrencia** (0 jobs, ruido normal)
+  y **20 son muertes de verdad** — 5 de ellas a los 330 min exactos, el timeout —
+  que **hasta hoy no mandaron un solo mensaje**.
+- **El candado de pruebas se disparó 24 veces en 594 corridas y las 24 fueron la
+  misma falsa alarma. Cero veces atajó una regresión real.**
+- Y `monitor.yml` era **el único workflow del repo**, solo con `schedule` y
+  `workflow_dispatch`: **las 550 pruebas no corrían nunca al cambiar código**. El
+  commit malo entraba igual; lo único que el candado podía hacer era apagar el
+  monitoreo horas después.
+
+**El arreglo** es un workflow aparte, `avisar-falla.yml`, con
+`on: workflow_run … types: [completed]` y `if: conclusion != 'success'`. Es **lo
+más tonto posible a propósito**: un `curl`, sin `node`, sin `npm install`, sin
+checkout, sin importar una sola línea de `src/`. El caso que tiene que cubrir es
+"las pruebas fallaron", o sea que el código del repo es sospechoso: un aviso que
+dependiera de ese código se rompería junto con él.
+
+El mensaje dice **si hubo o no hubo monitoreo**, cuántas fallas seguidas van, la
+hora de la última corrida buena y el link. El freno no usa archivo de huellas (eso
+exigiría commitear desde el workflow, en carrera con los commits del monitor): **el
+propio historial de corridas de GitHub es el estado**, contado con `gh api`,
+saltando las canceladas sin jobs.
+
+**Cuándo habla: en la falla 1, 3, 12 y después cada 24.** Simulado con los
+timestamps reales:
+
+| | mensajes |
+|---|---|
+| durante el incidente (24 fallas, 30 h) | **4** — a los ~9 min, y después en la 3, la 12 y la 24 |
+| en toda la historia (65,5 días) | **29 = 0,44 por día**, incluidas las 20 muertes hoy invisibles |
+
+## LA DECISIÓN QUE **NO** SE TOMÓ, Y POR QUÉ
+
+**No se le puso `continue-on-error` al candado de producción, ni se le puso un
+fusible por rachas.** Era la salida obvia y es la equivocada: el candado defiende
+algo que sigue haciendo falta — si el código está roto, fallar en 40 s evita
+**1.185 requests inútiles a samsung.com** (la política de scraping del propio
+proyecto) y evita escribir un `data/latest.json` malo, que según la entrada del
+2026-09-11 obliga a revertir **datos** además de código. Un fusible, además,
+correría a propósito código que falló las pruebas.
+
+Lo que cambió no es el candado: **es lo que hay adentro**. Como la suite ya no abre
+`data/`, solo puede ponerse roja si una persona toca código — y si toca código, se
+entera primero en `pruebas.yml`, que corre el mismo `npm test` en cada push, donde
+bloquear frena al autor y no al monitoreo.
+
+## LO QUE SE PIERDE, CON TODAS SUS LETRAS
+
+1. **Las dos pruebas dejaron de ser un censo de HOY y son regresión contra una
+   foto.** El costo es real: media docena de defectos graves de este proyecto
+   salieron de correr contra el catálogo de verdad (los 4 SKU fantasma del S25 FE,
+   las 126 páginas duplicadas, el orden del recorrido). Si Samsung estrena una forma
+   de página nueva, la fixture no la tiene y la prueba no la ve hasta que alguien la
+   refresque. **Mitigación:** el censo sí mira la realidad, todos los días y con más
+   indicadores que antes — y el indicador `fixture-al-dia` avisa cuando la foto se
+   quedó vieja, comparando **campos** (no valores). Pero avisa; no bloquea.
+2. **Y ahí está el canje que hay que aceptar a ojos abiertos: un candado no se puede
+   ignorar; un canario sí.** Se cambia "el sistema se apaga solo cuando los datos
+   derivan" por "el sistema avisa y sigue corriendo". Si nadie lee el canal técnico,
+   la deriva pasa inadvertida. Mi lectura es que es un canje claramente bueno — 30
+   horas sin monitoreo es peor que un aviso no leído — pero **no es gratis y no hay
+   que venderlo como gratis**.
+3. **Los números 1185 / 347 / 216 / 797 / 733 dejaron de decir algo sobre el sitio
+   real dentro del candado.** Hoy son propiedades del código aplicado a una entrada
+   fija. Si el bloque Cyber se va a 400 páginas, deja de caber en media hora y la
+   prueba ya no lo ve: **lo tiene que ver el censo, y solo si alguien lo lee.**
+4. **El aviso por `workflow_run` detecta corridas que FALLAN, no corridas que NUNCA
+   NACEN.** Si GitHub deshabilita el workflow, si el YAML queda mal escrito y no
+   parsea, o si simplemente no dispara el `schedule`, no se crea ninguna corrida y
+   no hay evento que dispare el aviso: el silencio vuelve a ser total. **Ese agujero
+   NO está cerrado.** Cerrarlo exige algo que viva fuera de GitHub y se queje por
+   ausencia, y ahí hay un problema medido: el propio `schedule` de GitHub llega
+   tarde con mediana 68 min y p90 172 min, así que un vigilante por ausencia tendría
+   que tolerar ~6 h antes de gritar. Sirve como última red, no como detector
+   principal.
+5. **Más mensajes técnicos en el mismo canal.** El censo y el aviso de falla hablan
+   donde hoy llegan las momias y los precios corregidos. Con los frenos son 0,44 por
+   día más los del censo, pero es ruido nuevo en un canal que el proyecto viene
+   limpiando desde agosto.
+
+## VERIFICACIÓN
+
+- **`npm test`: 550 → 586 verdes, 0 fallas.** La línea base de 550 nunca baja. Tres
+  archivos nuevos, 36 pruebas: `test/candado-offline.test.mjs` (4),
+  `test/censo.test.mjs` (18), `test/aviso-de-falla.test.mjs` (14).
+- **LA PRUEBA QUE MÁS IMPORTA — LA SUITE CONTRA LOS 532 SNAPSHOTS HISTÓRICOS.** El
+  mismo barrido de antes, con el código de hoy: **532 de 532 en verde. Antes eran
+  192 de 532.** Los 340 que tumbaban el monitor ya no lo tumban. Y el control más
+  duro: **la suite pasa con la carpeta `data/` borrada entera** (586/586), que es la
+  demostración directa de que el acoplamiento se cortó.
+- **MUTANTES: 51 corridos, uno por vez, sobre copias fuera del árbol, suite entera.
+  MUEREN LOS 51.** Cubren las tres piezas: las fixtures volviendo a `data/`, el
+  vigilante (sin patrones, excluyéndose a sí mismo, sin sacar comentarios, dejando
+  pasar cada una de las dos formas de ruta, sin mirar los imports, denunciando
+  cualquier import), cada indicador del censo borrado o con su umbral movido, el
+  mensaje mudo / mandando los verdes / sin ordenar / sin decir que no bloquea, el
+  CLI pudiendo tumbar la corrida, y los tres workflows (el aviso escuchando otro
+  nombre, sin condición, usando código del repo, hablando siempre, avisando los
+  descartes, sin distinguir el paso, sin racha, pidiendo escritura; el candado
+  dejando de bloquear; el censo sin correr, pudiendo tumbar, o puesto antes del
+  scrape; y un YAML con una línea pegada al margen).
+  - **En la primera pasada sobrevivieron 4, y los cuatro tenían razón**: borrar el
+    chequeo de imports dejaba la suite verde (el detector no encontraba nada porque
+    hoy nadie importa esas puertas, y "no encontrar nada" era indistinguible de
+    estar roto → se le agregó su prueba-de-la-prueba); y **dos del CLI del censo**:
+    hacer que se fuera en código 1, y que reventara con el catálogo ilegible. El
+    segundo se mata exigiendo que **degrade** (que siga su camino y lo diga) y no
+    solo que salga en cero. El primero necesitaba una falla de verdad adentro de
+    `main()`: se usa un `latest.json` que contiene exactamente `null` — JSON válido,
+    así que pasa el parser y revienta más adentro. Se eligió a propósito una forma
+    que las capas de arriba NO atajan: **un `catch` que nunca se ejerce es un
+    `catch` que alguien puede borrar sin que se note.** El cuarto era un mutante
+    equivalente mío, mal escrito, y se corrigió.
+- **Los tres workflows se parsearon con un parser de YAML de verdad** (PyYAML), no
+  con expresiones regulares: los tres válidos, con el orden de pasos comprobado.
+  Encontró un error real mientras se escribían: un script embebido en un `run: |`
+  empezaba en la columna 0 y `avisar-falla.yml` no parseaba. Un YAML que no parsea
+  no es "un paso que falla": es el **workflow entero deshabilitado**, o sea el
+  monitor apagado y sin aviso — peor que el incidente que este cambio cierra. Quedó
+  una prueba que vigila justo esa clase de error sin agregar ninguna dependencia al
+  proyecto.
+- **El censo corrido de verdad contra una COPIA del catálogo real**, sin webhook:
+  los 12 indicadores salen, y los dos números del encargo aparecen solos —
+  `aporte-descubrimiento` 13,5% (margen 3,5 puntos) y
+  `observables-sin-descubrimiento` **79,5%, ya bajo el piso**.
+- **El freno del aviso simulado sobre las 594 corridas reales**: 4 mensajes en el
+  incidente, 29 en 65,5 días (0,44/día). Las 35 canceladas se clasificaron una por
+  una con `gh api`: 15 descartes de concurrencia (no se avisan) y 20 muertes de
+  verdad (sí).
+- **CERO REQUESTS A SAMSUNG.COM** en todo el encargo: no hizo falta ninguno y había
+  una revisión de producción en curso (verificado con `gh run list`). **Jamás se
+  tocó el webhook real** (`env -u DISCORD_WEBHOOK_URL` en cada corrida; el CLI del
+  censo sin webhook no envía nada).
+- **`data/` del repo intacta** y **no se commiteó nada**.
+
+## LO QUE NO SE MIDIÓ, DICHO IGUAL
+
+- **No se midió cuántos de los literales congelados de los otros 9 archivos de
+  prueba siguen existiendo en el catálogo de hoy.** Ahí no hay riesgo de caída (un
+  literal no tumba la corrida), pero sí de pruebas que fijan una realidad que ya no
+  existe. Queda sin cuantificar.
+- **El aviso de falla no se probó contra GitHub**, porque probarlo de verdad exige
+  romper una corrida real y mandar un mensaje al webhook real. Lo que sí se probó es
+  su aritmética, contra las 594 corridas reales, y las tres formas en que se rompe
+  en silencio (nombre que no calza, dependencia del código roto, freno que
+  desaparece).
+- **Las 20 "muertes de verdad" canceladas no se clasificaron por causa**, solo por
+  "tenía jobs o no". Cinco son el timeout de 330 min; las otras 15 no se abrieron
+  una por una.
+
+## PENDIENTES
+
+1. **Mirar `observables-sin-descubrimiento` esta semana.** Hoy va en 79,5% y la raya
+   es 80%: **ya está cruzada**. No rompe nada por sí sola, pero significa que una
+   caída del descubrimiento la atraparían solo dos de las tres redes. Decidir si el
+   piso del 80% (la heurística de "corrida sospechosa") sigue siendo el número
+   correcto ahora que el catálogo creció, **con el dato en la mano y no de
+   escritorio**.
+2. **Refrescar `test/fixtures/catalogo.json` en el mismo commit que agregue un campo
+   nuevo al registro.** Medido: la forma del catálogo cambió 4 veces en 65 días y las
+   tres veces en el commit que agregó el campo. El censo lo recuerda solo
+   (`fixture-al-dia`), una vez al día, y no se apaga. Instrucciones en
+   `test/fixtures/LEEME.md`.
+3. **El agujero de "la corrida nunca nace" sigue abierto** (punto 4 de "lo que se
+   pierde"). Un vigilante fuera de GitHub que se queje por ausencia, tolerando ~6 h
+   por el atraso medido del `schedule`.
+4. **Si se quiere achicar la fixture de 980 KB**, correr antes el banco de mutantes
+   completo del proyecto y no unos pocos inventados para la ocasión. La cifra
+   probada sin cambiar ninguna aserción es 980 KB; 806 KB también quedó verde pero
+   con menos evidencia detrás.
+5. **Contar cuántos de los literales de los otros 9 archivos siguen existiendo** (ver
+   arriba).
+6. Siguen los pendientes anteriores: rotar `history.jsonl` antes de los 50 MB,
+   cachear Playwright, medir `duracionPrincipalesMin`, contar las livianas
+   descartadas, las 126 `/buy/` duplicadas, el precio de LISTA que la API entrega a
+   las páginas de grupo, y la decisión sobre una tercera revisión completa.
+
+---
+
+# 2026-09-23 (segunda vuelta) — El canario nacía chillando, y el aviso enmudecía justo en los apagones largos
+
+Tres verificaciones independientes revisaron el arreglo de la mañana. Confirmaron
+lo principal —el desacople está hecho, ninguna comprobación se borró, la suite
+pasa con `data/` borrada entera— y encontraron **trece defectos** (más un
+pendiente: que nada está commiteado). Dos de los trece eran graves de verdad, y
+los dos tenían la misma forma: **cada pieza nueva tenía un agujero exactamente
+en el caso que esa pieza existía para cubrir**. Se arreglaron los trece, y
+arreglándolos aparecieron **tres más**, que también están abajo — uno de ellos
+introducido por el propio arreglo, y del mismo tipo que el defecto que este
+encargo vino a cerrar.
+
+## LOS DOS QUE IMPORTAN
+
+**1. El aviso de falla enmudecía PARA SIEMPRE a partir de la falla nº 50.** La
+racha se contaba con `index("success") // 40` en jq: cuando en la ventana de 50
+corridas ya no quedaba ningún éxito, jq devuelve `null`, `N` quedaba **clavado en
+40**, y 40 no es 1, no es 3, no es 12 y `40 % 24 = 16`. O sea que a partir de ahí
+no hablaba nunca más. Medido ejecutando ese mismo shell con `gh` y `jq` de
+mentira: **con 200 fallas seguidas mandaba 5 mensajes y después silencio
+absoluto**, mientras el comentario del propio archivo prometía "~1,7 mensajes por
+día, ruidoso a propósito, porque a esa altura el silencio es peor". El incidente
+de 24 fallas sí quedaba cubierto; un apagón de tres días volvía exactamente a la
+condición que este workflow vino a eliminar.
+
+**2. El censo nacía en rojo el día uno y no se apagaba nunca.** Barrido de los
+532 snapshots del catálogo: **0 verdes** — 341 alarma, 191 atención. Sobre los
+188 más recientes, que son justo la racha en que el sistema estaba sano: 187
+atención, 1 alarma, 0 verdes. Con el freno de "una vez al día por clave", eso es
+un mensaje rojo a Discord **todos los días, desde el primero, diciendo siempre lo
+mismo**. Un canario calibrado para chillar siempre es la forma más rápida de que
+deje de leerse — y lo que se juega ahí es todo lo que se movió del candado al
+censo.
+
+### La causa del segundo resultó ser más profunda que la calibración: la pregunta estaba contestada al revés
+
+`observables-sin-descubrimiento` estaba modelado como un **piso** del 80%. Lo que
+dice el código de verdad (`evaluarConfiabilidad`, `src/alcance.mjs`):
+
+```js
+if (esperados > 0 && encontrados < esperados * 0.8)  // -> motivo faltan-productos
+```
+
+O sea que si el descubrimiento se cae y quedan observables **menos** del 80% de
+los SKU vivos, la heurística **sí** atrapa la corrida. Quedar por debajo del 80%
+es **más protección, no menos**. El indicador afirmaba lo contrario —"por debajo,
+una caída del descubrimiento la atrapan solo las otras dos redes"— y por eso el
+79,5% de hoy salía como ALARMA.
+
+Y el 80% nunca fue un invariante de producción: salió de la **guarda de validez
+de un escenario de prueba** (`test/alcance-revision.test.mjs`), que necesita
+quedar *arriba* del 80% para que el escenario ejercite el agujero que la prueba
+vigila. Ningún lado de la raya es una falla. Lo que cambia al cruzarla es
+**cuáles** redes atraparían una caída del descubrimiento, y que la premisa de esa
+prueba deja de parecerse al catálogo. Las dos cosas hay que saberlas; ninguna es
+una emergencia.
+
+**El otro medio punto era calibración pura:** el colchón del piso eran **5 puntos
+absolutos** para todos los pisos. Sobre un piso del 80% es un colchón del 6% y
+está bien; sobre un piso del 10% es del 50%, o sea exigir 15% para estar en verde
+cuando la raya está en 10. Por eso `aporte-descubrimiento` daba 0 verdes en 532
+snapshots y el 13,5% de hoy quedaba en ATENCIÓN permanente.
+
+## LOS TRECE DEFECTOS, Y CÓMO QUEDÓ CADA UNO
+
+| # | Qué | Cómo quedó |
+|---|---|---|
+| 1 | El aviso enmudece para siempre pasada la ventana | `contar_racha` **declara** que la ventana se agotó y ese caso tiene su propia cadencia; la ventana pasó de 50 a 100 |
+| 2 | El censo nace en rojo y no se apaga | polaridad corregida (`raya()` en vez de `piso`), colchón relativo al piso, freno por cambio |
+| 3 | Si la API de GitHub falla, el freno desaparece y el mensaje miente | se reintenta una vez; si igual no se puede contar, **se dice** |
+| 4 | Una corrida `skipped` se trata como muerte (18 falsas alarmas diarias al encender el Cyber a medias) | se filtra, en la salida temprana y en la cuenta de la racha |
+| 5 | Huecos de mutantes en el aviso (`per_page`, el valor por omisión, `--fail-with-body`, el guard `-z`) | los cuatro fijados por prueba; los cuatro mutantes mueren |
+| 6 | El mensaje del censo manda al operador —que no programa— a abrir un `.jsonl` | la deriva la calcula el censo y va escrita en el mensaje |
+| 7 | `resumenDeCenso` exportada, probada y **sin llamador**; el comentario y el mensaje afirmaban una serie que no existía | la serie existe: `data/censo.jsonl`, una fila por revisión |
+| 8 | El camino de **entrega** del censo, sin probar: 5 mutantes vivos | `test/censo-entrega.test.mjs`, con webhook HTTP local |
+| 9 | El script `censo` de `package.json` se podía cambiar sin que nadie se entere | la prueba resuelve el script como lo resuelve npm |
+| 10 | `COMPLETAS_QUE_SE_MIRAN` se podía mover de 5 a 50 sin que nadie se entere | fijado, con la cuenta de qué significan 50 |
+| 11 | El orden de los selectores del bloque de compra: defecto documentado como crítico, **sin una sola prueba, ni antes ni después** | la lista salió del `page.evaluate` a `SELECTORES_BLOQUE_COMPRA` y dos pruebas la fijan |
+| 12 | Tres afirmaciones falsas en la documentación (ver abajo) | corregidas, con la medición al lado |
+| 13 | Trampa de fin de línea: un clon nuevo en Windows rompería todas las aserciones sobre los YAML | `*.yml text eol=lf` y normalización al leer |
+
+**Y los dos que aparecieron arreglando los anteriores:**
+
+13. **La deriva decía "saltó en esta revisión" en TODAS las revisiones.** La serie
+    guarda los números con cuatro decimales y el indicador vivo trae la división
+    entera: 0,1351 nunca es igual a 0,13513… Así que el dato que el operador iba a
+    leer para distinguir un salto de una deriva decía siempre lo mismo, que es
+    peor que no decir nada. Ahora se compara con el mismo redondeo.
+14. **Con la cuenta incierta, el título decía "El monitor lleva 0 revisiones
+    seguidas sin correr".** Salió ejecutando el workflow de verdad con la API
+    caída. El título se arma ahora en el paso que **sabe cuál de los tres casos
+    es**, no en el que manda el mensaje.
+15. **Y uno propio, que encontró el barrido de fixture y vale la pena contar
+    entero:** la primera versión de la prueba nueva "con el censo entero en verde
+    la serie igual se escribe" partía de la fixture congelada y le agregaba SKU.
+    Medido poniendo cada uno de los 532 snapshots como fixture, **esa prueba era
+    la aserción más frágil de toda la suite**: rompía en 344 de 532, más que las
+    dos preexistentes (340), porque exigía que la fixture se pareciera al
+    catálogo de producción de hoy. O sea: escribiendo el arreglo del acoplamiento
+    se introdujo un acoplamiento nuevo, del mismo tipo, en el mismo candado. Se
+    reescribió con el catálogo **construido** —no hereda nada de la fixture salvo
+    los NOMBRES de sus campos, que es lo único que `fixture-al-dia` compara— y se
+    comprobó contra 7 fixtures repartidas en los 65 días de historia: verde en 6
+    de 7 (la que no, es la del 2026-07-19, de antes de que el registro tuviera
+    `categoria` y `presencia`).
+
+## LO QUE SE HIZO, PIEZA POR PIEZA
+
+### El aviso de falla (`.github/workflows/avisar-falla.yml`)
+
+- **La aritmética salió a un bloque marcado `# >>> ARITMETICA` que la suite
+  EXTRAE Y EJECUTA**, con rachas de 1 a 200. Antes solo se comprobaba que el
+  *texto* de la condición siguiera escrito igual, con una expresión regular — y
+  por eso el defecto nº 1 sobrevivió a los 51 mutantes de la mañana. Esa es la
+  lección de esta vuelta: **comprobar que una condición sigue escrita igual no
+  dice nada sobre lo que hace con una racha de 60.**
+- `contar_racha` sale en 1 cuando la ventana entera no trae ni un éxito. Ese caso
+  se sigue hablando con la misma cadencia del escalón (cada 24), contada con el
+  número de corrida del propio workflow, que es el único contador que hay sin
+  guardar estado en el repo.
+- Las canceladas y las saltadas no cortan ni inflan la racha.
+- Los tres `gh api` dejaron el `|| echo 1`. Se reintenta una vez y, si igual no se
+  puede contar, el mensaje lo dice y el título lo dice.
+
+### El censo (`src/censo.mjs`, `src/censo-cli.mjs`)
+
+- **`raya()`, una función nueva**, para las proporciones que no tienen un lado
+  bueno y un lado malo pero sí una raya que importa cruzar. Nunca da ALARMA:
+  avisa cuando el valor está **pegado** a la raya, que es cuando puede cruzarla y
+  volver. Medido con 3 puntos de colchón sobre los 532 snapshots: **345 en verde
+  y 187 avisando**, y los 187 son exactamente las semanas de septiembre en que el
+  sistema estuvo a 2,7-2,9 puntos de la raya sin que nadie lo supiera. Con 2
+  puntos habrían sido 531 verdes, pero el 2026-09-22 a las 07:02Z (82,1%) no
+  habría dicho nada: habría avisado recién después de cruzar.
+- **El colchón del piso pasó a ser relativo** (25% del piso). Medido sobre los
+  532: `aporte-descubrimiento` pasa de 0 verdes a **188 verdes, 4 atención y 340
+  alarma** — y los 340 son julio y agosto, cuando el aporte de verdad andaba entre
+  5,0% y 7,4%, o sea de verdad bajo el piso.
+- **La serie existe.** Cada revisión deja sus doce números en `data/censo.jsonl`
+  (append-only, union en los conflictos, podado a 45 días). Medido: 435 bytes por
+  fila, 20 filas al día, el archivo se estabiliza en **~390 KB** — menos de la
+  mitad de lo que pesa el catálogo que el repo commitea en cada una de esas 20
+  corridas. **Se escribe pase lo que pase**, hable o no hable el censo: los días
+  sanos son la referencia contra la que se mide todo lo demás.
+- **La deriva va escrita en el mensaje**: "saltó en esta revisión desde 82,1%;
+  hace 7 días iba en 82,9%". Es literalmente lo que faltaba el 2026-09-22.
+- **El freno es por CAMBIO, no por día**, con un recordatorio semanal si la
+  condición sigue igual. Y la clave lleva ahora el **lado** de la raya: sin eso,
+  pasar de 82,1% a 79,5% —o sea cruzar, que es el evento entero— daba la misma
+  clave y el sistema se quedaba callado justo cuando tenía algo nuevo que decir.
+- **El mensaje respeta el presupuesto de largo.** Con los doce indicadores
+  hablando y su línea de deriva daba 2.077 caracteres y `notifyTecnico` corta en
+  1.900: se comía el pie, que es la línea que dice que esto NO detiene el monitor.
+  Se recorta de menos importante a más y el pie no se toca nunca.
+- **Sin webhook no se marca como avisado.** Una corrida de prueba local contra la
+  carpeta de producción dejaba el freno envenenado y la corrida siguiente, la de
+  verdad, se quedaba callada creyendo que ya lo había dicho.
+
+### El camino de entrega, que estaba sin probar (`test/censo-entrega.test.mjs`)
+
+`src/censo.mjs` es puro y estaba bien cubierto. `src/censo-cli.mjs` —el único
+archivo nuevo con efectos— solo estaba probado para "se va en cero": **se podía
+desconectar entero y la suite seguía en verde**. Ahora se lanza el CLI como
+proceso, con la carpeta de datos en un directorio temporal y un **webhook HTTP
+local de mentira**, y se afirma sobre lo que queda escrito.
+
+> **Una trampa que esta prueba pisó y queda escrita:** el CLI lee el seed REAL del
+> repo, no uno de juguete. Un catálogo con URL inventadas deja **todas** sus
+> páginas del lado del descubrimiento, así que cambiar la proporción del catálogo
+> de juguete no cambiaba nada de lo que el censo mide. Las páginas de listado
+> salen del seed de verdad y lo único construido es cuánto aporta el
+> descubrimiento — como **proporción**, no como número fijo, así que agregarle
+> productos al seed no la rompe.
+
+> **Y una segunda, del vigilante:** `test/candado-offline.test.mjs` denuncia el
+> nombre de la carpeta de producción escrito entre comillas… que es además el
+> nombre del evento con que un stream de Node entrega su cuerpo. El servidor de
+> mentira quedó denunciado sin haber abierto nada. La salida correcta es **no
+> escribir el literal** (se usó `for await`), no aflojarle el detector: el costo
+> de un falso positivo es una línea distinta en una prueba; el de un detector
+> permisivo es el incidente otra vez.
+
+### Las tres afirmaciones falsas de la documentación
+
+- **La tabla "Vivía en → Ahora vive en" de la entrada de la mañana.** Las
+  aserciones no se mudaron: **se duplicaron**. Los seis `cercaDe` siguen en
+  `test/alcance.test.mjs` y la guarda de `TOLERANCIA_ENCOGIMIENTO` sigue en
+  `test/alcance-revision.test.mjs`, o sea dentro de `npm test`. Hoy no hace daño
+  porque la entrada está congelada, pero cambia lo que hay que decirle a quien
+  refresque la fixture.
+- **`test/fixtures/LEEME.md` decía "la ÚNICA aserción que un refresco puede
+  volver a romper".** Falso, y medido: poniendo cada uno de los 532 snapshots
+  como fixture, **340 de 532 rompen `npm test`**, y no rompe una
+  aserción sino varias. La lista real, el número y el paso que faltaba —refrescar
+  **en una rama**, para que si algo falla falle en `pruebas.yml` delante de la
+  persona y no en el candado del monitor— están ahora en el LEEME.
+- **`.github/workflows/pruebas.yml` decía "Medido: 572 pruebas".** No calzaba con
+  `npm test` y además envejece solo. Se reemplazó por el tiempo medido con su
+  fecha; el conteo lo imprime `npm test`.
+
+### Una trampa de fin de línea que no era de este encargo, pero que este encargo agranda
+
+El clon tiene `core.autocrlf=true`. Las pruebas del aviso son aserciones por
+expresión regular sobre el texto de los YAML, así que un clon nuevo en Windows
+las rompería todas sin que nada esté roto (medido: una extracción de HEAD con la
+conversión puesta dejaba la suite en 549/550). Dos defensas: `*.yml text eol=lf`
+en `.gitattributes`, y la normalización al leer, una sola vez, en la función que
+ya los carga.
+
+## VERIFICACIÓN
+
+- **`npm test`: 586 → 619 verdes, 0 fallas.** La línea base de 550 nunca
+  baja. La suite entera sigue corriendo en ~2,5 s: el escalón se ejecuta de
+  verdad pero en **dos** procesos de shell, no en 400 (medido: 400 llamadas 39 s,
+  dos llamadas 0,2 s — y esta suite es el candado que bloquea cada revisión).
+- **LOS 532 SNAPSHOTS, otra vez y con el código final: 532 de 532 en verde, 0
+  rojos.** El desacople sigue en pie: ni un catálogo de los 65 días de historia
+  tumba `npm test`.
+- **EL BARRIDO QUE LA PRIMERA VUELTA NO HIZO:** los mismos 532 snapshots puestos
+  como `test/fixtures/catalogo.json`, o sea **simulando el refresco de la
+  fixture** con el catálogo de cada día. **340 de 532 rompen `npm test`** (63,9%),
+  y el corte es el 2026-09-12: de ahí en adelante todos verdes. En los 340 caen
+  DOS aserciones (la del descubrimiento y el `cercaDe(216)` del bloque Cyber), en
+  237 de ellos caen DOS MÁS, y hay 8 aserciones distintas que caen en casos
+  sueltos. Reproduce exacto lo que midió el segundo verificador, y es el número
+  que el LEEME decía mal.
+- **MUTANTES: 41, uno por vez, sobre copias fuera del árbol, suite entera.
+  MUEREN LOS 41.** No es el banco de la mañana repetido: son 41 mutantes sobre
+  la superficie de ESTA vuelta — los cuatro que habían sobrevivido en el aviso,
+  los cinco del CLI del censo, la calibración de los dos indicadores, la serie
+  entera, el formato de cada número, el orden de los selectores, el cableado
+  (`package.json`, el paso del workflow) y hasta la promesa del README. En la
+  primera pasada sobrevivió uno y tenía razón: sacar `guardarSerie(null)` de la
+  rama "no hay nada que decir" dejaba la suite verde, o sea que la curva podía
+  quedarse sin los días sanos sin que nadie se enterara. Se le escribió su
+  prueba, con un catálogo construido que deja el censo entero en verde (ver el
+  defecto nº 15).
+- **EL WORKFLOW DEL AVISO, EJECUTADO DE VERDAD.** Los dos pasos se sacaron del
+  YAML con PyYAML y se corrieron bajo `bash --noprofile --norc -eo pipefail`
+  —que es exactamente como los corre Actions— con `gh`, `jq`, `curl` y `sleep` de
+  mentira. **Trece escenarios**: rachas de 1, 3, 12, 24, 40, 48 y 96; ventana
+  agotada; `skipped`; cancelada con y sin jobs; la API caída siempre y caída solo
+  en el primer intento. **Los trece salen en cero y deciden lo que tienen que
+  decidir.** Ahí salió el defecto nº 14.
+- **El escalón, medido:** racha de 24 → 4 mensajes (1, 3, 12, 24); racha de 140
+  (una semana a 20 revisiones diarias) → 8 mensajes (1, 3, 12, 24, 48, 72, 96,
+  120), **sin un solo hueco mayor a 24 fallas**. Con la versión anterior: 5
+  mensajes y después silencio para siempre.
+- **Los tres workflows parsean con PyYAML.**
+- **LOS DOS INDICADORES RECALIBRADOS, MEDIDOS SOBRE LOS 532 SNAPSHOTS CON EL
+  CÓDIGO FINAL:** `observables-sin-descubrimiento` pasa de {ok 340, atención 191,
+  alarma 1} a **{ok 345, atención 187, alarma 0}**, y `aporte-descubrimiento` de
+  {ok 0, atención 192, alarma 340} a **{ok 188, atención 4, alarma 340}**. Los
+  340 que siguen en alarma son julio y agosto, cuando el aporte de verdad andaba
+  entre 5,0% y 7,4%: eso no es una mala calibración, es una afirmación cierta
+  sobre esos catálogos.
+- **El censo corrido contra una COPIA del catálogo real**, sin webhook: hoy queda
+  en **atención con UN solo indicador hablando** (`observables-sin-descubrimiento`
+  79,5%, a medio punto de la raya) en vez de alarma con dos. Mensaje renderizado:
+  852 caracteres, con su línea de deriva.
+- **CERO REQUESTS A SAMSUNG.COM. Jamás el webhook real** (`env -u
+  DISCORD_WEBHOOK_URL` en cada corrida; los envíos se probaron contra un servidor
+  HTTP local y el `curl` del workflow contra un stub). **`data/` del repo
+  intacta. No se commiteó nada.**
+
+## LO QUE NO SE HIZO, Y POR QUÉ
+
+- **No se rehízo el arreglo del `57d5bd8`** (el escenario construido de "con el
+  descubrimiento caído…"): el encargo lo prohíbe y sigue intacto.
+- **No se le puso `continue-on-error` al candado de producción.** Sigue valiendo
+  el argumento de la mañana, y ahora más: lo que hay adentro del candado ya no
+  puede ponerse rojo solo.
+- **No se sacaron del candado los `cercaDe` que además vigila el censo.** Con la
+  entrada congelada su respuesta ya no cambia sola, así que moverlos no compraría
+  seguridad; lo que había que arreglar era lo que se decía de ellos.
+- **El agujero de "la corrida nunca nace" sigue abierto.** Este aviso detecta
+  corridas que fallan, no corridas que no existen.
+
+## PENDIENTES
+
+1. **NO SE COMMITEÓ NADA.** `git pull --rebase` antes de pushear: el monitor
+   commitea datos 20 veces al día.
+2. **El aviso y el censo no existen hasta que se pushee a `main`.**
+   `workflow_run` solo se dispara con el archivo en la rama por defecto.
+3. **El aviso de falla sigue sin probarse contra GitHub de verdad**, porque eso
+   exigiría romper una corrida real y tocar el webhook real. Lo que sí se probó,
+   ejecutándolo bajo el mismo shell de Actions, es todo lo demás.
+4. **Si la API de GitHub se cae al mismo tiempo que el monitor, el aviso puede
+   hablar más de la cuenta.** Se reintenta una vez y se dice que la cuenta es
+   incierta, pero no hay freno para ese caso: no hay dónde guardar estado sin
+   commitear desde el workflow. Es el canje elegido; queda escrito.
+5. **`observables-sin-descubrimiento` quedó a medio punto de la raya del 80%.**
+   Ya no es una alarma (no lo era), pero va a cruzar y volver a cruzar, y cada
+   cruce manda un mensaje. Es a propósito: cruzar es lo que le saca la premisa a
+   la prueba de "con el descubrimiento caído…".
+6. **Sigue sin medirse cuántos de los literales congelados de los otros 9
+   archivos de prueba siguen existiendo en el catálogo de hoy.**
+7. **La suite necesita `bash` (o `sh`) para ejecutar el escalón.** Se usa bash a
+   propósito: es el shell con que Actions corre cada bloque `run:`, así que se
+   ejecuta lo mismo que corre en producción. Si no hubiera ninguno de los dos,
+   esas cuatro pruebas se **saltan** en vez de fallar — `npm test` bloquea la
+   revisión y no puede ponerse rojo por algo que no es el código — y ahí los
+   mutantes del escalón sobrevivirían. Las aserciones de texto sobre los números
+   corren siempre.
+8. Siguen los pendientes anteriores: rotar `history.jsonl` antes de los 50 MB,
+   cachear Playwright, medir `duracionPrincipalesMin`, contar las livianas
+   descartadas, las 126 `/buy/` duplicadas, el precio de LISTA que la API entrega
+   a las páginas de grupo, y la decisión sobre una tercera revisión completa.

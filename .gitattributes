@@ -20,3 +20,17 @@ data/pendientes.jsonl merge=union
 # un conflicto, una huella de mas solo evita un aviso repetido (y las huellas
 # viejas se podan solas a los 7 dias).
 data/avisos-tecnicos.jsonl merge=union
+# censo.jsonl es la SERIE del censo: una fila por revision con los 12
+# indicadores. Es de donde sale la deriva ("hace 7 dias iba en 82,9%") que el
+# mensaje le dice al operador, y que antes del 2026-09-23 no existia en ninguna
+# parte: la del incidente hubo que reconstruirla a mano desde git. Append-only y
+# podado a 45 dias, asi que por union como el resto.
+data/censo.jsonl merge=union
+
+# Los workflows se comparan con expresiones regulares dentro de la suite
+# (test/aviso-de-falla.test.mjs). Con core.autocrlf=true -- que es lo que tiene
+# el clon del operador -- un clon nuevo en Windows los bajaria con CRLF y esas
+# aserciones fallarian sin que nada este roto. Medido el 2026-09-23: una
+# extraccion de HEAD con la conversion puesta dejaba la suite en 549/550.
+*.yml text eol=lf
+*.yaml text eol=lf

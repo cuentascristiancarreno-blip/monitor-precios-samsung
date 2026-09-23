@@ -69,12 +69,100 @@ Nunca se pasa de 3 mensajes en 2 segundos ni de 28 en 60 segundos (los topes de 
 - Los productos de categorías de **accesorios nunca notifican** a Discord (pedido del operador), aunque su historial sí se guarda.
 - Detalle completo: `docs/auditoria-2026-07-24.md`.
 
+## Si el monitor deja de correr, ahora te avisa él (2026-09-23)
+
+**Esto es nuevo, y es lo que más te conviene saber de esta entrega.**
+
+Hasta ahora el monitor te avisaba por Discord cuando algo iba mal **dentro** de
+una revisión. Pero si la revisión **no arrancaba**, no avisaba nadie: el
+2026-09-22 el monitor estuvo **30 horas caído** — 24 revisiones fallidas seguidas,
+cero avisos — y te enteraste por un correo de GitHub, 30 horas después.
+
+Desde ahora, cuando una revisión no termina bien te llega un mensaje a Discord que
+dice, en castellano:
+
+- **si hubo o no hubo revisión.** No es lo mismo que falle el paso de pruebas
+  (no se revisó nada: mientras dure, no te llega ningún aviso de precio ni de
+  stock) que falle el paso de guardar (el sitio **sí** se revisó, los avisos
+  salieron, solo no se guardaron los datos — no perdiste nada);
+- **cuántas revisiones seguidas van fallando**;
+- **a qué hora fue la última que sí terminó bien**;
+- y el link directo a la corrida en GitHub.
+
+**No te va a llenar el canal.** El aviso sale en la falla 1, en la 3, en la 12 y
+después cada 24. Medido sobre las 594 corridas reales del repo: durante el
+incidente habrían sido **4 mensajes en vez de 24**, y el primero a los ~9 minutos
+en vez de a las 30 horas. En toda la historia del proyecto (65 días) habrían sido
+**29 mensajes, o sea 0,44 por día** — y eso incluyendo 20 muertes por timeout que
+hasta hoy eran completamente invisibles.
+
+**Y no se calla nunca, por larga que sea la caída.** Esto hubo que corregirlo
+antes de subirlo: la primera versión de la cuenta enmudecía **para siempre** a
+partir de la falla nº 50, que es justo el apagón largo que este aviso existe para
+cubrir. Medido ejecutando la cuenta de verdad: una semana caído (140 revisiones)
+da **8 mensajes** repartidos a lo largo de toda la semana, y nunca pasan más de
+24 fallas sin que hable.
+
+Las corridas grises que ves a veces en Actions (⊘ cancelled) **no** generan aviso:
+son la cola de concurrencia funcionando normal, y están explicadas más abajo.
+Las corridas **saltadas** (las del minuto 53 mientras el modo Cyber está apagado)
+tampoco: si no lo filtrara, encender el Cyber a medias te mandaría 18 falsas
+alarmas por día.
+
+Si la API de GitHub no contesta y el aviso no puede contar cuántas fallas van,
+**lo dice** ("no se pudo contar la racha") en vez de inventar que es la primera.
+Antes fingía que era la primera falla, y como la primera falla siempre habla, una
+caída de GitHub habría mandado un mensaje por cada revisión.
+
+**Lo único que este aviso NO cubre**, dicho antes y no después: si GitHub
+deshabilita el workflow, o si simplemente no dispara el horario, no se crea
+ninguna corrida — y sin corrida no hay nada que avisar. Ese hueco sigue abierto:
+cerrarlo necesitaría algo que viva fuera de GitHub y se queje por ausencia.
+
 ## Diagnóstico rápido
 
 - ¿Dudas de una corrida? Mirar la última línea de `data/ejecuciones.jsonl` (confiable sí/no, motivos, URLs con error) y el campo `modo`, que dice si esa revisión fue completa o liviana.
 - ¿Por qué hay corridas grises en Actions? Porque una revisión se atrasó y se comió esa hora. Es normal: ver "Dos tipos de revisión".
 - ¿Probar sin tocar los datos reales? `CARPETA_DATOS=<carpeta-temporal> SIN_DESCUBRIMIENTO=1 LIMITE_PAGINAS=6 node src/run.mjs` (agregar `MODO=liviano` para probar el recorrido corto).
-- Pruebas: `npm test` (también corren solas antes de cada revisión programada).
+- Pruebas: `npm test` (corren solas antes de cada revisión programada **y** en cada cambio de código que se suba al repo).
+- ¿Cómo viene el catálogo? `npm run censo` — ver la sección siguiente.
+
+## El censo del catálogo: `npm run censo` (2026-09-23)
+
+Corre solo, al final de cada revisión, y contesta las preguntas que son sobre **el
+sitio de hoy**: cuántas páginas mide el recorrido, cuánto aporta el descubrimiento
+por sitemap, cuánto margen queda antes de las rayas de las que dependen las
+defensas del monitor.
+
+**Avisa por el canal técnico y nunca detiene una revisión.** Eso es deliberado, y
+es la corrección del incidente del 2026-09-22: esas mismas preguntas vivían dentro
+del paso de pruebas, que **bloquea** la corrida, así que el día que una de ellas
+cambió de respuesta — sola, porque el catálogo creció — el monitor se apagó.
+
+Hoy mismo el censo está diciendo una cosa, y una sola: el **79,5%** de los
+productos vivos se seguiría viendo si el descubrimiento por sitemap se cayera, y
+la raya que importa está en 80%. O sea que el catálogo quedó **pegado a esa
+raya**, a medio punto. Es exactamente el número que tumbó el monitor el
+2026-09-22, y ahora se ve en cada revisión en vez de una vez cada 30 horas.
+
+**Cruzar esa raya no es una falla, y la primera versión del censo decía lo
+contrario.** Lo que cambia al cruzarla es *cuáles* de las tres redes atraparían
+una caída del descubrimiento: por encima del 80% la atrapan dos, por debajo la
+atrapan las tres. Estar por debajo es, si algo, más protección. El censo lo
+marcaba como alarma por tener la pregunta contestada al revés, y por eso nacía en
+rojo; corregido el 2026-09-23.
+
+**El censo no repite lo mismo todos los días.** Habla cuando alguno de sus
+indicadores **cambia de estado**, y vuelve a recordar una condición que sigue
+igual una vez por semana. Un aviso diario idéntico es la forma más rápida de que
+dejes de leerlo — y lo que se juega ahí es todo lo que se movió del paso de
+pruebas al censo.
+
+**Y ahora guarda la serie.** Cada revisión deja sus doce números en
+`data/censo.jsonl`, así que el mensaje te dice solo si esto *saltó hoy* o *viene
+derivando hace días*, sin que tengas que abrir ningún archivo. Eso es lo que no
+existía el 2026-09-22: el sistema llevaba semanas a 2,9 puntos de la raya y la
+deriva hubo que reconstruirla a mano, después del incidente.
 
 Las páginas de producto individuales necesitan un navegador real (Playwright/Chromium) porque Samsung arma el precio con JavaScript en el momento de la navegación — confirmado con pruebas directas, no es un bloqueo anti-bot, así que no estamos evadiendo ningún control técnico.
 

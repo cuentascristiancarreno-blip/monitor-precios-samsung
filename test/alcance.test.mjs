@@ -57,8 +57,29 @@ const RAIZ = path.join(AQUI, "..");
 // SKU. Medido: 162 paginas familia, 1.185 paginas en total, igual que la ultima
 // corrida real.
 // ---------------------------------------------------------------------------
+// EL CATALOGO DE ESTE ARCHIVO ES UNA FOTO CONGELADA, NO EL DE PRODUCCION.
+//
+// POR QUE (incidente del 2026-09-22/23, ver BITACORA.md). Antes esta linea abria
+// `data/latest.json`, que las propias corridas reescriben y commitean 20 veces al
+// dia. `npm test` es el paso que BLOQUEA la corrida en el workflow, asi que una
+// asercion sobre la forma del catalogo de HOY no era una prueba: era un canario
+// cableado a un interruptor de apagado. El catalogo crecio, cruzo solo una de
+// esas rayas y el monitor quedo 30 HORAS CAIDO -- 24 corridas fallidas seguidas,
+// cero avisos -- sin que nadie cambiara una linea de codigo.
+//
+// Medido: cargando los 532 snapshots de `data/latest.json` del historial de git
+// (2026-07-19 a 2026-09-22) en un arbol fuera del repo y corriendo la suite
+// entera contra cada uno, 340 de 532 (63,9%) tumbaban `npm test`. La suite estaba
+// verde solo para la forma de catalogo que existe desde el 2026-09-12: 10 dias de
+// los 65 del historial.
+//
+// LA REGLA QUE QUEDA: el candado (`npm test`) no abre `data/`. Lo que de verdad
+// hay que mirar del catalogo de hoy vive en `npm run censo` (src/censo.mjs), que
+// avisa por el canal tecnico y NO bloquea ninguna corrida.
+//
+// COMO SE REFRESCA ESTA FIXTURE Y QUE PASA SI NADIE LO HACE: test/fixtures/LEEME.md.
 const SEED = JSON.parse(readFileSync(path.join(RAIZ, "src", "seed.json"), "utf-8"));
-const CATALOGO_REAL = JSON.parse(readFileSync(path.join(RAIZ, "data", "latest.json"), "utf-8"));
+const CATALOGO_REAL = JSON.parse(readFileSync(path.join(RAIZ, "test", "fixtures", "catalogo.json"), "utf-8"));
 
 const URLS_SEED = new Set(SEED.map((e) => e.url));
 const FAMILIA = [
@@ -74,12 +95,16 @@ const recorrido = (opciones = {}) => prepararRecorrido({ seedRaw: SEED, familyEn
 /**
  * LAS CANTIDADES SE COMPRUEBAN CON UN RANGO, NO CON EL NUMERO EXACTO.
  *
- * `npm test` corre en el workflow ANTES de scrapear y bloquea la corrida si
- * falla, y data/latest.json cambia en cada revision (hasta 20 al dia). Una
- * asercion del tipo `=== 1185` convertiria "Samsung publico tres paginas
- * nuevas" en "el monitor dejo de correr", que es peor que el problema que la
- * asercion vigila. El numero medido queda escrito en el mensaje: lo que se
- * vigila es que no se derrumbe ni se dispare, no que no se mueva.
+ * El rango se conserva aunque la fixture este congelada, y eso es a proposito:
+ * la holgura ya no defiende de que el catalogo se mueva (no se mueve), defiende
+ * de que un cambio de codigo legitimo en `prepararRecorrido` mueva el recorrido
+ * un poco. Lo que estas aserciones afirman hoy es una propiedad del CODIGO
+ * aplicado a una entrada fija: mismo insumo, mismo recorrido, siempre.
+ *
+ * Lo que ya NO afirman es que el recorrido REAL siga midiendo ~1.185 paginas.
+ * Esa pregunta -- que es sobre el sitio de hoy, no sobre el codigo -- se mudo a
+ * `npm run censo`, que la mide en cada corrida y avisa por el canal tecnico sin
+ * bloquear nada. Ver "Lo que se perdio y donde quedo vivo" en BITACORA.md.
  */
 function cercaDe(valor, medido, nombre, holgura = 0.25) {
   const min = Math.floor(medido * (1 - holgura));

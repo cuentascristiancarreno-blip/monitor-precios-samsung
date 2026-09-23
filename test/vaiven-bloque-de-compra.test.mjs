@@ -46,7 +46,14 @@
 //      dos avisos de "baja" del 26-31% a dias del Cyber.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractSingleProduct, precioAdoptable, precioDelBloqueCompra, VERSION_PRECIO } from "../src/extract.mjs";
+import {
+  extractSingleProduct,
+  precioAdoptable,
+  precioDelBloqueCompra,
+  SELECTOR_BARRA_DE_PRECIO,
+  SELECTORES_BLOQUE_COMPRA,
+  VERSION_PRECIO,
+} from "../src/extract.mjs";
 import { integrarVariantes } from "../src/catalogo.mjs";
 import { comparar } from "../src/comparar.mjs";
 import { RANGO } from "../src/identidad.mjs";
@@ -603,4 +610,54 @@ test("con la /buy/ muda, el precio de la ficha PLANA es el que queda", async () 
 
   assert.equal(observado["SM-A366ELVGLTL"].precio, 369990, "el precio de la ficha plana sobrevive a la /buy/");
   assert.equal(observado["SM-A366ELVGLTL"].paginaOrigen, A36_BUY, "aunque el registro lo firme la /buy/, que es lo de hoy");
+});
+
+// ---------------------------------------------------------------------------
+// EL ORDEN DE LOS SELECTORES DEL BLOQUE DE COMPRA
+//
+// UN DEFECTO DOCUMENTADO COMO CRITICO Y SIN UNA SOLA PRUEBA QUE LO CERCARA
+// (medido el 2026-09-23 por un verificador). La entrada del 2026-09-11 (tarde)
+// dice que en las paginas /buy/ con plantilla hubble el PRIMER
+// `[class*='buying']` del documento es el Buying Tool entero, con el pie
+// promocional adentro ("¡Al comprar tu Galaxy Z Flip7!"), y que por eso los
+// selectores van del mas estrecho al mas amplio. Invertir ese orden dejaba la
+// suite ENTERA en verde: 0 de 550 antes del arreglo del incidente y 0 de 586
+// despues.
+//
+// La razon de que no se pudiera cubrir es que la lista vivia DENTRO del cuerpo
+// que se serializa al navegador, donde ninguna prueba la puede mirar sin
+// levantar Playwright. Por eso salio a `SELECTORES_BLOQUE_COMPRA` y se le pasa
+// como argumento al `page.evaluate`: el mutante muere sin navegador y sin red.
+// ---------------------------------------------------------------------------
+
+test("los selectores del bloque de compra van del MAS ESTRECHO al mas amplio", () => {
+  // Si `buying` a secas se adelanta, en las paginas hubble gana la seccion
+  // entera -- 1.356 caracteres con el pie promocional adentro -- y "comprar"
+  // vuelve a dar DISPONIBLE para un producto agotado, de forma intermitente
+  // segun si el pie alcanzo a pintarse.
+  const i = (s) => SELECTORES_BLOQUE_COMPRA.indexOf(s);
+  assert.ok(i("[class*='pd-buying-price']") >= 0, "se perdio la barra de precio de la ficha");
+  assert.ok(i("[class*='buying-tool__summary']") >= 0, "se perdio el cost-box");
+  assert.ok(i("[class*='buying']") >= 0, "se perdio el ultimo recurso");
+  assert.ok(
+    i("[class*='pd-buying-price']") < i("[class*='buying']"),
+    "la barra de precio quedo DETRAS de `buying` a secas: en las /buy/ hubble gana la seccion entera con el pie promocional, y el stock vuelve a leerse de una frase de marketing",
+  );
+  assert.ok(
+    i("[class*='buying-tool__summary']") < i("[class*='buying']"),
+    "el cost-box quedo detras de `buying` a secas",
+  );
+  assert.ok(i("[class*='pd-buy']") < i("[class*='buying']"), "`pd-buy` quedo detras de `buying`, que es su superconjunto");
+  // y el primero es el unico verificado en vivo como la barra de UN producto
+  assert.equal(SELECTORES_BLOQUE_COMPRA[0], SELECTOR_BARRA_DE_PRECIO);
+});
+
+test("solo el selector de la barra de precio cuenta como `barraDePrecio`", () => {
+  // `buying-tool__summary` lleva "buying-tool" en el nombre: es el resumen del
+  // MISMO Buying Tool de las paginas hubble, o sea que refleja la opcion que el
+  // selector tenga elegida, no necesariamente este SKU. Ampliar esta llave
+  // volveria a dejar que un monto solitario de un selector de grupo mande sin
+  // comprobar nada.
+  assert.equal(SELECTOR_BARRA_DE_PRECIO, "[class*='pd-buying-price']");
+  assert.equal(SELECTORES_BLOQUE_COMPRA.filter((s) => s === SELECTOR_BARRA_DE_PRECIO).length, 1);
 });

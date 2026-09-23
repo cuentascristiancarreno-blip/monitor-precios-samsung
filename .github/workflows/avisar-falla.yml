@@ -1,0 +1,306 @@
+# CUANDO EL MONITOR NO ARRANCA, ALGUIEN TIENE QUE DECIRLO.
+#
+# ESTA ES LA SEGUNDA MITAD DEL ARREGLO DEL 2026-09-23, y la que el operador pidio
+# con todas las letras: "EL OPERADOR NO SE ENTERO".
+#
+# EL AGUJERO. El monitor lleva meses avisando por Discord cuando algo va mal
+# DENTRO de una corrida: momias, precios congelados, corridas sospechosas. Pero
+# todo ese camino sale de `notifyTecnico`, que solo puede hablar desde adentro de
+# la revision. Si la corrida muere ANTES de llegar ahi -- en las pruebas, en la
+# instalacion de dependencias, o porque GitHub la mata por timeout -- no hay
+# quien avise. El 2026-09-22 murio en las pruebas: 24 corridas fallidas seguidas,
+# 30 horas, y el unico aviso fue un correo de GitHub que el operador vio 30 horas
+# despues.
+#
+# MEDIDO SOBRE LAS 594 CORRIDAS DEL REPO (2026-07-20 a 2026-09-23):
+#   525 success · 32 failure · 35 cancelled
+#   racha de fallas mas larga antes del incidente: 2. La del incidente: 24.
+#   hueco entre corridas buenas: mediana 2,91 h, p90 4,81 h. El del incidente: 29,5 h.
+#   De las 35 canceladas, 20 son MUERTES DE VERDAD (5 a los 330 min exactos)
+#   que hasta hoy no mandaron un solo mensaje. Las otras 15 son descartes de
+#   concurrencia normales (0 jobs) y no se avisan: son ruido esperado.
+#
+# POR QUE ES UN WORKFLOW APARTE Y LO MAS TONTO POSIBLE. El caso que hay que
+# cubrir es "las pruebas fallaron", o sea que el codigo del repo es sospechoso.
+# Un aviso que importara el modulo de Discord dependeria justo de lo que podria
+# estar roto. Por eso: sin node, sin instalar nada, sin importar una sola linea
+# del repo. Un `curl`.
+#
+# ------------------------------------------------------------------------
+# LO QUE SE CORRIGIO EN LA SEGUNDA VUELTA DEL 2026-09-23 (dos verificadores
+# independientes, medido ejecutando este mismo shell con `gh` y `jq` de mentira):
+#
+#  1. EL AVISO ENMUDECIA PARA SIEMPRE EN LOS APAGONES LARGOS, que es el caso que
+#     este archivo existe para cubrir. La racha se contaba con
+#     `index("success") // 40`: cuando en la ventana ya no quedaba ningun exito,
+#     jq devolvia null, N quedaba CLAVADO en 40, y 40 no es 1, no es 3, no es 12
+#     y 40 % 24 = 16. O sea: a partir de la falla nº 50, silencio total y para
+#     siempre. Medido: con 200 fallas seguidas mandaba 5 mensajes y despues nada.
+#     Ahora la cuenta la hace `contar_racha`, que DICE cuando la ventana se le
+#     agoto, y ese caso tiene su propia cadencia en vez de caer en un numero mudo.
+#  2. SI LA API DE GITHUB FALLABA, EL FRENO DESAPARECIA: los `|| echo 1` hacian
+#     N=1 en todas las corridas, y N=1 siempre habla -- o sea las 24 veces que el
+#     escalon existe para evitar. Y el mensaje salia mintiendo ("el job murio sin
+#     dejar un paso fallido") sin decir que no habia podido averiguar nada. Ahora
+#     se reintenta una vez y, si igual no se puede contar, se dice.
+#  3. UNA CORRIDA `skipped` SE TRATABA COMO FALLA. El `if` del job de monitor.yml
+#     salta las corridas del minuto 53 cuando MODO_CYBER no esta en "on", y ese
+#     procedimiento (borrar el "# " de 18 lineas) esta en el README para que lo
+#     haga el operador. Hecho a medias, eran 18 falsas alarmas DIARIAS, cada una
+#     diciendo que la corrida "no llego a terminar" cuando en realidad no murio
+#     nadie.
+# ------------------------------------------------------------------------
+name: Avisar si el monitor no corrio
+
+on:
+  workflow_run:
+    workflows: ["Monitor de precios Samsung"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  avisar:
+    # Solo cuando no termino bien. Un success no gatilla nada.
+    if: ${{ github.event.workflow_run.conclusion != 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contar la racha y decidir si hablar
+        id: decidir
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WF_ID: ${{ github.event.workflow_run.workflow_id }}
+          # El numero de corrida de ESTE workflow. Es el unico contador que hay
+          # sin guardar estado en el repo, y sirve para darle cadencia al caso
+          # "la ventana entera no trae un solo exito" (ver mas abajo).
+          AVISO_N: ${{ github.run_number }}
+        run: |
+          set -u
+
+          # CUANTAS CORRIDAS COMPLETADAS SE MIRAN PARA CONTAR LA RACHA.
+          # Con 20 revisiones diarias, 100 son ~5 dias. Mas alla de eso la cuenta
+          # exacta deja de importar: ya es un apagon, y lo que hace falta es
+          # seguir hablando, no saber si van 103 o 118.
+          VENTANA=100
+
+          # UNA CORRIDA SALTADA NO ES UNA CORRIDA MUERTA. El `if` del job de
+          # monitor.yml salta las corridas del minuto 53 mientras MODO_CYBER no
+          # este en "on"; GitHub le pone conclusion "skipped" a la corrida
+          # entera. Avisarlas serian 18 falsas alarmas diarias -- y justo el dia
+          # en que el operador toca lo unico que el README le dice que puede
+          # tocar.
+          if [ "$CONCLUSION" = "skipped" ]; then
+            echo "::notice title=Aviso de falla::corrida saltada por el if del job (MODO_CYBER): no se avisa"
+            echo "hablar=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # UNA CANCELACION CON CERO JOBS ES UN DESCARTE DE CONCURRENCIA, NO UNA
+          # MUERTE. El grupo `concurrency` de monitor.yml deja como maximo una
+          # corrida pendiente y la siguiente la reemplaza: son 15 en toda la
+          # historia del repo y estan explicadas en el README. Avisarlas seria
+          # ruido diario garantizado. En cambio una cancelacion CON jobs es una
+          # muerte de verdad -- el timeout de 330 min -- y hasta hoy era
+          # invisible: 20 en la historia, 5 de ellas a los 330 min exactos.
+          JOBS=""
+          if JOBS=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --jq '.jobs | length' 2>/dev/null); then
+            :
+          else
+            JOBS=""
+          fi
+          if [ "$CONCLUSION" = "cancelled" ] && [ "${JOBS:-x}" = "0" ]; then
+            echo "descarte de concurrencia (0 jobs): no se avisa"
+            echo "hablar=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # QUE PASO FALLO. Es la diferencia entre dos incidentes de gravedad
+          # OPUESTA, y el operador la tiene que poder leer en el mensaje:
+          #   - "Pruebas automatizadas"  -> la corrida murio en 40 s: NO HUBO
+          #     MONITOREO. Son las 24 del incidente.
+          #   - "Guardar historial..."   -> el sitio SI se reviso y los avisos SI
+          #     salieron, solo no se guardaron. Son 7 de las 8 fallas anteriores
+          #     a la racha, y no son una emergencia.
+          # Si la API no contesto, se dice que no se pudo averiguar EN VEZ de
+          # afirmar el timeout, que era lo que hacia la version anterior.
+          PASO=""
+          if PASO=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" \
+            --jq '[.jobs[] | select(.conclusion != "success") | (.steps[]? | select(.conclusion == "failure") | .name)] | first // ""' 2>/dev/null); then
+            [ -z "$PASO" ] && PASO="(el job murio sin dejar un paso fallido: suele ser el timeout de 330 min)"
+          else
+            PASO="(no se pudo averiguar: la API de GitHub no respondio)"
+          fi
+
+          # LA RACHA, CONTADA DEL HISTORIAL DE GITHUB Y NO DE UN ARCHIVO.
+          # Escribir una huella en el repo exigiria commitear desde este
+          # workflow, que correria carrera con los commits del monitor; y leerla
+          # del repo exigiria confiar en el codigo que podria ser el roto. El
+          # propio historial de corridas es el estado, y no se puede
+          # desincronizar.
+          #
+          # SE REINTENTA UNA VEZ: un fallo transitorio de la API no puede
+          # convertirse en "no hay freno" (defecto medido: con `|| echo 1` la
+          # racha valia 1 siempre y 1 SIEMPRE habla, o sea 24 mensajes).
+          CONCLUSIONES=""
+          CONTEO=cierto
+          if CONCLUSIONES=$(gh api "repos/$REPO/actions/workflows/$WF_ID/runs?per_page=$VENTANA&status=completed" --jq '.workflow_runs[].conclusion' 2>/dev/null); then
+            :
+          else
+            sleep 5
+            if CONCLUSIONES=$(gh api "repos/$REPO/actions/workflows/$WF_ID/runs?per_page=$VENTANA&status=completed" --jq '.workflow_runs[].conclusion' 2>/dev/null); then
+              :
+            else
+              CONTEO=incierto
+            fi
+          fi
+
+          # >>> ARITMETICA — test/aviso-de-falla.test.mjs extrae este bloque y lo
+          # EJECUTA de verdad, con rachas de 1 a 200. Antes solo comprobaba que
+          # el TEXTO de la condicion siguiera escrito igual, y por eso el defecto
+          # del numero mudo sobrevivio a los mutantes.
+          #
+          # contar_racha: lee una conclusion por linea, de la mas NUEVA a la mas
+          # vieja, y escribe cuantas corridas fallidas seguidas van antes del
+          # primer exito. Las canceladas y las saltadas no cuentan ni cortan:
+          # una cancelacion por concurrencia en el medio no parte la racha en dos
+          # ni la infla. SALE EN 1 cuando la ventana entera no trae ni un exito
+          # -- eso ya no es una racha que se pueda contar, es un apagon, y quien
+          # llama lo tiene que tratar distinto en vez de recibir un numero mudo.
+          contar_racha() {
+            n=0
+            while IFS= read -r c; do
+              case "$c" in
+                success) echo "$n"; return 0 ;;
+                cancelled|skipped|"") continue ;;
+              esac
+              n=$((n + 1))
+            done
+            echo "$n"
+            return 1
+          }
+
+          # habla_en: EL ESCALON. En la falla 1, 3, 12 y de ahi cada 24.
+          # Medido sobre las 594 corridas reales con esta misma aritmetica:
+          # durante el incidente (24 fallas en 30 h) son 4 mensajes y el primero
+          # a los ~9 minutos; en toda la historia (65,5 dias) son 29 = 0,44 por
+          # dia, incluidas las 20 muertes por cancelacion hoy invisibles.
+          habla_en() {
+            [ "$1" -eq 1 ] || [ "$1" -eq 3 ] || [ "$1" -eq 12 ] || [ $(($1 % 24)) -eq 0 ]
+          }
+          # <<< ARITMETICA
+
+          AGOTADA=no
+          N=0
+          if [ "$CONTEO" = "cierto" ]; then
+            N=$(printf '%s\n' "$CONCLUSIONES" | contar_racha) || AGOTADA=si
+            case "$N" in ''|*[!0-9]*) N=1 ;; esac
+            [ "$N" -lt 1 ] && N=1
+          fi
+
+          # CUANDO SE HABLA, Y QUE TITULO LLEVA. El operador pidio enterarse sin
+          # que esto se vuelva ruido diario, y hay TRES casos, no uno. El titulo
+          # se decide aca y no en el mensaje porque aca es donde se sabe cual de
+          # los tres es: con la cuenta incierta, "lleva 0 revisiones seguidas sin
+          # correr" seria una frase sin sentido (medido ejecutando este mismo
+          # shell con la API caida).
+          HABLAR=no
+          if [ "$CONTEO" = "incierto" ]; then
+            # No se pudo contar. Se habla igual y se DICE que no se pudo contar:
+            # fingir que es la primera falla es lo que hacia la version anterior
+            # y es peor que no saber. Es raro (dos llamadas seguidas fallidas) y,
+            # si pasa, el silencio es peor que el ruido.
+            HABLAR=si
+            RESUMEN="no se pudo contar (la API de GitHub no respondio)"
+            TITULO="⚠️ **Una revisión del monitor falló** (y no se pudo averiguar cuántas van)"
+          elif [ "$AGOTADA" = "si" ]; then
+            # LA VENTANA ENTERA SIN UN SOLO EXITO: por definicion un apagon, y es
+            # exactamente el caso en que la version anterior enmudecia para
+            # siempre. Se sigue hablando con la misma cadencia del escalon (cada
+            # 24), contada con el numero de corrida de este workflow, que es el
+            # unico contador disponible sin guardar estado.
+            if [ $((AVISO_N % 24)) -eq 0 ]; then HABLAR=si; fi
+            RESUMEN="más de $VENTANA seguidas, sin una sola que terminara bien"
+            N="$VENTANA+"
+            TITULO="🔴 **El monitor lleva más de $VENTANA revisiones seguidas sin correr**"
+          elif [ "$N" -eq 1 ]; then
+            HABLAR=si
+            RESUMEN="1"
+            TITULO="⚠️ **Una revisión del monitor falló**"
+          else
+            if habla_en "$N"; then HABLAR=si; fi
+            RESUMEN="$N"
+            TITULO="🔴 **El monitor lleva $N revisiones seguidas sin correr**"
+          fi
+
+          {
+            echo "hablar=$HABLAR"
+            echo "racha=$N"
+            echo "resumen=$RESUMEN"
+            echo "titulo=$TITULO"
+            echo "paso=$PASO"
+          } >> "$GITHUB_OUTPUT"
+
+          # LA ULTIMA VEZ QUE EL MONITOR SI CORRIO. Es el numero que el operador
+          # necesita para saber si esto es un tropiezo o un apagon.
+          ULTIMA=""
+          if ULTIMA=$(gh api "repos/$REPO/actions/workflows/$WF_ID/runs?per_page=$VENTANA&status=success" --jq '.workflow_runs[0].updated_at // ""' 2>/dev/null); then
+            [ -z "$ULTIMA" ] && ULTIMA="ninguna en las ultimas $VENTANA corridas"
+          else
+            ULTIMA="desconocida (la API de GitHub no respondio)"
+          fi
+          echo "ultima=$ULTIMA" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Aviso de falla::racha=$N conteo=$CONTEO ventana-agotada=$AGOTADA paso='$PASO' hablar=$HABLAR"
+
+      - name: Avisar por Discord
+        if: ${{ steps.decidir.outputs.hablar == 'si' }}
+        env:
+          # El secreto ya existe a nivel de repositorio y lo usa monitor.yml.
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RESUMEN: ${{ steps.decidir.outputs.resumen }}
+          # EL TITULO SE DECIDE EN EL PASO ANTERIOR, no aca: alla es donde se sabe
+          # cual de los tres casos es. Armandolo aca a partir de la racha, con la
+          # cuenta incierta salia "El monitor lleva 0 revisiones seguidas sin
+          # correr", que es una frase sin sentido (medido ejecutando este mismo
+          # shell con la API de GitHub caida).
+          TITULO: ${{ steps.decidir.outputs.titulo }}
+          PASO: ${{ steps.decidir.outputs.paso }}
+          ULTIMA: ${{ steps.decidir.outputs.ultima }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -u
+          # Sin webhook no hay a donde mandar nada. OJO CON EL SENTIDO DE ESTA
+          # CONDICION: invertirla deja el aviso MUDO en produccion (el unico caso
+          # en que el secreto SI esta puesto) y la suite igual de verde. Hay una
+          # prueba dedicada a que diga `-z` y no `-n`.
+          if [ -z "${WEBHOOK:-}" ]; then
+            echo "DISCORD_WEBHOOK_URL no configurado: no se avisa"
+            exit 0
+          fi
+
+          # EL MENSAJE DICE SI HUBO O NO HUBO MONITOREO. Es lo primero que el
+          # operador necesita saber y lo que distingue las 24 fallas del
+          # incidente de las 7 anteriores, que eran choques de push inofensivos.
+          case "$PASO" in
+            *Guardar*)        QUE="El sitio **sí** se revisó y los avisos salieron: lo que falló fue **guardar los datos**. No perdiste avisos." ;;
+            *Pruebas*)        QUE="**No hubo revisión.** La corrida murió en las pruebas, antes de mirar samsung.com. Mientras esto dure, no te llega ningún aviso de precio ni de stock." ;;
+            *"no se pudo"*)   QUE="**No se pudo averiguar qué falló:** la API de GitHub no respondió. Entrá a Actions para ver la corrida." ;;
+            *)                QUE="**No hubo revisión completa.** La corrida no llegó a terminar." ;;
+          esac
+
+          # jq arma el JSON: un precio, una URL o un nombre de paso con comillas
+          # romperia un payload armado a mano, y este mensaje es justo el que no
+          # se puede perder.
+          jq -n --arg t "$TITULO" --arg q "$QUE" --arg p "$PASO" --arg u "$ULTIMA" --arg l "$URL" --arg c "$CONCLUSION" --arg r "$RESUMEN" \
+            '{content: ($t + "\n" + $q + "\n• Fallas seguidas: " + $r + "\n• Paso que falló: `" + $p + "` (" + $c + ")\n• Última revisión que sí terminó bien: " + $u + "\n• Ver la corrida: " + $l + "\n\nEste aviso sale en la falla 1, 3, 12 y después cada 24, para no llenarte el canal. Si la caída pasa de 100 corridas, sigue saliendo cada 24.")}' \
+            > payload.json
+
+          # --fail-with-body para que el paso se vea rojo si Discord rechaza: un
+          # aviso que no llego tiene que notarse en Actions. Sacarlo deja pasar
+          # en silencio justo lo que este workflow existe para que se note.
+          curl -sS --fail-with-body -X POST -H "Content-Type: application/json" -d @payload.json "$WEBHOOK"

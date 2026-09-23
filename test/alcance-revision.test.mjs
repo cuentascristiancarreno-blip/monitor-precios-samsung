@@ -38,8 +38,15 @@ import { BLOQUE_CYBER, BLOQUE_PRINCIPAL, CATEGORIAS_PRINCIPALES, ordenarRecorrid
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.join(AQUI, "..");
 
+// FIXTURE CONGELADA, NO EL CATALOGO DE PRODUCCION. La explicacion larga -- y el
+// incidente de 30 horas que la motiva -- esta en test/alcance.test.mjs, arriba de
+// esta misma linea. En corto: `npm test` bloquea la corrida, y una prueba que
+// lee un archivo que las propias corridas reescriben 20 veces al dia puede
+// apagar el monitor sin que nadie toque el codigo. Medido: 340 de los 532
+// snapshots historicos de `data/latest.json` tumbaban la suite.
+// Como se refresca: test/fixtures/LEEME.md.
 const SEED = JSON.parse(readFileSync(path.join(RAIZ, "src", "seed.json"), "utf-8"));
-const CATALOGO_REAL = JSON.parse(readFileSync(path.join(RAIZ, "data", "latest.json"), "utf-8"));
+const CATALOGO_REAL = JSON.parse(readFileSync(path.join(RAIZ, "test", "fixtures", "catalogo.json"), "utf-8"));
 
 const URLS_SEED = new Set(SEED.map((e) => e.url));
 const FAMILIA = [
@@ -476,6 +483,18 @@ test("una revision completa SANA no dispara el chequeo de productos sin pagina",
   });
   assert.deepEqual(sano.motivos, [], "una revision completa normal quedo marcada como sospechosa");
 
+  // ⚠️ ESTA GUARDA NO PUEDE FALLAR, Y ESO QUEDA ESCRITO EN VEZ DE DISIMULADO
+  // (medido el 2026-09-23). `FAMILIA` se reconstruye DEL MISMO catalogo, asi que
+  // todo producto vivo tiene su pagina en el recorrido por construccion: sobre el
+  // catalogo real da 981 vivos, 0 sin pagina y 0 paginas descartadas, y daria 0
+  // con cualquier catalogo. Se deja porque documenta la relacion que la prueba de
+  // arriba necesita, pero no cuenta como cobertura de nada.
+  //
+  // LA PREGUNTA DE VERDAD -- "¿el recorrido REAL, el que arma el sitemap, dejo
+  // productos sin mirar?" -- solo se puede contestar durante la corrida, con el
+  // recorrido de verdad en la mano, y la corrida ya la contesta: el motivo
+  // `sku-sin-pagina` de evaluarConfiabilidad. Lo que el censo mira es ese
+  // VEREDICTO ya escrito (indicador `completas-sospechosas`, src/censo.mjs).
   const vivos = Object.values(estado).filter((r) => r.presencia !== "desaparecido");
   const sinPagina = vivos.filter((r) => !completo.alcance.paginas.has(r.paginaOrigen ?? r.url)).length;
   assert.ok(sinPagina <= vivos.length * TOLERANCIA_SIN_PAGINA * 0.5, `el catalogo real ya va en ${sinPagina} de ${vivos.length} productos sin pagina en el recorrido: queda poco margen antes del ${TOLERANCIA_SIN_PAGINA * 100}%`);
@@ -617,10 +636,18 @@ test("ultimoCompleto devuelve la ULTIMA revision completa, no la primera", () =>
   assert.equal(ultimoCompleto(filas), "2026-09-12T08:00:00Z");
 });
 
-test("...y sobre el archivo de ejecuciones REAL no escala una revision liviana de hoy", () => {
-  const texto = readFileSync(path.join(RAIZ, "data", "ejecuciones.jsonl"), "utf-8");
+test("...y sobre un archivo de ejecuciones REAL no escala una revision liviana de hoy", () => {
+  // SEGUNDA DEPENDENCIA MUTABLE QUE VIVIA EN EL CANDADO, y de la misma clase que
+  // la del catalogo: `data/ejecuciones.jsonl` se reescribe y se commitea en cada
+  // corrida. Medido: con el archivo vacio (un clon nuevo con `data/` recortada, o
+  // una rotacion del archivo) esta prueba falla; con el archivo sin ninguna fila
+  // completa, tambien. Son filas REALES igual -- las 24 ultimas al 2026-09-22 --
+  // solo que congeladas, asi que lo que la prueba afirma no cambio.
+  // Que el archivo de produccion siga teniendo una revision completa legible lo
+  // mira `npm run censo`, no esta prueba.
+  const texto = readFileSync(path.join(RAIZ, "test", "fixtures", "ejecuciones.jsonl"), "utf-8");
   const fin = ultimoCompleto(texto);
-  assert.ok(fin, "el archivo de ejecuciones real no trae ninguna revision completa");
+  assert.ok(fin, "la fixture de ejecuciones no trae ninguna revision completa");
   const d = decidirModo({ pedido: MODO_LIVIANO, ultimoCompletoFin: fin, ahora: horas(fin, 1) });
   assert.equal(d.modo, MODO_LIVIANO, "una liviana lanzada 1 h despues de un completo se ascendio sola");
   assert.equal(d.escalado, false);
