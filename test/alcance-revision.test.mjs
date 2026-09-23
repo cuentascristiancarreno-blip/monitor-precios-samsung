@@ -359,7 +359,30 @@ test("con el descubrimiento caido, una revision COMPLETA no declara ni un desapa
   const sinDescubrimiento = prepararRecorrido({ seedRaw: SEED, familyEntries: [] });
   assert.ok(sinDescubrimiento.alcance.paginas.size < completo.alcance.paginas.size * (1 - TOLERANCIA_ENCOGIMIENTO), "el descubrimiento aporta menos paginas de las que esta prueba supone");
 
+  // EL CATALOGO SE AJUSTA A PROPOSITO, Y ESTO ES UNA CICATRIZ (incidente del
+  // 2026-09-22/23, ver BITACORA.md). Esta prueba vigila el agujero del umbral
+  // del 80%: una caida del descubrimiento que pasa POR DEBAJO de ese umbral y
+  // que por lo tanto solo atrapan las otras dos redes. Para que mida eso, la
+  // caida tiene que dejar MAS del 80% de los SKU observables -- y el catalogo
+  // real, que cambia 20 veces al dia, cruzo esa raya sola: el descubrimiento
+  // paso a aportar el 20,5% del catalogo (780 de 981 SKU observables = 79,5%) y
+  // la prueba empezo a fallar. El candado de pruebas del workflow bloquea la
+  // corrida, asi que el monitor quedo 30 horas caido sin que nadie cambiara una
+  // linea de codigo.
+  // Por eso el escenario se CONSTRUYE en vez de heredar la proporcion del dia:
+  // se dejan fuera los SKU que solo cuelgan del descubrimiento hasta que su peso
+  // quede en ~12%, comodamente dentro del hueco que la prueba describe. Los
+  // datos siguen siendo reales (forma, campos, paginas); lo unico fijado es la
+  // proporcion, que es justo lo que la prueba necesita controlar para medir lo
+  // que dice medir.
+  const PESO_DESCUBRIMIENTO = 0.12;
   const estado = copiaDelCatalogo();
+  const soloDelDescubrimiento = Object.keys(estado).filter(
+    (m) => estado[m].presencia !== "desaparecido" && !sinDescubrimiento.alcance.paginas.has(estado[m].paginaOrigen ?? estado[m].url),
+  );
+  const vivos = Object.values(estado).filter((r) => r.presencia !== "desaparecido").length;
+  for (const modelo of soloDelDescubrimiento.slice(Math.round(vivos * PESO_DESCUBRIMIENTO))) delete estado[modelo];
+
   const ts = horas(new Date().toISOString(), 0);
   // solo se observan los SKU de las paginas que quedaron
   const observado = {};
@@ -372,6 +395,13 @@ test("con el descubrimiento caido, una revision COMPLETA no declara ni un desapa
   // EL UMBRAL DEL 80% NO LA ATRAPA: es el agujero que esta prueba vigila.
   const umbral80 = Object.values(estado).filter((r) => r.presencia !== "desaparecido").length * 0.8;
   assert.ok(Object.keys(observado).length >= umbral80, "esta corrida ya cae por el umbral del 80%: la prueba dejo de medir lo que dice medir");
+  // y el descubrimiento tiene que seguir pesando lo suficiente para que
+  // sku-sin-pagina (tolerancia 5%) si la atrape: si no, la prueba pasaria por
+  // vacia en vez de por correcta.
+  assert.ok(
+    Object.keys(observado).length <= Object.values(estado).filter((r) => r.presencia !== "desaparecido").length * (1 - TOLERANCIA_SIN_PAGINA),
+    "el descubrimiento quedo pesando tan poco que ninguna red tendria que dispararse",
+  );
 
   const visto = evaluarConfiabilidad({
     previo: estado,
