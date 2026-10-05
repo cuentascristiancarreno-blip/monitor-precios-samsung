@@ -1,0 +1,2924 @@
+{
+ "generado": "congelado el 2026-10-05 desde data/history.jsonl; NO se refresca",
+ "desde": "2026-09-26T00:00:00Z",
+ "hasta": "2026-10-05T12:14:22Z",
+ "ventanaSemana": "2026-09-28T23:59:59Z",
+ "productos": {
+  "F-SMS948AR70F": {
+   "nombre": "Galaxy S26 Ultra 256GB + 24.000 BTU Aire Acondicionado Split WindFree Inverter Frío/Calor con Wi-Fi (2025)",
+   "categoria": "Smartphones",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/combo-smp-ac2-white-256gb-f-sms948ar70f/buy/"
+  },
+  "SM-R420NZAACHO": {
+   "nombre": "Galaxy Buds3 FE",
+   "categoria": "Audio y Galaxy Buds",
+   "url": "https://www.samsung.com/cl/audio-sound/galaxy-buds/galaxy-buds3-fe-gray-sm-r420nzaacho/"
+  },
+  "NP750XGJ-KS4CL": {
+   "nombre": "Galaxy Book4 (15,6\", Intel® Core i5, 16GB)",
+   "categoria": "Computadores",
+   "url": "https://www.samsung.com/cl/computers/galaxy-book/galaxy-book4-15-6-inch-13th-core-5-16gb-1tb-np750xgj-ks4cl/buy/"
+  },
+  "AJ100TXJ5KH/EA": {
+   "nombre": "Unidad Exterior Inverter, Frio and Calor, para 5 UI, Multisplit",
+   "categoria": "Aire acondicionado (sistemas)",
+   "url": "https://www.samsung.com/cl/system-air-conditioners/free-joint-multi/fjm-with-r32-refrigerant-aj100txj5kh-ea/"
+  },
+  "HW-B400F/ZS": {
+   "nombre": "B-series Soundbar HW-B400F 2.0 ch Subwoofer (2025)",
+   "categoria": "Audio (Soundbars/Torres)",
+   "url": "https://www.samsung.com/cl/audio-devices/soundbar/b400f-black-hw-b400f-zs/"
+  },
+  "WA22A8370GV/ZS": {
+   "nombre": "Lavadora de carga superior 22Kg con Eco Bubble",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/ww8800a-22kg-black-wa22a8370gv-zs/"
+  },
+  "F-UN55MHWB400": {
+   "nombre": "55\" Mini LED M75H Smart TV (2026) + Soundbar <br>HW-B400F 2.0 ch (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/mini-led-tv/vd-bundle-tv-55-inch-with-soundbar-f-un55mhwb400/"
+  },
+  "AR70F24C1DW/ZS": {
+   "nombre": "WindFree Inverter Split with Wi-Fi 24,000 BTU",
+   "categoria": "Aire acondicionado",
+   "url": "https://www.samsung.com/cl/air-conditioners/wall-mount/ar9500t-ar70f12caawneu-ai-fast-comfort-cooling-ai-fast-comfort-cooling-comfort-drying-for-cold-free-dehumidification-ar70f24c1dw-zs/"
+  },
+  "QN65S95HAGXZS": {
+   "nombre": "65\" OLED S95H 4K Vision AI Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/s95h-65-inch-4k-smart-tv-qn65s95hagxzs/"
+  },
+  "F-QN65SHWQ800": {
+   "nombre": "65\" OLED S95H Smart TV (2026) + Soundbar<br> HW-Q800H 5.1.2 ch (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/vd-bundle-tv-65-inch-with-soundbar-f-qn65shwq800/"
+  },
+  "AR40F18C0AM/ZS": {
+   "nombre": "Split Inverter Frío/Calor 18.000 BTU",
+   "categoria": "Aire acondicionado",
+   "url": "https://www.samsung.com/cl/air-conditioners/wall-mount/ar5000hm-ar40f12c0am-ar40f18c0am-zs/"
+  },
+  "QN65QN70HAGXZS": {
+   "nombre": "65\" Neo QLED QN70H 4K Samsung Vision AI Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn70h-65-inch-neo-qled-4k-mini-led-smart-tv-qn65qn70hagxzs/"
+  },
+  "F-SMS948BAR70": {
+   "nombre": "Galaxy S26 Ultra 256GB + WindFree Inverter  Split with Wi-Fi 12,000 BTU",
+   "categoria": "Smartphones",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/combo-smp-ac-sky-blue-256gb-f-sms948bar70/buy/"
+  },
+  "QN65Q6FAAGXZS": {
+   "nombre": "65\" QLED Q6F 4K Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/q6f-65-inch-qled-4k-smart-tv-qn65q6faagxzs/"
+  },
+  "QN85QN70HAGXZS": {
+   "nombre": "85\" Neo QLED QN70H 4K Samsung Vision AI Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn70h-85-inch-neo-qled-4k-mini-led-smart-tv-qn85qn70hagxzs/"
+  },
+  "F-SMA27R90NZS": {
+   "nombre": "Samsung Galaxy A27 5G 128GB Awesome Blue + Fit3 Silver",
+   "categoria": "Smartphones",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-a/bundle-a27-blue-128gb-fit3-white-f-sma27r90nzs/buy/"
+  },
+  "SM-A276BZBKLTL": {
+   "nombre": "Galaxy A27 5G",
+   "categoria": "Smartphones",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-a/galaxy-a27-5g-blue-128gb-sm-a276bzbkltl/buy/"
+  },
+  "F-RT25FWA4015": {
+   "nombre": "Lavadora Carga Superior 15 Kg con Eco Bubble™ 2026 Grafito + Top Mount Freezer de 255 L con All Around Cooling",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/combo-wm-ref-15kg-graphite-f-rt25fwa4015/"
+  },
+  "WA40F19E7CZS": {
+   "nombre": "Lavadora Carga Superior 19 Kg con Eco Bubble™ 2026 Grafito",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa80f-25-top-load-washer-ai-wash-ecobubble-ai-energy-mode-19kg-glam-deep-charcoal-wa40f19e7czs/"
+  },
+  "F-WA4007RT22F": {
+   "nombre": "Lavadora Carga Superior 17 Kg con Eco Bubble™ 2026 Grafito + Top Mount Freezer de 234 L con All Around Cooling",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/washer-dryer-combo-17kg-graphite-f-wa4007rt22f/"
+  },
+  "UN32H5000FGXZS": {
+   "nombre": "32\" HD H5000F Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/hd-tv/h5000-32-inch-un32h5000fgxzs/"
+  },
+  "MRN55R85HAGXZS": {
+   "nombre": "55\" Micro RGB R85H 4K Vision AI Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/micro-rgb/r85h-55-inch-4k-smart-tv-mrn55r85hagxzs/"
+  },
+  "UN65M70HAGXZS": {
+   "nombre": "65\" Mini LED M70H 4K Samsung Vision AI Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/mini-led-tv/m70h-65-inch-4k-smart-tv-un65m70hagxzs/"
+  },
+  "F-UN75MHWB450": {
+   "nombre": "75\" Mini LED M75H Smart TV (2026) + Soundbar <br>HW-B450F 2.1 ch (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/mini-led-tv/vd-bundle-tv-75-inch-with-soundbar-f-un75mhwb450/"
+  },
+  "F-QN50HWB450F": {
+   "nombre": "50'' The Frame LS03F 2025 + Soundbar HW-B450F 2.1 ch",
+   "categoria": "TV Lifestyle",
+   "url": "https://www.samsung.com/cl/lifestyle-tvs/the-frame/combo-frame-sb1-50-inch-f-qn50hwb450f/"
+  },
+  "F-SMA27EBU25Z": {
+   "nombre": "Samsung Galaxy A27 5G 128GB Awesome Black + Bateria",
+   "categoria": "Smartphones",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-a/bundle-a27-black-128gb-battery-beige-f-sma27ebu25z/buy/"
+  },
+  "SM-A276BZKKLTL": {
+   "nombre": "Galaxy A27 5G",
+   "categoria": "Smartphones",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-a/galaxy-a27-5g-black-128gb-sm-a276bzkkltl/buy/"
+  },
+  "NP960UJH-XG2CL": {
+   "nombre": "Galaxy Book6 Ultra",
+   "categoria": "Computadores",
+   "url": "https://www.samsung.com/cl/computers/galaxy-book/galaxy-book6-series/buy/"
+  },
+  "QN83S95FAEXZS": {
+   "nombre": "83\" OLED S95F 4K Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/s95f-83-inch-oled-4k-smart-tv-qn83s95faexzs/"
+  },
+  "SM-X400NZRDCHO": {
+   "nombre": "Galaxy Tab S10 Lite",
+   "categoria": "Tablets",
+   "url": "https://www.samsung.com/cl/tablets/galaxy-tab-s/galaxy-tab-s10-lite-coralred-128gb-sm-x400nzrdcho/buy/"
+  },
+  "AR70H12CAEB/ZS": {
+   "nombre": "WindFree Pro Black Inverter Split with Wi-Fi 12,000 BTU",
+   "categoria": "Aire acondicionado",
+   "url": "https://www.samsung.com/cl/air-conditioners/wall-mount/ar80-ar70h12caeb-zs/"
+  },
+  "AR70H18CAEB/ZS": {
+   "nombre": "WindFree Pro Black Inverter Split with Wi-Fi 18,000 BTU",
+   "categoria": "Aire acondicionado",
+   "url": "https://www.samsung.com/cl/air-conditioners/wall-mount/ar80-ar70h18caeb-zs/"
+  },
+  "AR70H24CAEB/ZS": {
+   "nombre": "WindFree Pro Black Inverter Split with Wi-Fi 24,000 BTU",
+   "categoria": "Aire acondicionado",
+   "url": "https://www.samsung.com/cl/air-conditioners/wall-mount/ar80-ar70h24caeb-zs/"
+  },
+  "AR70F12C1DW/ZS": {
+   "nombre": "WindFree Inverter Split with Wi-Fi 12,000 BTU",
+   "categoria": "Aire acondicionado",
+   "url": "https://www.samsung.com/cl/air-conditioners/wall-mount/ar9500t-ar70f12caawneu-ai-fast-comfort-cooling-ai-fast-comfort-cooling-comfort-drying-for-cold-free-dehumidification-ar70f12c1dw-zs/"
+  },
+  "AR70F18C1DW/ZS": {
+   "nombre": "WindFree Inverter Split with Wi-Fi 18,000 BTU",
+   "categoria": "Aire acondicionado",
+   "url": "https://www.samsung.com/cl/air-conditioners/wall-mount/ar9500t-ar70f12caawneu-ai-fast-comfort-cooling-ai-fast-comfort-cooling-comfort-drying-for-cold-free-dehumidification-ar70f18c1dw-zs/"
+  },
+  "HW-B450F/ZS": {
+   "nombre": "B-series Soundbar HW-B450F 2.1 ch Subwoofer (2025)",
+   "categoria": "Audio (Soundbars/Torres)",
+   "url": "https://www.samsung.com/cl/audio-devices/soundbar/b450f-black-hw-b450f-zs/"
+  },
+  "HW-QS700F/ZS": {
+   "nombre": "Q-Series Soundbar HW-QS700F 3.1.2 Subwoofer (2025)",
+   "categoria": "Audio (Soundbars/Torres)",
+   "url": "https://www.samsung.com/cl/audio-devices/soundbar/qs700f-black-hw-qs700f-zs/"
+  },
+  "WA90CG4240BYZS": {
+   "nombre": "Lavadora de carga superior 9Kg con tecnología Digital Inverter",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa4000c-top-load-ecobubble-digital-inverter-technology-super-speed-9kg-light-gray-wa90cg4240byzs/"
+  },
+  "WA13CG5441BWZS": {
+   "nombre": "Lavadora de carga superior 13Kg con Eco Bubble™",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa5000c-top-load-ecobubble-digital-inverter-technology-super-speed-13kg-white-wa13cg5441bwzs/"
+  },
+  "WA15CG5441BWZS": {
+   "nombre": "Lavadora de carga superior 15Kg con Eco Bubble™",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa5000c-top-load-ecobubble-digital-inverter-technology-super-speed-15kg-white-wa15cg5441bwzs/"
+  },
+  "WA17CG6441BWZS": {
+   "nombre": "Lavadora de carga superior 17Kg con Eco Bubble™",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa6000c-top-load-ecobubble-digital-inverter-technology-super-speed-17kg-white-wa17cg6441bwzs/"
+  },
+  "WA19CG6441BWZS": {
+   "nombre": "Lavadora de carga superior 19Kg con Eco Bubble™",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa6000c-top-load-ecobubble-digital-inverter-technology-super-speed-19kg-white-wa19cg6441bwzs/"
+  },
+  "WA40F15E4CZS": {
+   "nombre": "Lavadora Carga Superior 15 Kg con Eco Bubble™ 2026 Grafito",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa80f-25-top-load-washer-ai-wash-ecobubble-ai-energy-mode-15kg-glam-deep-charcoal-wa40f15e4czs/"
+  },
+  "WA40F17E7CZS": {
+   "nombre": "Lavadora Carga Superior 17 Kg con Eco Bubble™ 2026 Grafito",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa80f-25-top-load-washer-ai-wash-ecobubble-ai-energy-mode-17kg-glam-deep-charcoal-wa40f17e7czs/"
+  },
+  "WA80F21S8BZS": {
+   "nombre": "21Kg Bespoke AI Lavadora carga superior AI Wash ™",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa80f-25-top-load-washer-ai-wash-ecobubble-ai-energy-mode-21kg-black-wa80f21s8bzs/"
+  },
+  "WA24A8370GV/ZS": {
+   "nombre": "Lavadora de carga superior 24Kg con Eco Bubble",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/ww8800a-24kg-black-wa24a8370gv-zs/"
+  },
+  "LC34G55TWWLXZS": {
+   "nombre": "34\" Odyssey G5 G55T QHD 144Hz Monitor Gamer Curvo",
+   "categoria": "Monitores",
+   "url": "https://www.samsung.com/cl/monitors/gaming/odyssey-g5-34-inch-165hz-curved-ultra-wqhd-lc34g55twwlxzs/"
+  },
+  "MRN75R85HAGXZS": {
+   "nombre": "75\" Micro RGB R85H 4K Vision AI Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/micro-rgb/r85h-75-inch-4k-smart-tv-mrn75r85hagxzs/"
+  },
+  "F-SMS948LS27L": {
+   "nombre": "Galaxy S26 Ultra 256GB + 27\" Odyssey OLED G5 G50SF QHD 180Hz Monitor Gamer",
+   "categoria": "Smartphones",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/combo-smp-mon-sky-blue-256gb-f-sms948ls27l/buy/"
+  },
+  "F-SMA27R390NX": {
+   "nombre": "Samsung Galaxy A27 5G 128GB Awesome Light Pink + Fit3 Pink Gold",
+   "categoria": "Smartphones",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-a/bundle-a27-pink-128gb-fit3-pink-f-sma27r390nx/buy/"
+  },
+  "SM-A276BLIKLTL": {
+   "nombre": "Galaxy A27 5G",
+   "categoria": "Smartphones",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-a/galaxy-a27-5g-light-pink-128gb-sm-a276blikltl/buy/"
+  },
+  "F-SMR640NP750": {
+   "nombre": "Galaxy Book 4 (15,6\", Intel® Core i5, 16GB) + Galaxy Buds4 Pro",
+   "categoria": "Computadores",
+   "url": "https://www.samsung.com/cl/computers/galaxy-book/combo-npc-core-5-16gb-1tb-buds-f-smr640np750/buy/"
+  },
+  "NP740VJG-KA2CL": {
+   "nombre": "Galaxy Book 6 (14'', Ultra 5, 16GB), Copilot+ PC",
+   "categoria": "Computadores",
+   "url": "https://www.samsung.com/cl/computers/galaxy-book/galaxy-book6-14-inch-ultra-5-16gb-1tb-np740vjg-ka2cl/"
+  },
+  "LS27FG500SLXZS": {
+   "nombre": "27\" Odyssey OLED G5 G50SF QHD 180Hz Monitor Gamer",
+   "categoria": "Monitores",
+   "url": "https://www.samsung.com/cl/monitors/gaming/odyssey-oled-g5-g50sf-27-inch-180hz-oled-qhd-ls27fg500slxzs/"
+  },
+  "LS27D600UALXZS": {
+   "nombre": "27\" ViewFinity S6 S60UD QHD 100Hz Monitor High Resolution Plano",
+   "categoria": "Monitores",
+   "url": "https://www.samsung.com/cl/monitors/high-resolution/viewfinity-s6-27-inch-qhd-100hz-easysetupstand-ls27d600ualxzs/"
+  },
+  "LS27H804EFAXZS": {
+   "nombre": "27\" ViewFinity S8 S80HF 5K Monitor",
+   "categoria": "Monitores",
+   "url": "https://www.samsung.com/cl/monitors/high-resolution/viewfinity-s8-s80hf-27-inch-5k-usb-c-easy-connection-ls27h804efaxzs/"
+  },
+  "QN85QN75HAGXZS": {
+   "nombre": "85\" Neo QLED QN75H 4K Samsung Vision AI Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn70h-85-inch-neo-qled-4k-mini-led-smart-tv-qn85qn75hagxzs/"
+  },
+  "QN75QN900FGXZS": {
+   "nombre": "75\" Neo QLED 8K QN900F Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn900f-75-inch-neo-qled-8k-mini-led-smart-tv-qn75qn900fgxzs/"
+  },
+  "SM-A266MZKHLTL": {
+   "nombre": "Galaxy A26 5G",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-a/galaxy-a26-5g-black-256gb-sm-a266mzkhltl/buy/"
+  },
+  "SM-A266MLGDLTL": {
+   "nombre": "Galaxy A26 5G",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-a/galaxy-a26-5g-mint-128gb-sm-a266mlgdltl/buy/"
+  },
+  "SM-A266MLGHLTL": {
+   "nombre": "Galaxy A26 5G",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-a/galaxy-a26-5g-mint-256gb-sm-a266mlghltl/buy/"
+  },
+  "SM-A266MZWDLTL": {
+   "nombre": "Galaxy A26 5G",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-a/galaxy-a26-5g-white-128gb-sm-a266mzwdltl/buy/"
+  },
+  "SM-L705FZS1CHO": {
+   "nombre": "Galaxy Watch Ultra (2025) (LTE, 47 mm)",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/watches/galaxy-watch/galaxy-watch-ultra-2025-47mm-titanium-silver-lte-sm-l705fzs1cho/buy/"
+  },
+  "SM-L500NZKALTA": {
+   "nombre": "Galaxy Watch8 Classic (Bluetooth, 46 mm)",
+   "categoria": "Relojes (Galaxy Watch)",
+   "url": "https://www.samsung.com/cl/watches/galaxy-watch/galaxy-watch8-classic-46mm-black-bluetooth-sm-l500nzkalta/buy/"
+  },
+  "NP750XGJ-KS2CL": {
+   "nombre": "Galaxy Book4 (15,6\", Intel® Core i7, 16GB)",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/computers/galaxy-book/galaxy-book4-15-6-inch-13th-core-7-16gb-512gb-np750xgj-ks2cl/buy/"
+  },
+  "SM-A266MZKDLTL": {
+   "nombre": "Galaxy A26 5G",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-a/galaxy-a26-5g-black-128gb-sm-a266mzkdltl/buy/"
+  },
+  "SM-L705FZB1CHO": {
+   "nombre": "Galaxy Watch Ultra (2025) (LTE, 47 mm)",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/watches/galaxy-watch/galaxy-watch-ultra-2025-47mm-titanium-blue-lte-sm-l705fzb1cho/buy/"
+  },
+  "SM-L330NZSACHO": {
+   "nombre": "Galaxy Watch8 (Bluetooth, 44 mm)",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/watches/galaxy-watch/galaxy-watch8-44mm-silver-sm-l330nzsacho/buy/"
+  },
+  "SM-L500NZWACHO": {
+   "nombre": "Galaxy Watch8 Classic (Bluetooth, 46 mm)",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/watches/galaxy-watch/galaxy-watch8-classic-46mm-white-sm-l500nzwacho/buy/"
+  },
+  "F-SML34SMR602": {
+   "nombre": "Galaxy Watch9 (Bluetooth, 40 mm) Cream + Galaxy Buds4 Pro Black",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/watches/galaxy-watch/watch-40mm-buds2-cream-f-sml34smr602/buy/"
+  },
+  "F-SML35SMR64X": {
+   "nombre": "Galaxy Watch9 (Bluetooth, 44 mm) Silver + Galaxy Buds4 Pro Black",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/watches/galaxy-watch/watch-44mm-buds2-silver-f-sml35smr64x/buy/"
+  },
+  "F-SML71SMR602": {
+   "nombre": "Galaxy Watch Ultra2 Titanium Silver + Galaxy Buds4 Pro Black",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/watches/galaxy-watch/watch-ultra-buds2-titanium-silver-f-sml71smr602/buy/"
+  },
+  "NP750XGJ-KS6CL": {
+   "nombre": "Galaxy Book4 (15.6\", Intel® Core™ i5, 8GB)",
+   "categoria": "Computadores",
+   "url": "https://www.samsung.com/cl/computers/galaxy-book/galaxy-book4-15-6-inch-13th-i5-8gb-512gb-np750xgj-ks6cl/buy/"
+  },
+  "SM-A576BLBFLTL": {
+   "nombre": "Galaxy A57 5G",
+   "categoria": "Smartphones",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-a/galaxy-a57-5g-awesome-icyblue-256gb-sm-a576blbfltl/buy/"
+  },
+  "AR50F09C1FH/ZS": {
+   "nombre": "Split Wind Inverter Frío/Calor 9.000 BTU",
+   "categoria": "Aire acondicionado",
+   "url": "https://www.samsung.com/cl/air-conditioners/wall-mount/ar9500t-ar50f12c1uhnsa-non-windfree-ar50f09c1fh-zs/"
+  },
+  "AR50F12C1FH/ZS": {
+   "nombre": "Split Wind Inverter Frío/Calor 12.000 BTU",
+   "categoria": "Aire acondicionado",
+   "url": "https://www.samsung.com/cl/air-conditioners/wall-mount/ar9500t-ar50f12c1uhnsa-non-windfree-ar50f12c1fh-zs/"
+  },
+  "AR50F18C1FH/ZS": {
+   "nombre": "Split Wind Inverter Frío/Calor 18.000 BTU",
+   "categoria": "Aire acondicionado",
+   "url": "https://www.samsung.com/cl/air-conditioners/wall-mount/ar9500t-ar50f12c1uhnsa-non-windfree-ar50f18c1fh-zs/"
+  },
+  "AR50F24C1FH/ZS": {
+   "nombre": "Split Wind Inverter Frío/Calor 24.000 BTU",
+   "categoria": "Aire acondicionado",
+   "url": "https://www.samsung.com/cl/air-conditioners/wall-mount/ar9500t-ar50f12c1uhnsa-non-windfree-ar50f24c1fh-zs/"
+  },
+  "VC18M3110VB/ZS": {
+   "nombre": "Aspiradora Ciclónica Antitangle con Contenedor 2 Lts, 1800 W",
+   "categoria": "Aspiradoras",
+   "url": "https://www.samsung.com/cl/vacuum-cleaners/canister/canister-vc3100m/"
+  },
+  "VR7MD96514G/ZS": {
+   "nombre": "Bespoke Jet Bot Combo con Estación de Limpieza Steam+",
+   "categoria": "Aspiradoras",
+   "url": "https://www.samsung.com/cl/vacuum-cleaners/robot/70w-jet-bot-combo-all-in-one-clean-station-steam-plus-with-steamwash-satin-greige-vr7md96514g-zs/"
+  },
+  "VR3MB77312K/ZS": {
+   "nombre": "Aspiradora Robot POWERbot -S con sensor LiDAR",
+   "categoria": "Aspiradoras",
+   "url": "https://www.samsung.com/cl/vacuum-cleaners/robot/vr7700bm-ebony-black-vr3mb77312k-zs/"
+  },
+  "VS70H25WLG/ZS": {
+   "nombre": "Aspiradora Stick Jet 85 S Pet con 250 W de Poder de Succión",
+   "categoria": "Aspiradoras",
+   "url": "https://www.samsung.com/cl/vacuum-cleaners/stick/jet-85s-stick-vacuum-cleaner-satin-greige-vs70h25wlg-zs/"
+  },
+  "VS15A60A1R5/ZS": {
+   "nombre": "Aspiradora Stick Jet 60 con 150 W de Poder de Succión",
+   "categoria": "Aspiradoras",
+   "url": "https://www.samsung.com/cl/vacuum-cleaners/stick/vs9000rl-stick-more-advance-cleaning-performance-digital-inverter-motor-jet-cyclone-silver-vs15a60a1r5-zs/"
+  },
+  "VS20C8522TB/ZS": {
+   "nombre": "Aspiradora Stick Jet 85 Pet con 210 W de Poder de Succión",
+   "categoria": "Aspiradoras",
+   "url": "https://www.samsung.com/cl/vacuum-cleaners/stick/vs9500al-stick-more-advance-cleaning-performance-hexajet-motor-jet-cyclone-blue-vs20c8522tb-zs/"
+  },
+  "HW-Q600H/ZS": {
+   "nombre": "Q-Series Soundbar HW-Q600H 3.1.2 Subwoofer (2026)",
+   "categoria": "Audio (Soundbars/Torres)",
+   "url": "https://www.samsung.com/cl/audio-devices/soundbar/q600h-black-hw-q600h-zs/"
+  },
+  "CTR264KC01/BG": {
+   "nombre": "Encimera Vitrocerámica de 4 Quemadores",
+   "categoria": "Cocina",
+   "url": "https://www.samsung.com/cl/cooking-appliances/hobs/ctr264kc01bg-ctr264kc01-bg/"
+  },
+  "CTR432NB02/ZS": {
+   "nombre": "Encimera Vitrocerámica de 2 Quemadores",
+   "categoria": "Cocina",
+   "url": "https://www.samsung.com/cl/cooking-appliances/hobs/ctr432nb02zs-ctr432nb02-zs/"
+  },
+  "NK36M5070BS/ZS": {
+   "nombre": "Campana con filtro lavable de aluminio, luces LED y control táctil de 90cm",
+   "categoria": "Cocina",
+   "url": "https://www.samsung.com/cl/cooking-appliances/hoods/nk7000mm-hood-nk36m5070bs-zs/"
+  },
+  "NK24M1030IS/ZS": {
+   "nombre": "Campana Telescópica de Pared",
+   "categoria": "Cocina",
+   "url": "https://www.samsung.com/cl/cooking-appliances/hoods/wall-hood-nk24m1030is-zs/"
+  },
+  "NX52A7422CS/ZS": {
+   "nombre": "Cocina a Gas con 5 quemadores con quemador de triple potencia",
+   "categoria": "Cocina",
+   "url": "https://www.samsung.com/cl/cooking-appliances/ovens/nx5000t-triple-power-burner-nx52a7422cs-zs/"
+  },
+  "NX24BG57413SZS": {
+   "nombre": "Cocina a gas con 4 quemadores más quemador rápido",
+   "categoria": "Cocina",
+   "url": "https://www.samsung.com/cl/cooking-appliances/ranges/nx4000bm-nx24bg57413szs/"
+  },
+  "DV17B9750CV/ZS": {
+   "nombre": "Secadora Bespoke 17kg con Sistema de Secado Inteligente",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/dryers/dv8700bk-bespoke-ai-dryer-hybridheatpump-auto-open-door-ai-dry-17kg-black-dv17b9750cv-zs/"
+  },
+  "WD11M4473MW/ZS": {
+   "nombre": "Lavadora Secadora 11Kg / 7Kg",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washer-dryer-combo/wd4000m-front-loading-11kg-plus-7kg-white-wd11m4473mw-zs/"
+  },
+  "WD95T4046CX/ZS": {
+   "nombre": "Lavadora Secadora 9.5Kg / 6Kg con Eco Bubble™",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washer-dryer-combo/wd4000t-front-loading-air-wash-drum-clean-bubble-soak-9-5kg-plus-6kg-gray-wd95t4046cx-zs/"
+  },
+  "WD95T4046CE/ZS": {
+   "nombre": "Lavadora Secadora 9.5Kg / 6Kg con Eco Bubble™",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washer-dryer-combo/wd4000t-front-loading-air-wash-drum-clean-bubble-soak-9-5kg-plus-6kg-white-wd95t4046ce-zs/"
+  },
+  "WD25FB8690BEZS": {
+   "nombre": "25Kg/15Kg Bespoke AI Lavadora Secadora Lite AI Wash and Dry ™",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washer-dryer-combo/wd8000dk-bespoke-ai-laundry-combo-wd8000dk-all-in-one-combo-super-speed-ai-wash-and-dry-25kg-satin-greige-wd25fb8690bezs/"
+  },
+  "WA13CG5441BDZS": {
+   "nombre": "Lavadora de carga superior 13Kg con Eco Bubble™",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa5000c-top-load-ecobubble-digital-inverter-technology-super-speed-13kg-gray-wa13cg5441bdzs/"
+  },
+  "WA15CG5441BDZS": {
+   "nombre": "Lavadora de carga superior 15Kg con Eco Bubble™",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa5000c-top-load-ecobubble-digital-inverter-technology-super-speed-15kg-gray-wa15cg5441bdzs/"
+  },
+  "WA17CG6441BDZS": {
+   "nombre": "Lavadora de carga superior 17Kg con Eco Bubble™",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa6000c-top-load-ecobubble-digital-inverter-technology-super-speed-17kg-gray-wa17cg6441bdzs/"
+  },
+  "WA19CG6441BDZS": {
+   "nombre": "Lavadora de carga superior 19Kg con Eco Bubble™",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa6000c-top-load-ecobubble-digital-inverter-technology-super-speed-19kg-gray-wa19cg6441bdzs/"
+  },
+  "WA21CG6886BVZS": {
+   "nombre": "Lavadora de carga superior 21Kg con SmartThings y Eco Bubble™",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wa6000c-top-load-ecobubble-digital-inverter-technology-super-speed-21kg-black-wa21cg6886bvzs/"
+  },
+  "WD12T704DBX/ZS": {
+   "nombre": "Lavadora Secadora 12.5Kg / 7Kg con Inteligencia Artificial en Panel de Control",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wd7000t-12-5kg-plus-7kg-gray-wd12t704dbx-zs/"
+  },
+  "WD12T704DBH/ZS": {
+   "nombre": "Lavadora Secadora 12.5Kg / 7Kg con Inteligencia Artificial en Panel de Control",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wd7000t-12-5kg-plus-7kg-white-wd12t704dbh-zs/"
+  },
+  "WD25DB8995BZZS": {
+   "nombre": "Lavadora Secadora Bespoke AI 25kg/15Kg",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wd8000dk-combo--all-in-one-combo-super-speed-25kg-gray-wd25db8995bzzs/"
+  },
+  "WF25B9600KV/ZS": {
+   "nombre": "Lavadora de carga frontal Bespoke 25Kg con Sistema de Lavado Inteligente",
+   "categoria": "Lavado y secado",
+   "url": "https://www.samsung.com/cl/washers-and-dryers/washing-machines/wf8000r-front-loading-washer-ai-ecobubble-auto-open-door-ai-wash-25kg-black-wf25b9600kv-zs/"
+  },
+  "MC32DG7646CKZS": {
+   "nombre": "Horno Microondas Smart 32L con Air Fry",
+   "categoria": "Microondas",
+   "url": "https://www.samsung.com/cl/microwave-ovens/convection/mw7300b-mc32db7746ke-convection-mwo-all-in-one-microwave-oven-smart-control-mc32dg7646ckzs/"
+  },
+  "MG22M8054AK/ZS": {
+   "nombre": "Microondas empotrable 22L",
+   "categoria": "Microondas",
+   "url": "https://www.samsung.com/cl/microwave-ovens/grill/grill-mwo-with-grill-30sec-mg22m8054ak-zs/"
+  },
+  "MG32DG4524ATZS": {
+   "nombre": "Microondas Grill con Power Defrost 32L",
+   "categoria": "Microondas",
+   "url": "https://www.samsung.com/cl/microwave-ovens/grill/mw4000d-grill-solo-mwo-grill-fry-bread-defrost-seamless-and-recessed-handle-design-mg32dg4524atzs/"
+  },
+  "MS20A3010AL/ZS": {
+   "nombre": "Microondas color negro 20L",
+   "categoria": "Microondas",
+   "url": "https://www.samsung.com/cl/microwave-ovens/solo/mw3000am-solo-full-glass-door-metallic-edge-dual-dial-led-lighting-ms20a3010al-zs/"
+  },
+  "LS24D300GALXZS": {
+   "nombre": "24\" Essential Monitor S3 S30GD Full HD Monitor",
+   "categoria": "Monitores",
+   "url": "https://www.samsung.com/cl/monitors/full-hd-1080p/essential-monitor-s3-s30gd-24-inch-fhd-ips-100hz-ls24d300galxzs/"
+  },
+  "LS24D400GALXZS": {
+   "nombre": "24\" S40GD FHD 100Hz Monitor Plano",
+   "categoria": "Monitores",
+   "url": "https://www.samsung.com/cl/monitors/full-hd-1080p/essential-monitor-s4-s40gd-24-inch-fhd-ips-100hz-ls24d400galxzs/"
+  },
+  "LS55CG97WNLXZS": {
+   "nombre": "55\" Odyssey ARK 2nd Gen. G97NC UHD 165Hz Monitor Gamer Curvo",
+   "categoria": "Monitores",
+   "url": "https://www.samsung.com/cl/monitors/gaming/odyssey-ark-2nd-gen-g97nc-55-inch-165hz-1ms-curved-uhd-4k-ls55cg97wnlxzs/"
+  },
+  "LS24D600UALXZS": {
+   "nombre": "24\" ViewFinity S6 S60UD QHD 100Hz Monitor High Resolution Plano",
+   "categoria": "Monitores",
+   "url": "https://www.samsung.com/cl/monitors/high-resolution/viewfinity-s6-24-inch-qhd-100hz-easysetupstand-ls24d600ualxzs/"
+  },
+  "LS34C650UALXZS": {
+   "nombre": "34\" ViewFinity S6 S65UC QHD 100Hz Monitor High Resolution Curvo",
+   "categoria": "Monitores",
+   "url": "https://www.samsung.com/cl/monitors/high-resolution/viewfinity-s6-s65uc-34-inch-ultra-wqhd-ls34c650ualxzs/"
+  },
+  "LS32D700EALXZS": {
+   "nombre": "32\" ViewFinity S7 S70UD UHD 60Hz Monitor High Resolution Plano",
+   "categoria": "Monitores",
+   "url": "https://www.samsung.com/cl/monitors/high-resolution/viewfinity-s7-32-inch-uhd-hdr10-easysetupstand-ls32d700ealxzs/"
+  },
+  "LS27FM501ELXZS": {
+   "nombre": "27\" M5 M50F FHD 60Hz Monitor Smart",
+   "categoria": "Monitores",
+   "url": "https://www.samsung.com/cl/monitors/smart/smart-monitor-m5-27-inch-smart-tv-apps-ls27fm501elxzs/"
+  },
+  "LS32FM501ELXZS": {
+   "nombre": "32\" M5 M50F FHD 60Hz Monitor Smart",
+   "categoria": "Monitores",
+   "url": "https://www.samsung.com/cl/monitors/smart/smart-monitor-m5-32-inch-smart-tv-apps-ls32fm501elxzs/"
+  },
+  "RA-F18DU312GG": {
+   "nombre": "Panel Superior Bespoke French Door",
+   "categoria": "Refrigeradores",
+   "url": "https://www.samsung.com/cl/refrigerators/bespoke-panels/bespoke-panels-white-ra-f18du312gg/"
+  },
+  "RS60T5200B1/ZS": {
+   "nombre": "Refrigerador Side By Side Con Dispensador 628 lt",
+   "categoria": "Refrigeradores",
+   "url": "https://www.samsung.com/cl/refrigerators/side-by-side/rs5300t-large-capacity-22-cu-ft-ebony-black-rs60t5200b1-zs/"
+  },
+  "RT38CG6720S9ZS": {
+   "nombre": "Refrigerador Top Mount Freezer 384 L con Space Max",
+   "categoria": "Refrigeradores",
+   "url": "https://www.samsung.com/cl/refrigerators/top-mount-freezer/rt6300c-top-mount-freezer-optimal-fresh-and-space-max-384l-silver-rt38cg6720s9zs/"
+  },
+  "MNA110MS1ACXZS": {
+   "nombre": "Smart TV UHD 4K Micro LED MS1A de 110'' (2023)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/micro-led/ms1a-uhd-4k-micro-led-smart-tv-2023-110-inch-mna110ms1acxzs/"
+  },
+  "F-UN65MHWB450": {
+   "nombre": "65\" Mini LED M75H Smart TV (2026) + Soundbar<br> HW-B450F 2.1 ch (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/mini-led-tv/vd-bundle-tv-65-inch-with-soundbar-f-un65mhwb450/"
+  },
+  "QN55S85FAGXZS": {
+   "nombre": "55\" OLED S85F 4K Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/s85f-55-inch-oled-4k-smart-tv-qn55s85fagxzs/"
+  },
+  "QN65S85FAGXZS": {
+   "nombre": "65\" OLED S85F 4K Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/s85f-65-inch-oled-4k-smart-tv-qn65s85fagxzs/"
+  },
+  "QN77S85FAEXZS": {
+   "nombre": "77\" OLED S85F 4K Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/s85f-77-inch-oled-4k-smart-tv-qn77s85faexzs/"
+  },
+  "QN83S85FAEXZS": {
+   "nombre": "83\" OLED S85F 4K Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/s85f-83-inch-oled-4k-smart-tv-qn83s85faexzs/"
+  },
+  "QN55S90DAGXZS": {
+   "nombre": "55'' OLED 4K S90D Smart TV (2024)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/s90d-55-inch-oled-4k-tizen-os-smart-tv-qn55s90dagxzs/"
+  },
+  "QN48S90FAEXZS": {
+   "nombre": "48\" OLED S90F 4K Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/s90f-48-inch-oled-4k-smart-tv-qn48s90faexzs/"
+  },
+  "QN55S90FAGXZS": {
+   "nombre": "55\" OLED S90F 4K Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/s90f-55-inch-oled-4k-smart-tv-qn55s90fagxzs/"
+  },
+  "QN65S90FAGXZS": {
+   "nombre": "65\" OLED S90F 4K Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/s90f-65-inch-oled-4k-smart-tv-qn65s90fagxzs/"
+  },
+  "QN65S95FAGXZS": {
+   "nombre": "65\" OLED S95F 4K Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/s95f-65-inch-oled-4k-smart-tv-qn65s95fagxzs/"
+  },
+  "QN77S95FAGXZS": {
+   "nombre": "77\" OLED S95F 4K Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/s95f-77-inch-oled-4k-smart-tv-qn77s95fagxzs/"
+  },
+  "QN77S95HAEXZS": {
+   "nombre": "77\" OLED S95H 4K Vision AI Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/s95h-77-inch-4k-smart-tv-qn77s95haexzs/"
+  },
+  "F-QN55SHWQ600": {
+   "nombre": "55\" OLED S95H Smart TV (2026) + Soundbar HW-Q600H 3.1.2 ch (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/oled-tv/vd-bundle-tv-55-inch-with-soundbar-f-qn55shwq600/"
+  },
+  "QN55Q6FAAGXZS": {
+   "nombre": "55\" QLED Q6F 4K Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/q6f-55-inch-qled-4k-smart-tv-qn55q6faagxzs/"
+  },
+  "QN75Q6FAAGXZS": {
+   "nombre": "75\" QLED Q6F 4K Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/q6f-75-inch-qled-4k-smart-tv-qn75q6faagxzs/"
+  },
+  "QN85Q6FAAGXZS": {
+   "nombre": "85\" QLED Q6F 4K Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/q6f-85-inch-qled-4k-smart-tv-qn85q6faagxzs/"
+  },
+  "QN98Q7FAAGXZS": {
+   "nombre": "98\" QLED Q7FA 4K Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/q7f-98-inch-qled-4k-smart-tv-qn98q7faagxzs/"
+  },
+  "QN43Q8FAAGXZS": {
+   "nombre": "43\" QLED Q8F 4K Vision AI Smart TV (2025) <br> ",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/q8f-43-inch-qled-4k-smart-tv-qn43q8faagxzs/"
+  },
+  "QN50Q8FAAGXZS": {
+   "nombre": "50\" QLED Q8F 4K Vision AI Smart TV (2025) <br> ",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/q8f-50-inch-qled-4k-smart-tv-qn50q8faagxzs/"
+  },
+  "QN55Q8FAAGXZS": {
+   "nombre": "55\" QLED Q8F 4K Vision AI Smart TV (2025) <br> ",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/q8f-55-inch-qled-4k-smart-tv-qn55q8faagxzs/"
+  },
+  "QN65Q8FAAGXZS": {
+   "nombre": "65\" QLED Q8F 4K Vision AI Smart TV (2025) <br> ",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/q8f-65-inch-qled-4k-smart-tv-qn65q8faagxzs/"
+  },
+  "QN55QN1EFAGXZS": {
+   "nombre": "55\" Neo QLED 4K QN1EF Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn1ef-55-inch-neo-qled-4k-mini-led-smart-tv-qn55qn1efagxzs/"
+  },
+  "QN65QN1EFAGXZS": {
+   "nombre": "65\" Neo QLED 4K QN1EF Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn1ef-65-inch-neo-qled-4k-mini-led-smart-tv-qn65qn1efagxzs/"
+  },
+  "QN75QN80HAGXZS": {
+   "nombre": "75\" Neo QLED QN80H 4K Samsung Vision AI Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn80h-75-inch-neo-qled-4k-mini-led-smart-tv-qn75qn80hagxzs/"
+  },
+  "QN65QN900FGXZS": {
+   "nombre": "65\" Neo QLED 8K QN900F Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn900f-65-inch-neo-qled-8k-mini-led-smart-tv-qn65qn900fgxzs/"
+  },
+  "QN43QN90FAGXZS": {
+   "nombre": "43\" Neo QLED 4K QN90F Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn90f-43-inch-neo-qled-4k-mini-led-smart-tv-qn43qn90fagxzs/"
+  },
+  "QN50QN90FAGXZS": {
+   "nombre": "50\" Neo QLED 4K QN90F Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn90f-50-inch-neo-qled-4k-mini-led-smart-tv-qn50qn90fagxzs/"
+  },
+  "QN55QN90FAGXZS": {
+   "nombre": "55\" Neo QLED 4K QN90F Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn90f-55-inch-neo-qled-4k-mini-led-smart-tv-qn55qn90fagxzs/"
+  },
+  "QN65QN90FAGXZS": {
+   "nombre": "65\" Neo QLED 4K QN90F Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn90f-65-inch-neo-qled-4k-mini-led-smart-tv-qn65qn90fagxzs/"
+  },
+  "QN85QN990FGXZS": {
+   "nombre": "85\" Neo QLED 8K QN990F Vision AI Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn990f-85-inch-neo-qled-8k-mini-led-smart-tv-qn85qn990fgxzs/"
+  },
+  "QN85QN990HGXZS": {
+   "nombre": "85\" Neo QLED QN990H 8K Vision AI Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/qled-tv/qn990h-85-inch-neo-qled-8k-mini-led-smart-tv-qn85qn990hgxzs/"
+  },
+  "UN85DU7000GXZS": {
+   "nombre": "85'' Crystal UHD 4K DU7000 Smart TV (2024)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/du7000-85-inch-crystal-uhd-4k-tizen-os-smart-tv-un85du7000gxzs/"
+  },
+  "UN50U8000FGXZS": {
+   "nombre": "50\" Crystal UHD U8000F 4K Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000f-50-inch-crystal-uhd-4k-smart-tv-un50u8000fgxzs/"
+  },
+  "UN55U8000FGXZS": {
+   "nombre": "55\" Crystal UHD U8000F 4K Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000f-55-inch-crystal-uhd-4k-smart-tv-un55u8000fgxzs/"
+  },
+  "UN65U8000FGXZS": {
+   "nombre": "65\" Crystal UHD U8000F 4K Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000f-65-inch-crystal-uhd-4k-smart-tv-un65u8000fgxzs/"
+  },
+  "UN70U8000FGXZS": {
+   "nombre": "70\" Crystal UHD U8000F 4K Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000f-70-inch-crystal-uhd-4k-smart-tv-un70u8000fgxzs/"
+  },
+  "UN75U8000FGXZS": {
+   "nombre": "75\" Crystal UHD U8000F 4K Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000f-75-inch-crystal-uhd-4k-smart-tv-un75u8000fgxzs/"
+  },
+  "UN85U8000FGXZS": {
+   "nombre": "85\" Crystal UHD U8000F 4K Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000f-85-inch-crystal-uhd-4k-smart-tv-un85u8000fgxzs/"
+  },
+  "UN55U8200HGXZS": {
+   "nombre": "55\" Crystal UHD U8200H 4K Samsung Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000h-55-inch-crystal-uhd-4k-smart-tv-un55u8200hgxzs/"
+  },
+  "UN58U8000HGXZS": {
+   "nombre": "58\" Crystal UHD U8000H 4K Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000h-58-inch-crystal-uhd-4k-smart-tv-un58u8000hgxzs/"
+  },
+  "UN65U8200HGXZS": {
+   "nombre": "65\" Crystal UHD U8200H 4K Samsung Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000h-65-inch-crystal-uhd-4k-smart-tv-un65u8200hgxzs/"
+  },
+  "UN70U8000HGXZS": {
+   "nombre": "70\" Crystal UHD U8000H 4K Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000h-70-inch-crystal-uhd-4k-smart-tv-un70u8000hgxzs/"
+  },
+  "UN75U8200HGXZS": {
+   "nombre": "75\" Crystal UHD U8200H 4K Samsung Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000h-75-inch-crystal-uhd-4k-smart-tv-un75u8200hgxzs/"
+  },
+  "QN98LS03HEGXZS": {
+   "nombre": "98\" The Frame LS03H QLED 4K Art Mode Vision AI Smart TV (2026)",
+   "categoria": "TV Lifestyle",
+   "url": "https://www.samsung.com/cl/lifestyle-tvs/the-frame/98ls03he-98-inch-the-frame-qled-art-mode-qn98ls03hegxzs/"
+  },
+  "QN55LS03HEGXZS": {
+   "nombre": "55\" The Frame LS03H QLED 4K Art Mode Vision AI Smart TV (2026)",
+   "categoria": "TV Lifestyle",
+   "url": "https://www.samsung.com/cl/lifestyle-tvs/the-frame/ls03he-55-inch-the-frame-qled-art-mode-qn55ls03hegxzs/"
+  },
+  "QN43LS01DAGXZS": {
+   "nombre": "43\" The Serif LS01D Smart TV 2024",
+   "categoria": "TV Lifestyle",
+   "url": "https://www.samsung.com/cl/lifestyle-tvs/the-serif/ls01d-43-inch-white-qn43ls01dagxzs/"
+  },
+  "QN50LS01DAGXZS": {
+   "nombre": "50\" The Serif LS01D Smart TV 2024",
+   "categoria": "TV Lifestyle",
+   "url": "https://www.samsung.com/cl/lifestyle-tvs/the-serif/ls01d-50-inch-white-qn50ls01dagxzs/"
+  },
+  "QN55LS01DAGXZS": {
+   "nombre": "55\" The Serif LS01D Smart TV 2024",
+   "categoria": "TV Lifestyle",
+   "url": "https://www.samsung.com/cl/lifestyle-tvs/the-serif/ls01d-55-inch-white-qn55ls01dagxzs/"
+  },
+  "F-SML34SMR640": {
+   "nombre": "Galaxy Watch9 (Bluetooth, 40 mm) Graphite + Galaxy Buds4 Pro Black",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/watches/galaxy-watch/watch-40mm-buds-graphite-f-sml34smr640/buy/"
+  },
+  "F-SML35SMR640": {
+   "nombre": "Galaxy Watch9 (Bluetooth, 44 mm) Graphite + Galaxy Buds4 Pro Black",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/watches/galaxy-watch/watch-44mm-buds-graphite-f-sml35smr640/buy/"
+  },
+  "F-SML71SMR640": {
+   "nombre": "Galaxy Watch Ultra2 Titanium Gray + Galaxy Buds4 Pro Black",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/watches/galaxy-watch/watch-ultra-buds-titanium-gray-f-sml71smr640/buy/"
+  },
+  "F-SMS948BEPT3": {
+   "nombre": "Galaxy S26 Ultra 256GB Pink Gold + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-2-pink-gold-256gb-with-power-adapter-60w-f-sms948bept3/buy/"
+  },
+  "F-SMS948BEPTY": {
+   "nombre": "Galaxy S26 Ultra 256GB Black + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-black-256gb-with-power-adapter-60w-f-sms948bepty/buy/"
+  },
+  "F-SMS948BEPTX": {
+   "nombre": "Galaxy S26 Ultra 256GB Sky Blue + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-256gb-sky-blue-sky-blue-256gb-with-power-adapter-60w-f-sms948beptx/buy/"
+  },
+  "F-SMS94EPT602": {
+   "nombre": "Galaxy S26 Ultra 1TB Black + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-black-1tb-with-power-adapter-60w-f-sms94ept602/buy/"
+  },
+  "F-SMS948BEPT4": {
+   "nombre": "Galaxy S26 Ultra 512GB Black + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-black-512gb-with-power-adapter-60w-f-sms948bept4/buy/"
+  },
+  "F-SMS94EPT606": {
+   "nombre": "Galaxy S26 Ultra 1TB Cobalt Violet + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-cobalt-violet-1tb-with-power-adapter-60w-f-sms94ept606/buy/"
+  },
+  "F-SMS948BEPT6": {
+   "nombre": "Galaxy S26 Ultra 256GB Cobalt Violet + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-cobalt-violet-256gb-with-power-adapter-60w-f-sms948bept6/buy/"
+  },
+  "F-SMS948BEPT7": {
+   "nombre": "Galaxy S26 Ultra 512GB Pink Gold + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-pink-gold-512gb-with-power-adapter-60w-f-sms948bept7/buy/"
+  },
+  "F-SMS948BEPT2": {
+   "nombre": "Galaxy S26 Ultra 256GB Silver Shadow + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-silver-shadow-256gb-with-power-adapter-60w-f-sms948bept2/buy/"
+  },
+  "F-SMS94EPT601": {
+   "nombre": "Galaxy S26 Ultra 512GB Silver Shadow + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-silver-shadow-512gb-with-power-adapter-60w-f-sms94ept601/buy/"
+  },
+  "F-SMS94EPT603": {
+   "nombre": "Galaxy S26 Ultra 1TB Sky Blue + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-sky-blue-1tb-with-power-adapter-60w-f-sms94ept603/buy/"
+  },
+  "F-SMS948BEPT1": {
+   "nombre": "Galaxy S26 Ultra 512GB Sky Blue + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-sky-blue-512gb-with-power-adapter-60w-f-sms948bept1/buy/"
+  },
+  "F-SMS948BEPT5": {
+   "nombre": "Galaxy S26 Ultra 1TB White + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-white-1tb-with-power-adapter-60w-f-sms948bept5/buy/"
+  },
+  "F-SMS94EPT605": {
+   "nombre": "Galaxy S26 Ultra 256GB White + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-white-256gb-with-power-adapter-60w-f-sms94ept605/buy/"
+  },
+  "F-SMS94EPT604": {
+   "nombre": "Galaxy S26 Ultra 512GB White + Adaptador de Corriente 60W",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-s/galaxy-s26-ultra-white-512gb-with-power-adapter-60w-f-sms94ept604/buy/"
+  },
+  "SM-F966BZKJCHO": {
+   "nombre": "Galaxy Z Fold7 256 GB | 12 GB Negro Intenso",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-z-fold7/buy/?SM-F966BZKJCHO"
+  },
+  "SM-F966BDBJCHO": {
+   "nombre": "Galaxy Z Fold7 256 GB | 12 GB Azul Intenso",
+   "categoria": "Familia (auto-descubierta)",
+   "url": "https://www.samsung.com/cl/smartphones/galaxy-z-fold7/buy/?SM-F966BDBJCHO"
+  },
+  "F-MRN85HWQ990": {
+   "nombre": "85\" Micro RGB R95H Smart TV (2026) + Soundbar<br> HW-Q990H 11.1.4 ch (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/micro-rgb/vd-bundle-tv-85-inch-with-soundbar-f-mrn85hwq990/"
+  },
+  "UN100M90HGXZS": {
+   "nombre": "100\" Mini LED M90H 4K Samsung Vision AI Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/mini-led-tv/m90h-100-inch-4k-smart-tv-un100m90hgxzs/"
+  },
+  "UN43U8000FGXZS": {
+   "nombre": "43\" Crystal UHD U8000F 4K Smart TV (2025)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/uhd-4k-tv/u8000f-43-inch-crystal-uhd-4k-smart-tv-un43u8000fgxzs/"
+  },
+  "MRN85R95HAGXZS": {
+   "nombre": "85\" Micro RGB R95H 4K Vision AI Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/micro-rgb/r95h-85-inch-4k-smart-tv-mrn85r95hagxzs/"
+  },
+  "MRN75R95HAGXZS": {
+   "nombre": "75\" Micro RGB R95H 4K Vision AI Smart TV (2026)",
+   "categoria": "Televisores",
+   "url": "https://www.samsung.com/cl/tvs/micro-rgb/r95h-75-inch-4k-smart-tv-mrn75r95hagxzs/"
+  }
+ },
+ "eventos": [
+  {
+   "ts": "2026-09-26T00:06:53.789Z",
+   "sku": "F-SMS948AR70F",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 1929980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-26T00:06:53.789Z",
+   "sku": "SM-R420NZAACHO",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 119990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-26T00:06:53.789Z",
+   "sku": "NP750XGJ-KS4CL",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 699990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-26T10:03:46.295Z",
+   "sku": "AJ100TXJ5KH/EA",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 2059990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-26T10:03:46.295Z",
+   "sku": "HW-B400F/ZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 79990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-26T10:03:46.295Z",
+   "sku": "WA22A8370GV/ZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 499990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-26T10:03:46.295Z",
+   "sku": "F-UN55MHWB400",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 489990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-26T20:07:15.965Z",
+   "sku": "AR70F24C1DW/ZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 779990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-26T20:07:15.965Z",
+   "sku": "QN65S95HAGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 1799990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-26T20:07:15.965Z",
+   "sku": "F-QN65SHWQ800",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 2139990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-27T20:35:11.525Z",
+   "sku": "AR40F18C0AM/ZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 429990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-28T11:42:05.408Z",
+   "sku": "QN65QN70HAGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 729990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-28T17:44:53.903Z",
+   "sku": "F-SMS948BAR70",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1689980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-28T17:44:53.903Z",
+   "sku": "F-SMS948AR70F",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1929980,
+   "degradado": true
+  },
+  {
+   "ts": "2026-09-28T17:44:53.903Z",
+   "sku": "SM-R420NZAACHO",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 119990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-09-28T22:35:12.445Z",
+   "sku": "QN65Q6FAAGXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 699990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-28T22:35:12.445Z",
+   "sku": "QN85QN70HAGXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1999990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T01:31:37.915Z",
+   "sku": "F-SMA27R90NZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 409980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T01:31:37.915Z",
+   "sku": "SM-A276BZBKLTL",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 279990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T11:23:00.793Z",
+   "sku": "AR70F24C1DW/ZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 779990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-09-29T11:23:00.793Z",
+   "sku": "F-RT25FWA4015",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 599980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T11:23:00.793Z",
+   "sku": "WA40F19E7CZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 389990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T11:23:00.793Z",
+   "sku": "F-WA4007RT22F",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 589980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T11:23:00.793Z",
+   "sku": "UN32H5000FGXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 169990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T11:23:00.793Z",
+   "sku": "MRN55R85HAGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 999990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T11:23:00.793Z",
+   "sku": "UN65M70HAGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 589990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T11:23:00.793Z",
+   "sku": "F-UN75MHWB450",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 839990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T11:23:00.793Z",
+   "sku": "QN65QN70HAGXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 729990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-09-29T11:23:00.793Z",
+   "sku": "F-QN50HWB450F",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 729980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T16:01:13.889Z",
+   "sku": "SM-A276BZBKLTL",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 279990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-09-29T16:42:02.019Z",
+   "sku": "F-SMA27EBU25Z",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 389980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T18:09:53.732Z",
+   "sku": "SM-A276BZKKLTL",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 279990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T18:09:53.732Z",
+   "sku": "SM-A276BZBKLTL",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 279990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-09-29T18:09:53.732Z",
+   "sku": "NP960UJH-XG2CL",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 3849990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-29T21:36:58.374Z",
+   "sku": "QN83S95FAEXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 3099990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T10:34:54.843Z",
+   "sku": "SM-X400NZRDCHO",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 494990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "AR70H12CAEB/ZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 650860,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "AR70H18CAEB/ZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 757154,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "AR70H24CAEB/ZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 902732,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "AR70F12C1DW/ZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 559990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "AR70F18C1DW/ZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 649990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "HW-B450F/ZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 129990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "HW-QS700F/ZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 239990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "WA90CG4240BYZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 209990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "WA13CG5441BWZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 279990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "WA15CG5441BWZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 319990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "WA17CG6441BWZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 339990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "WA19CG6441BWZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 379990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "WA40F15E4CZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 329990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "WA40F17E7CZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 359990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "WA80F21S8BZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 469990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "WA22A8370GV/ZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 499990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "WA24A8370GV/ZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 569990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "LC34G55TWWLXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 349990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "UN32H5000FGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 169990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "MRN75R85HAGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 1799990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T11:18:50.653Z",
+   "sku": "QN85QN70HAGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 1999990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-09-30T16:00:25.672Z",
+   "sku": "F-SMA27R90NZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 409980,
+   "degradado": true
+  },
+  {
+   "ts": "2026-09-30T16:00:25.672Z",
+   "sku": "SM-A276BZBKLTL",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 279990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-09-30T16:00:25.672Z",
+   "sku": "F-SMS948LS27L",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 1649980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T16:00:25.672Z",
+   "sku": "SM-X400NZRDCHO",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 494990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-09-30T16:41:58.903Z",
+   "sku": "F-SMA27R390NX",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 409980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-09-30T16:41:58.903Z",
+   "sku": "SM-A276BLIKLTL",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 279990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T00:45:24.502Z",
+   "sku": "F-SMR640NP750",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 924980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T00:45:24.502Z",
+   "sku": "NP750XGJ-KS4CL",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 699990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T02:12:12.929Z",
+   "sku": "NP750XGJ-KS4CL",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 699990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-01T06:09:53.493Z",
+   "sku": "F-SMR640NP750",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 924980,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-01T07:14:59.984Z",
+   "sku": "NP740VJG-KA2CL",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1349990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T11:40:56.705Z",
+   "sku": "LS27FG500SLXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 449990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T11:40:56.705Z",
+   "sku": "LS27D600UALXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 329990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T11:40:56.705Z",
+   "sku": "LS27H804EFAXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 679990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T11:40:56.705Z",
+   "sku": "MRN75R85HAGXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1799990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-01T11:40:56.705Z",
+   "sku": "QN85QN75HAGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 1499990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T11:40:56.705Z",
+   "sku": "QN75QN900FGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 1999990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T16:37:09.633Z",
+   "sku": "F-SMS948LS27L",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1649980,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-01T18:41:40.870Z",
+   "sku": "SM-A266MZKHLTL",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 379990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T18:41:40.870Z",
+   "sku": "SM-A266MLGDLTL",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 319990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T18:41:40.870Z",
+   "sku": "SM-A266MLGHLTL",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 379990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T18:41:40.870Z",
+   "sku": "SM-A266MZWDLTL",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 319990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T18:41:40.870Z",
+   "sku": "SM-L705FZS1CHO",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 399990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T18:41:40.870Z",
+   "sku": "SM-L500NZKALTA",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 519990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T18:41:40.870Z",
+   "sku": "NP750XGJ-KS2CL",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 799990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T19:28:33.528Z",
+   "sku": "SM-A266MZKDLTL",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 319990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T20:11:24.476Z",
+   "sku": "SM-L705FZB1CHO",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 399990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T20:11:24.476Z",
+   "sku": "SM-L330NZSACHO",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 239990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T20:11:24.476Z",
+   "sku": "SM-L500NZWACHO",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 519990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-01T21:33:51.757Z",
+   "sku": "F-SMR640NP750",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 924980,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-01T21:33:51.757Z",
+   "sku": "NP750XGJ-KS4CL",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 599990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-01T22:16:56.641Z",
+   "sku": "UN32H5000FGXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 159990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-02T01:32:51.140Z",
+   "sku": "F-SML34SMR602",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 674980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T01:32:51.140Z",
+   "sku": "F-SML35SMR64X",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 704980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T01:32:51.140Z",
+   "sku": "F-SML71SMR602",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1024980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T01:32:51.140Z",
+   "sku": "NP750XGJ-KS6CL",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 499990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T02:11:10.931Z",
+   "sku": "SM-X400NZRDCHO",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 299990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-02T02:56:59.785Z",
+   "sku": "SM-A576BLBFLTL",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 424990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T07:05:24.172Z",
+   "sku": "SM-A576BLBFLTL",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 424990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "AR50F09C1FH/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 725990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "AR50F12C1FH/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 749990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "AR50F18C1FH/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 879990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "AR50F24C1FH/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1055991,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "VC18M3110VB/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 69990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "VR7MD96514G/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 949990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "VR3MB77312K/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 467990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "VS70H25WLG/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 549989,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "VS15A60A1R5/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 262990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "VS20C8522TB/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 446990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "HW-Q600H/ZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 209990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "CTR264KC01/BG",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 305989,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "CTR432NB02/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 179990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "NK36M5070BS/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 389990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "NK24M1030IS/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 149990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "NX52A7422CS/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 536990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "NX24BG57413SZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 299990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "DV17B9750CV/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1299991,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "WD11M4473MW/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 489990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "WD95T4046CX/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 569990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "WD95T4046CE/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 449990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "WD25FB8690BEZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 2159990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "WA13CG5441BDZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 419990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "WA15CG5441BDZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 409990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "WA17CG6441BDZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 449990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "WA19CG6441BDZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 489990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "WA21CG6886BVZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 569990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "WD12T704DBX/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 599990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "WD12T704DBH/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 569990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "WD25DB8995BZZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 2349991,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "WF25B9600KV/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1139990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "MC32DG7646CKZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 199990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "MG22M8054AK/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 219990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "MG32DG4524ATZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 139990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "MS20A3010AL/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 57990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "LS24D300GALXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 79990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "LS24D400GALXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 119990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "LS55CG97WNLXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 2699990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "LS27FG500SLXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 449990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "LS24D600UALXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 239990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "LS34C650UALXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 399990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "LS32D700EALXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 299990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "LS27FM501ELXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 179990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "LS32FM501ELXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 209990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "RA-F18DU312GG",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 59990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "RS60T5200B1/ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1299991,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "RT38CG6720S9ZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 559990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "MNA110MS1ACXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 115699990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "UN65M70HAGXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 539990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "F-UN65MHWB450",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 679990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN55S85FAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1299991,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN65S85FAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1599990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN77S85FAEXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 2999990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN83S85FAEXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 3599990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN55S90DAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1519991,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN48S90FAEXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1299991,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN55S90FAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1599990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN65S90FAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 2199990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN65S95FAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 2399990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN77S95FAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 3799990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN83S95FAEXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 3099990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN77S95HAEXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 2499990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "F-QN55SHWQ600",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 1649990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN55Q6FAAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 579991,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN75Q6FAAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 959990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN85Q6FAAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1359990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN98Q7FAAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 2499990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN43Q8FAAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 529990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN50Q8FAAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 629990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN55Q8FAAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 729990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN65Q8FAAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 999990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN55QN1EFAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 949990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN65QN1EFAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1149990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN85QN70HAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1199990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN75QN80HAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 999990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN65QN900FGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1399990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN75QN900FGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1799990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN43QN90FAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 999990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN50QN90FAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1299991,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN55QN90FAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1599990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN65QN90FAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1999990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN85QN990FGXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 3099990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN85QN990HGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 6399990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "UN85DU7000GXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 1429990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "UN50U8000FGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 279990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "UN55U8000FGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 579991,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "UN65U8000FGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 679990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "UN70U8000FGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 749990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "UN75U8000FGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 899990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "UN85U8000FGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 749990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "UN55U8200HGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 349990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "UN58U8000HGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 399990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "UN65U8200HGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 479990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "UN70U8000HGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 599990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "UN75U8200HGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 649990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN98LS03HEGXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1999990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN55LS03HEGXZS",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 699990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN43LS01DAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 679990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN50LS01DAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 799991,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T11:19:56.333Z",
+   "sku": "QN55LS01DAGXZS",
+   "de": "agotado",
+   "a": "no-a-la-venta",
+   "precio": 869990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T15:54:36.793Z",
+   "sku": "F-SML34SMR640",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 674980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T15:54:36.793Z",
+   "sku": "F-SML34SMR602",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 674980,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-02T15:54:36.793Z",
+   "sku": "F-SML35SMR640",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 704980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T15:54:36.793Z",
+   "sku": "F-SML35SMR64X",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 704980,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-02T15:54:36.793Z",
+   "sku": "F-SML71SMR640",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 1024980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T15:54:36.793Z",
+   "sku": "F-SML71SMR602",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 1024980,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-02T20:05:33.779Z",
+   "sku": "SM-A576BLBFLTL",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 424990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-02T20:49:35.922Z",
+   "sku": "F-SMS948BEPT3",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1549990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-02T20:49:35.922Z",
+   "sku": "F-SMS948BEPTY",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1549990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SMS948BEPTX",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1549990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SMS94EPT602",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 2069990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SMS948BEPT4",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1799990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SMS94EPT606",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 2069990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SMS948BEPT6",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1549990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SMS948BEPT7",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1799990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SMS948BEPT2",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1549990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SMS94EPT601",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1799990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SMS94EPT603",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 2069990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SMS948BEPT1",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1799990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SMS948BEPT5",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 2069990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SMS94EPT605",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1549990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SMS94EPT604",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1799990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SML34SMR640",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 674980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SML34SMR602",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 674980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SML35SMR640",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 704980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SML35SMR64X",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 704980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SML71SMR640",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1024980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T00:18:11.600Z",
+   "sku": "F-SML71SMR602",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 1024980,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T10:38:54.306Z",
+   "sku": "SM-F966BZKJCHO",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 2199990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T10:38:54.306Z",
+   "sku": "QN85QN70HAGXZS",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 1199990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-03T10:38:54.306Z",
+   "sku": "QN65QN900FGXZS",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 1399990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-03T10:38:54.306Z",
+   "sku": "QN85QN990HGXZS",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 6399990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-03T14:21:52.181Z",
+   "sku": "SM-F966BDBJCHO",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 2199990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T15:46:06.717Z",
+   "sku": "SM-F966BDBJCHO",
+   "de": "agotado",
+   "a": "disponible",
+   "precio": 2199990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-03T20:06:54.109Z",
+   "sku": "SM-L330NZSACHO",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 239990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-03T20:06:54.109Z",
+   "sku": "SM-L500NZWACHO",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 519990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-03T20:06:54.109Z",
+   "sku": "F-MRN85HWQ990",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 3849990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T20:06:54.109Z",
+   "sku": "UN100M90HGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 1799990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-03T20:06:54.109Z",
+   "sku": "UN43U8000FGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 249990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-04T06:04:01.580Z",
+   "sku": "SM-F966BDBJCHO",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 2199990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-04T11:17:42.376Z",
+   "sku": "WA13CG5441BDZS",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 419990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-04T11:17:42.376Z",
+   "sku": "WA15CG5441BDZS",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 409990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-04T11:17:42.376Z",
+   "sku": "WA17CG6441BDZS",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 449990,
+   "degradado": true
+  },
+  {
+   "ts": "2026-10-04T11:17:42.376Z",
+   "sku": "MRN85R95HAGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 2199990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-04T11:17:42.376Z",
+   "sku": "QN65QN70HAGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 699990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-04T20:25:44.319Z",
+   "sku": "MRN75R95HAGXZS",
+   "de": "disponible",
+   "a": "agotado",
+   "precio": 2499990,
+   "degradado": false
+  },
+  {
+   "ts": "2026-10-05T00:02:42.904Z",
+   "sku": "SM-L705FZB1CHO",
+   "de": "no-a-la-venta",
+   "a": "agotado",
+   "precio": 399990,
+   "degradado": false
+  }
+ ]
+}

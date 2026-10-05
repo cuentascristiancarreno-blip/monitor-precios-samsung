@@ -507,9 +507,13 @@ async function main() {
     digitalDataSinAsentar,
     stockDeSelector,
     stockSinFuente,
-    // FRENO ANTI-PARPADEO (ver src/estabilidad.mjs). Los tres numeros los
-    // calcula una funcion PURA y PROBADA de comparar.mjs: aca queda una sola
-    // linea de cableado, que es todo lo que este archivo puede esconder.
+    // FRENO ANTI-PARPADEO (ver src/estabilidad.mjs). Los numeros los calcula una
+    // funcion PURA y PROBADA de comparar.mjs: aca queda una sola linea de
+    // cableado, que es todo lo que este archivo puede esconder. Desde el
+    // 2026-10-05 son siete: los tres del freno, los dos de los matices de stock
+    // y los dos de las lecturas retenidas por la guarda del rebote hacia arriba
+    // (`rebotesArribaRetenidos` es la señal de que el vaiven del 1-oct volvio a
+    // pasar: ver el pendiente nº3 de BITACORA.md).
     ...resumenDeRebotes({ cambios, catalogo, nuevosRebotando, timestamp }),
     sinPrecioProlongado: sinPrecioMomificados.length,
     // SKU cuyo precio guardado se corrigio en silencio porque lo que habia

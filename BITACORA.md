@@ -3655,3 +3655,1060 @@ ya los carga.
    cachear Playwright, medir `duracionPrincipalesMin`, contar las livianas
    descartadas, las 126 `/buy/` duplicadas, el precio de LISTA que la API entrega
    a las páginas de grupo, y la decisión sobre una tercera revisión completa.
+
+---
+
+# 2026-10-05 (Cyber) — El freno se comía reposiciones reales, una de cada cinco alertas no servía, y el vaivén volvió sin diagnóstico
+
+Encargo del operador en pleno Cyber Monday chileno. La maquinaria está sana (129
+revisiones, 0 errores, 0 no confiables, 504 bajas reales en la semana con mediana
+−14,3% y el 99% todavía firmes): los tres defectos son de **qué se le avisa**, no de
+cómo se mide. Y por ser temporada de ofertas, cada aviso perdido cuesta plata.
+
+Los tres están arreglados. Los dos primeros son del mismo módulo y del mismo error
+conceptual; el tercero tiene su defensa y **no tiene causa raíz**, y eso queda dicho
+con todas sus letras.
+
+> ⚠️ **ESTA ENTRADA TIENE NÚMEROS CORREGIDOS EL MISMO DÍA.** Tres verificaciones
+> independientes mostraron que las cifras del **historial completo** de esta entrada
+> se midieron con un clasificador que se dejaba afuera los 101 eventos de stock
+> anteriores al 2026-09-12 (los que solo traen los booleanos `disponible`), que el
+> código SÍ maneja. Los números de la SEMANA reproducen evento por evento; los del
+> historial no. Donde dice 241 cruces son **342**; donde dice 48 repeticiones son
+> **88**; donde dice "237 matices / 8 degradados" es **136 matices / 19 degradados**;
+> y el mínimo de 15,7 h es el del QUIEBRE, no el de la reposición (el de la
+> reposición es **20,44 h**). Además la ventana de 12 h de la reposición **se sacó**:
+> no degradaba ni un evento. Todo eso, con su medición, está en la entrada
+> **"2026-10-05 (segunda vuelta)"** al final de este archivo. Las correcciones van
+> marcadas abajo donde corresponde.
+
+## LA MEDICIÓN PREVIA, SIN RED, SOBRE EL REPO
+
+Ventana de la semana: 2026-09-28T23:59:59Z a 2026-10-05T23:59:59Z, sobre
+`data/history.jsonl` con el filtro real de notificables del repo (`esAccesorio` +
+`estaSilenciado`).
+
+```
+eventos notificables de la semana                 660
+  alertas FUERTES                                 590
+  degradadas por el freno                          70   (34 stock · 18 subas · 18 bajas)
+por tipo: baja 364 · stock 226 · sube 36 · desaparecido 21 · recuperado 7 · nuevo 6
+```
+
+Las cifras del encargo se reproducen casi exactas (590 alertas fuertes contra las
+592 que decía, 107 del par agotado↔no-a-la-venta contra 108). Donde el encargo mezcla
+crudo con filtrado, se dice cuál es cuál: la revisión del 2026-10-02T11:19 emitió
+**132 eventos de agotado→no-a-la-venta en crudo** y **89 notificables**, y el
+desglose por categoría del encargo (43 televisores, 14 de lavado y secado, 6
+aspiradoras, 6 monitores, 6 de cocina) es el de los 89.
+
+---
+
+## DEFECTO 1 — EL FRENO SE COMÍA REPOSICIONES REALES
+
+### Lo medido
+
+```
+avisos de reposicion ("volvio el stock") de la semana       73
+  salieron como ALERTA FUERTE                               58
+  salieron DEGRADADOS (linea chica)                         15
+de los 15, era la PRIMERA vez que ese producto volvia        14
+horas de disponibilidad real que esos 15 representan      1.018
+  ...de ellos, 10 duraron 24 h o mas y 8 seguian disponibles
+```
+
+Los 15, con las horas que estuvieron agotados antes y las que estuvieron
+disponibles después (medido evento a evento sobre `history.jsonl`):
+
+| SKU | agotado antes | disponible después |
+|---|---|---|
+| AR70F24C1DW/ZS (aire WindFree 24.000 BTU, $699.990) | 63,3 h | 144,9 h, sigue |
+| MRN75R85HAGXZS (75" Micro RGB R85H, $1.399.990) | 24,4 h | 96,6 h, sigue |
+| F-SMS948LS27L (S26 Ultra + Odyssey OLED G5, $1.346.490) | 24,6 h | 91,6 h, sigue |
+| QN65QN70HAGXZS (65" Neo QLED QN70H) | 23,7 h | 119,9 h |
+| LS27FG500SLXZS (monitor 27" Odyssey OLED G5, $449.990) | 23,6 h | 72,9 h, sigue |
+| UN65M70HAGXZS (65" Mini LED M70H, $539.990) | 71,9 h | 72,9 h, sigue |
+| SM-A276BZBKLTL (Galaxy A27 5G, $289.990) | 21,8 h | 116,2 h, sigue |
+| UN32H5000FGXZS (32" HD H5000F, $159.990) | 35,0 h | 86,0 h, sigue |
+| F-SMA27R90NZS | 38,5 h | 116,2 h, sigue |
+| SM-X400NZRDCHO (Tab S10 Lite) | 5,4 h | 34,2 h |
+| NP750XGJ-KS4CL (Book4) | 1,4 h | 19,4 h |
+| F-SMR640NP750 (Book 4 pack) | 5,4 h | 15,4 h |
+| SM-A576BLBFLTL (Galaxy A57 5G) | 4,1 h | 13,0 h |
+| SM-F966BDBJCHO (Z Fold7) | 1,4 h | 14,3 h |
+| SM-A276BZBKLTL (el segundo, 2ª vuelta) | 14,5 h | 2,1 h |
+
+### La causa, reproducida con el programa real
+
+**Es ESTRUCTURAL y es el mismo módulo que se celebró en la entrega del 2026-09-13.**
+`evaluarEstabilidad` recuerda, para cada magnitud, los valores que el operador "ya
+escuchó", y en la misma pasada recuerda **las dos puntas del cambio**:
+
+```js
+for (const valor of [anterior, nuevo]) recordar(m, valor, timestamp);
+```
+
+Para el PRECIO eso es correcto y está medido: hay cientos de valores posibles, el
+valor que se deja atrás es el que el catálogo venía diciendo, y volver a él dentro de
+72 h es una señal de vaivén. Para el STOCK **no hay cientos de valores: hay tres**
+(disponible, agotado, no-a-la-venta). Así que cuando un producto se agota el lunes
+—alerta fuerte, correcto— el freno anota "disponible" y "agotado" juntos, y 48 h
+después, cuando vuelve a haber stock, "disponible" ya está en la memoria: la
+reposición sale degradada **sin que haya habido ningún parpadeo**. Solo salía fuerte
+si el producto volvía pasadas las 72 h de la ventana. Dos de los 15 venían de 63,3 y
+71,9 h agotados: estaban a horas de la raya.
+
+**AGRAVANTE, también medido:** la línea chica de stock no llevaba **precio ni link**,
+que son las dos cosas que sí lleva la alerta fuerte. El mismo mensaje del 2026-10-02
+le dio el bloque completo al 98" The Frame y una línea pelada al monitor Odyssey
+OLED G5; la única diferencia era que el monitor se había agotado 23,6 h antes.
+
+### La regla nueva: el CRUCE DE FRONTERA, no el estado
+
+Para el stock, lo que cuenta como "ya te lo conté" dejó de ser el **estado** y pasó a
+ser **cruzar la frontera comprable ↔ no comprable** (`ladoDe`, que se apoya en
+`disponibleDe` de `src/stock.mjs`: "agotado" y "no está a la venta" son el mismo
+lado). Hay dos cruces posibles y **cada uno tiene su propio reloj**:
+
+```
+VENTANA_REPOSICION_HORAS = 12    (el cruce HACIA comprable)
+VENTANA_QUIEBRE_HORAS    = 72    (el cruce HACIA no comprable)
+```
+
+**La asimetría es deliberada y tiene su razón económica**, que es la regla de oro del
+encargo: una reposición es el único aviso de stock con el que el operador puede
+COMPRAR, y en Cyber un aviso de reposición perdido cuesta plata; un "se agotó"
+repetido no cuesta nada.
+
+**Y los dos números salen de medir, no de intuición.** Sobre los 478 eventos de stock
+notificables de todo el historial (2026-07-20 a 2026-10-05) hay 241 cruces de
+frontera y 48 casos en que el MISMO cruce se repite en el mismo SKU:
+
+```
+separacion entre repeticiones del mismo cruce:
+  minimo 15,7 h · p25 40,9 h · mediana 122,1 h · p75 210,6 h · maximo 360,8 h
+cubiertas por la ventana:  12 h -> 0 · 24 h -> 8 · 36 h -> 11 · 48 h -> 14 · 72 h -> 20 · 168 h -> 29
+```
+
+> ⚠️ **CORREGIDO (segunda vuelta del mismo día).** Este bloque está medido sobre el
+> subconjunto de eventos con los estados en texto, o sea desde el 2026-09-12. Con el
+> clasificador del código (`cruceDeStock`, que SÍ se cae a los booleanos) son **342
+> cruces** — 213 reposiciones y 129 quiebres — y **88 repeticiones**, repartidas así:
+>
+> ```
+> repeticiones de REPOSICION: n=52 · minimo 20,44 h · p25 143 h · mediana 337 h
+> repeticiones de QUIEBRE:    n=36 · minimo 15,70 h · p25 36 h  · mediana 62 h
+> cubiertas (las 88):  12 h -> 0 · 24 h -> 10 · 48 h -> 22 · 72 h -> 30
+> ```
+>
+> El mínimo de 15,7 h que esta entrada cita como "la reposición más rápida que
+> existe" es en realidad una repetición de QUIEBRE (SM-F966BDBJCHO, 2026-10-04). La
+> reposición más rápida que se repite está a **20,44 h** (NP750XGJ-KS4CL,
+> 2026-08-15). La conclusión se sostiene y sobra, pero la evidencia citada era de la
+> otra mitad de la frontera.
+
+- **12 h para la reposición:** NINGUNA reposición real del historial se repitió tan
+  rápido, así que la ventana no le quita el aviso fuerte a ninguna reposición medida.
+  Incluye el caso límite: el Galaxy A27 5G volvió a los **23,99 h** del cruce
+  anterior, y con una ventana de 24 h habría seguido saliendo degradado — es el único
+  de los 15 que no era "la primera vez". Es un PISO contra una página que alterne
+  dentro de la misma jornada, no una regla que se aplique al catálogo de hoy.
+  **→ ESTA VENTANA SE SACÓ** en la segunda vuelta: no degradaba NI UN evento en 2,5
+  meses (las 213 reposiciones salían fuertes las 213), y era el único freno aplicado
+  al único aviso de stock accionable. Hoy la reposición **nunca** se degrada.
+- **72 h para el quiebre:** es donde se aplana la curva (96 h agrega 1 caso de 48) y
+  cubre un fin de semana entero. **→ con todos los eventos, 96 h agrega 2 casos de
+  los 22 de 48 h; la conclusión es la misma.**
+
+### Las reglas candidatas que se descartaron, con su medición
+
+Se replayearon los 241 cruces del historial con cinco reglas distintas. La columna
+que decide es "de los 15 PERDIDOS", porque el encargo fija que los 15 tienen que
+salir fuertes:
+
+| regla | fuertes | degradados | de los 15 perdidos | reposiciones fuertes de la semana |
+|---|---|---|---|---|
+| HOY (valor ya visto, 72 h) | 186 | 55 | **15** | 58/73 |
+| mismo cruce ≤ 72 h | 221 | 20 | 2 | 71/73 |
+| mismo cruce ≤ 24 h | 233 | 8 | 1 | 72/73 |
+| 3er cruce o más en ≤ 24 h | 233 | 8 | 1 | 72/73 |
+| mismo cruce ≤ 18 h | 237 | 4 | 0 | 73/73 |
+| **asimétrica (12 h / 72 h)** | **233** | **8** | **0** | **73/73** |
+
+Se descartó la simétrica de 12 h (degrada 0 eventos en 2,5 meses: el freno de stock
+quedaría como código muerto) y la de 18 h (número sin más respaldo que un dato, y
+degrada solo 4). La asimétrica es la única que da 0 perdidos **y** sigue
+compactando lo que de verdad parpadea.
+
+**Lo que NO se puede separar mirando la forma, dicho con todas sus letras:** la
+duración del estado anterior no distingue un parpadeo-bug de una reposición real. De
+los 15, cuatro venían de 1,4 a 5,4 h agotados, igual que el vaivén del A36. Es la
+misma conclusión que el proyecto ya había escrito para el precio el 2026-09-13
+("la forma de un parpadeo-bug y la de una promo real son la MISMA"), así que la
+decisión no es qué callar sino **cómo contarlo**, y ahora además **qué unidad contar**.
+
+### El resultado, medido
+
+```
+semana del Cyber, avisos de reposicion:   58 fuertes + 15 degradados  ->  73 fuertes + 0
+semana del Cyber, avisos de "se agoto":   35 eventos  ->  29 fuertes + 6 degradados
+de los 34 avisos de stock degradados de la semana:
+   6 eran parpadeo DE VERDAD (el mismo cruce repetido dentro de su ventana)
+  11 pasan a MATIZ (no cruzan la frontera: ver defecto 2)
+  17 eran NOVEDAD y se estaban perdiendo
+historial completo (478 eventos de stock):  412 fuertes / 66 degradados
+                                        ->  233 fuertes / 8 degradados / 237 matices
+el unico parpadeo de stock DIAGNOSTICADO del proyecto (el A36 del 2026-09-12/14,
+que resulto ser el selector de grupo de su /buy/): sus 7 cruces dan 4 fuertes y
+3 compactos, o sea el freno sigue haciendo su trabajo donde hace falta.
+```
+
+> ⚠️ **CORREGIDO (segunda vuelta).** Las cifras de la SEMANA reproducen evento por
+> evento con `comparar()` real; las del historial completo no. Medido con el
+> clasificador del código, replayando `evaluarEstabilidad` por SKU sobre los 478
+> eventos: **403 fuertes / 75 degradados → 323 fuertes / 19 degradados / 136
+> matices**, y los 19 degradados son TODOS quiebres repetidos (0 reposiciones). El
+> A36 da **5 fuertes y 2 compactos** de sus 7 cruces, no 4 y 3 (sus reposiciones se
+> repiten a 22,65 h y 26,34 h, o sea que el piso de 12 h nunca las tocó).
+
+**Y la línea compacta de stock ahora lleva precio y link.** Son pocas (8 en 2,5 meses
+con la regla nueva), así que no amenazan el presupuesto de largo del mensaje.
+**→ son 19, no 8** (ver la corrección de arriba), y 19 líneas en 2,5 meses siguen sin
+amenazar nada. Lo que faltaba era otra cosa: ese precio ahora lleva **su advertencia**
+cuando la página lleva revisiones sin publicarlo (ver la segunda vuelta).
+
+---
+
+## DEFECTO 2 — UNA DE CADA CINCO ALERTAS NO SERVÍA PARA NADA
+
+### Lo medido
+
+```
+alertas FUERTES de la semana                                   590
+  que avisan agotado -> no-a-la-venta o al reves               107   (18,1%)
+eventos del par en la semana (fuertes + degradados)            118   (103 + 15)
+de ellos, en UNA sola revision (2026-10-02T11:19)               89 notificables (132 en crudo)
+  por categoria: 43 televisores · 14 lavado y secado · 6 aspiradoras
+                 · 6 monitores · 6 cocina · 4 aire · 4 microondas · 3 refrigeradores
+                 · 3 TV Lifestyle
+historia semanal del par (notificables, desde el 2026-07-20):  12 · 5 · 1 · 0 · 117 · 1
+```
+
+**No es una lectura mala:** 124 de los 132 seguían en "no está a la venta" tres días
+después. Samsung cambió algo de verdad. **Es nuevo**, y entraba por una puerta que el
+freno no podía cubrir: "no-a-la-venta" era un estado no visto en 72 h, o sea NOVEDAD
+por diseño.
+
+### El arreglo
+
+El operador **pidió distinguir los dos estados** y se siguen distinguiendo: en el
+catálogo, en `history.jsonl` y en el mensaje, que escribe los dos. Lo que cambia es
+que la **TRANSICIÓN entre dos formas de "no se puede comprar" deja de merecer una
+alerta fuerte**: `esMatizNoComprable` la marca `matiz: true` y sale como una línea
+compacta en su propia sección, **📦 Siguen sin poder comprarse (cambió el motivo, no
+la disponibilidad)**.
+
+Tres decisiones del arreglo, cada una con su razón:
+
+1. **Sección propia, NO la de los rebotes.** Meterla bajo "🌀 Siguen rebotando (ya te
+   los avisé, no es novedad)" sería falso: no es un vaivén, es un cambio real del
+   sitio que no mueve la frontera.
+2. **Sin precio ni link, a propósito** (al revés que el rebote de stock): no hay nada
+   que comprar.
+3. **Tampoco sale EN VIVO.** Sin esa línea en `esParaVivo`, los 89 de la revisión del
+   2-oct habrían salido igual, uno por uno, minutos antes de que el resumen los
+   agrupara — que es exactamente el mutante que sobrevivió en la entrega del freno
+   del 2026-09-13.
+
+**Se comprobó que NO se silencia ninguna de las dos cosas que el operador no puede
+perder:** "se agotó" y "volvió el stock" cruzan la frontera y salen fuertes siempre, y
+eso lo fija una prueba sobre la semana real (35 y 73 eventos).
+
+---
+
+## DEFECTO 3 — EL VAIVÉN DEL 1 DE OCTUBRE: SIN CAUSA RAÍZ, CON DEFENSA
+
+### Lo reconstruido (history.jsonl + historial de git de latest.json + ejecuciones.jsonl)
+
+```
+2026-10-01T16:37:09Z   bajan 26 productos  (la oferta real del Cyber)
+2026-10-01T17:20:12Z   16 de esos "suben" a su precio EXACTO de antes
+2026-10-01T18:00:16Z   los 16 "bajan" otra vez al precio de oferta EXACTO
+```
+
+Los 16 son 16 de las 26 bajas del 16:37. Serie del precio GUARDADO, sacada de los
+snapshots de git de `data/latest.json` (los 16 se mueven juntos, en bloque):
+
+```
+14:01 y 16:16   el precio de antes (ej. Tab S10 Lite 494.990)
+17:18           el de oferta       (299.990)
+17:59           el de antes OTRA VEZ  <- la corrida de las 17:20
+18:40 en adelante, 14 snapshots seguidos: el de oferta
+```
+
+**¿Qué tienen en común las 16 páginas?** Lo que importa es lo que **no** tienen:
+
+```
+paginas distintas                                  16   (11 /buy/ + 5 fichas planas)
+categorias distintas                                5   (3 tablets, 5 audio, 4 relojes, 2 notebooks, 2 familia)
+rango del registro                                  3   (su propia ficha) en los 16
+subes que vuelven EXACTO al precio de antes     16/16
+hoy (4 dias despues) en el valor BAJO o mas abajo 16/16 · en el ALTO: 0
+```
+
+O sea: **no es una página contaminando a las otras** (son 16 páginas distintas), **no
+es el camino del selector de grupo** (5 son fichas planas y las 16 son rango PROPIA),
+y **no es un movimiento de Samsung** (ninguno quedó en el valor alto).
+
+**Los contadores de diagnóstico de la corrida del medio:**
+
+```
+17:20  paginas 346 · errores 0 · confiable true
+       digitalDataSinAsentar: 1 · sinPrecioVisible: 1 · precioCongelado: 5
+       bajas 2 · subes 16 · avisosDegradados 16 · productosRebotando 29
+```
+
+**UNA página marcada, y una página no explica 16 productos en 16 páginas distintas.**
+La defensa de hidratación del 2026-09-13 espera a que `list_price` llegue; eso
+descarta el camino conocido para 15 de los 16.
+
+### LA CAUSA RAÍZ NO ESTÁ DIAGNOSTICADA, Y NO SE INVENTA NINGUNA
+
+Quedan dos hipótesis y **no se pueden distinguir sin red**, porque producen
+exactamente la misma lectura:
+
+1. **digitalData publicando `model_price === list_price === el precio de lista`**, o
+   sea la página con la promoción todavía sin aplicar. En ese estado `dosCandidatos`
+   es `false` y **todas las guardas se bajan por diseño**: el bloque ilegible no
+   bloquea nada (sin dos números distintos no hay carrera posible, es la regla del
+   2026-09-12), y no hay etiqueta "Precio original" que delate el número, porque una
+   página sin promoción no escribe ninguna. Es consistente con los 16.
+2. **Samsung sirviendo ~40 min la página sin la promoción aplicada**, que es lo que
+   explicaría que los 16 se muevan en bloque y vuelvan en bloque.
+
+Las dos dejan el mismo rastro en el catálogo y en el historial. Lo que las separaría
+es ver la respuesta de `api.shop.samsung.com` **en ese instante**, y ese instante
+pasó. Dicho sin adornos: **no se sabe**.
+
+### La defensa, que cubre el SÍNTOMA
+
+`reboteArribaReciente` (src/estabilidad.mjs) + una condición en la rama de precio de
+`evaluarObservado`: **un rebote HACIA ARRIBA que llega a menos de 2 h del cambio que
+deshace no se adopta ni se avisa con una sola lectura.** Queda `precioPendiente` y
+necesita que la lectura siguiente de la MISMA página lo repita — la maquinaria de
+corroboración que ya existía para los cambios que vienen de otra fuente. Si en vez de
+repetirse vuelve el precio guardado, el pendiente muere solo: ni aviso, ni número malo
+en el catálogo.
+
+**Las tres condiciones, y por qué cada una:**
+
+1. **Sube.** Un cambio hacia abajo es una oportunidad de compra y se sigue avisando al
+   instante, rebote o no. Regla de oro del encargo.
+2. **Va a un valor ya conocido.** Un valor nuevo es indistinguible de un cambio real.
+3. **A menos de `HORAS_MIN_REBOTE_ARRIBA` = 2 h** del cambio anterior de ese SKU
+   (`rebotePrecio.hasta`, que se refresca con cada cambio emitido).
+
+**EL UMBRAL ESTÁ MEDIDO.** De los 1.598 eventos de precio notificables del historial
+completo, 119 son rebotes hacia arriba. Ordenados por el tiempo transcurrido desde el
+cambio de precio anterior del mismo SKU:
+
+```
+0,72 h  ->  17 eventos   (los 16 del 17:20 + SM-A075MLVGLTL del 22:16)
+2,55 h  ->  el siguiente mas rapido (el A36 y el monitor Odyssey G3)
+p25 2,93 h · mediana 4,26 h · p75 13,47 h
+```
+
+Hay un **hueco limpio** entre 0,72 h y 2,55 h, y los 17 que caen abajo son
+exactamente los dos episodios que una medición INDEPENDIENTE marcó como lecturas
+malas: los avisos cuya base resultó revertida por la lectura siguiente. 2 h deja 1,8 h
+de margen contra el rebote hacia arriba real más rápido que existe, y es del orden de
+tres revisiones (las tres corridas del vaivén fueron 16:37, 17:20 y 18:00).
+
+**El costo, medido:** 17 de 1.598 eventos quedan a la espera de una lectura. Bajas
+afectadas: **0**. Y nada queda congelado: el monitor Odyssey G3, con sus 58 cambios
+reales en 30 días, nunca vuelve a un valor en menos de 2,55 h, así que sus 58 avisos
+salen los 58 (compactos cuando repiten, con el precio de hoy).
+
+### Lo que esta defensa NO cubre, y queda escrito como prueba
+
+El encargo lo dice con todas sus letras: *"si la próxima vez el salto cae a un valor
+NUEVO, va a salir como alerta fuerte FALSA"*. **Esta guarda no lo cubre y no puede**:
+un número que nadie escuchó antes es indistinguible de un cambio real de Samsung. Hay
+una prueba dedicada (`una subida a un precio NUEVO no se frena, y eso es el límite
+conocido de la defensa`) para que nadie lea el arreglo y crea que ese caso está
+tapado.
+
+### Una guarda que escribí y saqué, con su razón
+
+Al mandar los rebotes hacia arriba al mismo `else` que los cambios de otra fuente,
+pensé que la rama de `UMBRAL_PRECIO_OTRA_FUENTE` podría empezar a emitir avisos
+etiquetados "precio leído desde otra página del sitio" para cambios de la MISMA
+página, o sea una mentira. Escribí la guarda `mismaFuente(...) ? {} : {...}` y después
+lo comprobé: **es imposible**. Esa rama exige 6 h desde `precioDistintoDesde`, y ese
+ancla se borra con cualquier emisión (`olvidarPrecioDistinto` está en las tres ramas
+que avisan), así que 6 h sin emitir son 6 h sin refrescar `rebotePrecio.hasta` — y la
+guarda nueva exige que ese instante tenga 2 h o menos. La saqué: era código muerto que
+ningún mutante podía matar.
+
+---
+
+## EL REPARO MÁS CHICO: LAS ALERTAS QUE MIDEN CONTRA EL TACHADO
+
+El encargo lo midió en 10 de las 346 alertas de precio de la semana. **Con la firma
+observable que pude construir offline no reproduje esa cifra**, y lo digo en vez de
+inventar una coincidencia: busqué las alertas cuya base (`precioAnterior`) había sido
+puesta por una lectura que la lectura siguiente desmintió, y me dieron **18, no 10** —
+y las 18 son el vaivén del 1-oct (16 del 18:00 + 2 de otras corridas), ninguna de
+ellas alerta fuerte (las 18 salieron degradadas).
+
+```
+2026-10-01T18:00  NP750XGJ-KS6CL  base=649990 (la real era 499990) -> 499990
+2026-10-01T18:00  SM-L500NZKACHO  base=519990 (la real era 329990) -> 329990
+2026-10-01T18:00  SM-X400NZRDCHO  base=494990 (la real era 299990) -> 299990
+...y 15 mas
+```
+
+**El arreglo del defecto 3 elimina el mecanismo de las 18**: el número mal leído ya no
+se adopta, así que la lectura siguiente no tiene contra qué medir mal. Lo que **no**
+queda cerrado es el caso que el encargo describe y que yo no pude aislar offline — un
+aviso cuyo `precioAnterior` es el precio TACHADO leído de la propia página, sin que
+ninguna lectura posterior lo desmienta. **Queda medido como pendiente** (nº 4 de abajo)
+con la aclaración de que la firma que usé no es la misma que usó el encargo.
+
+---
+
+## VERIFICACIÓN
+
+- **`npm test`: 619 → 650 verdes, 0 fallas.** La línea base de 619 nunca baja. Dos
+  archivos nuevos: `test/stock-frontera.test.mjs` (22) y
+  `test/vaiven-adopcion.test.mjs` (9).
+
+- **LA PRUEBA QUE MÁS IMPORTA: la semana REAL del Cyber reproducida con `comparar()`
+  de verdad.** `test/fixtures/stock-semana-cyber.json` es una foto congelada de los
+  243 eventos de stock notificables de `data/history.jsonl` entre el 2026-09-26 (72 h
+  antes de la semana, para que la memoria del freno llegue caliente) y el 2026-10-05,
+  con el producto, su precio y su URL. Lo observado es una **reconstrucción** y se
+  dice: un cambio de stock necesita dos observaciones seguidas para confirmarse, así
+  que cada evento se sirve dos veces — una a ts−1 min y otra en el ts REAL, que es el
+  que emite. Las exigencias:
+  - los **73** avisos de reposición de la semana salen como alerta fuerte (eran 58), y
+    **los 15 del encargo se comprueban uno por uno, por SKU y por hora**, con su
+    **precio** y su **link**;
+  - los **118** avisos de agotado↔no-a-la-venta salen **0** como alerta fuerte y 118
+    como matiz, con los **89** de la revisión del 2026-10-02T11:19 verificados aparte;
+  - **lo detectado y lo entregado siguen siendo lo mismo**: 250 y 250, ningún aviso
+    silenciado;
+  - los 35 "se agotó" dan 29 fuertes y 6 compactos, o sea el freno no quedó muerto.
+
+- **El vaivén del 1-oct, con `comparar()` real** sobre `test/fixtures/vaiven-1-oct.json`
+  (los 16 productos con sus cuatro precios reales y los contadores de las tres
+  corridas): las 26 bajas de la oferta salen fuertes, la corrida del medio emite **0
+  avisos y deja el precio de oferta en el catálogo** con el número malo en
+  `precioPendiente`, y la tercera emite **0**. De 58 eventos (26+16+16) a **16**. Su
+  contraparte también verde: si la subida se repite desde la misma página, se avisa en
+  la lectura siguiente, sin la etiqueta de "otra página".
+
+- **MUTANTES: 27 corridos, uno por vez, sobre una copia FUERA DEL ÁRBOL (src + test +
+  fixtures + workflows + README + BITACORA), suite entera, restaurando después.
+  MUEREN LOS 27.** Cubren: el lado de la frontera (que "no está a la venta" vuelva a
+  ser su propio lado), borrar la rama del matiz, cada una de las dos ventanas movida,
+  el cruce sin refrescar, la memoria sin podar por lado, la memoria vieja traducida a
+  cruces, el contador heredado sobreviviendo, `rebotesDe` contando memorias
+  heredadas, el matiz entrando a la memoria, el cruce ilegible dado por conocido, el
+  matiz saliendo en vivo, el matiz dibujado como rebote, la sección sin mandarse, el
+  matiz perdiendo un estado, el rebote de stock sin precio ni link, el contador de
+  matices clavado en cero, `rebotesDe` podando con una sola ventana, la línea sin
+  decir cuántas veces, `ventanaDe` devolviendo siempre la del precio, la guarda del
+  rebote hacia arriba borrada / simétrica / sin exigir valor conocido / sin reloj /
+  con el umbral en 24 h / mirando el reloj equivocado, y el rebote hacia arriba
+  adoptándose aunque no se avise.
+  - **En la primera pasada sobrevivieron 7 y los 7 tenían algo que decir.** Cuatro
+    eran huecos de prueba de verdad (el refresco del cruce, el cruce ilegible, la
+    ventana de `rebotesDe` y `ventanaDe`) y se les escribió su prueba. Dos eran
+    **equivalentes honestos** y se dicen: `rebotesDe` podando con 72 h en vez de
+    `mag.ventanaMax` da hoy el mismo resultado porque `VENTANA_STOCK_MAX` también es
+    72, y la guarda `h !== null` de `reboteArribaReciente` es **redundante por
+    construcción** (si el instante no se puede medir, la poda ya dejó la lista de
+    valores vacía y la función sale antes). El séptimo era mi propia guarda de
+    `desdeOtraFuente`, que resultó ser código muerto y se borró (ver más arriba).
+
+- **Las 4 aserciones viejas que cambiaron, y las 4 fijaban el comportamiento
+  equivocado.** Queda escrito en el archivo, al lado de cada una:
+  - *"A36 stock: 1 alerta fuerte"* → **2**. El A36 cruza la frontera tres veces y las
+    dos primeras son novedades distintas ("se agotó" y "volvió el stock" no son el
+    mismo aviso, y con el segundo se puede comprar).
+  - *"Z Flip7 FE stock: 1"* y *"Z Flip6 stock: 1"* → **0**. Sus cinco cambios van de
+    "agotado" a "no está a la venta" y al revés: son matices, salen compactos.
+  - *"una reposición diaria de 7 días: solo la primera es alerta fuerte"* → **las 7**.
+    Siete reposiciones separadas 24 h son siete oportunidades de compra, no un rebote.
+  - *"un rebote de STOCK no lleva precio"* → **sí lo lleva, y el link también**. Y su
+    material pasó a ser un cruce repetido de verdad: el que tenía
+    (`no-a-la-venta → agotado`) ya no es un rebote sino un matiz, y tiene su prueba.
+  - Una aserción más cambió de FORMA sin cambiar de exigencia: la memoria de stock de
+    `test/freno-parpadeo.test.mjs` pasó de `v: [estados]` a `c: {cruce: instante}`.
+
+- **LA MIGRACIÓN ES SILENCIOSA POR CONSTRUCCIÓN, y está medida.** La memoria de stock
+  cambia de forma y una memoria vieja se lee como **vacía**, así que la primera
+  corrida con este código **no degrada ningún cambio de stock**: el efecto solo puede
+  ir hacia MÁS alertas fuertes. Y su contador tampoco sobrevive — lo contó una regla
+  retirada —, porque si no la primera corrida mandaba un aviso técnico nombrando ~17
+  productos "rebotando" según esa regla (**lo midió la corrida real del pipeline**:
+  `productosRebotando` 17 → 2 al arreglarlo). Cota de la primera corrida sobre el
+  catálogo real: de 1.086 registros, **5** tienen un `stockPendiente` notificable que
+  podría confirmarse, y son **3 matices** (que pasan a compactos) y **2 cruces** (que
+  salen fuertes, igual que hoy). `precioPendiente` hoy: **0 registros**. No hay tanda.
+  - 190 de los 1.086 registros traen la memoria vieja; se reescribe sola en cuanto
+    cada SKU tenga su próximo cambio de stock.
+
+- **PIPELINE REAL (`src/run.mjs` entero) EN LOS DOS MODOS**, contra copias del
+  catálogo real en carpetas temporales (`CARPETA_DATOS`, `LIMITE_PAGINAS=2`,
+  `SIN_DESCUBRIMIENTO=1`, `VIVO=0`, `env -u DISCORD_WEBHOOK_URL`):
+  - **completo**: 2 páginas, `alcance: "todo"`, 0 errores, **0 eventos**,
+    `history.jsonl` ni se creó, y el resumen trae el campo nuevo
+    (`avisosMatizStock: 0`) junto a los tres del freno. `confiable: false` por el
+    límite de páginas, que es lo correcto.
+  - **liviano**: 2 páginas, `alcance: "principales"`, `noVerificadosPorAlcance: 1085`,
+    0 errores, **0 eventos**, y **1 de 1.086 registros cambió** (el único observado).
+  - **liviano CON DOS REBOTES SEMBRADOS a propósito** en la copia (un cruce de
+    reposición ya en la memoria a 1 h de distancia, y el precio guardado un valor más
+    bajo con el de la página ya conocido a 1 h): `avisosDegradados: 1`,
+    `productosRebotando: 2`, `productosNuevosRebotando: 1`,
+    `INFO freno_parpadeo nuevos=1 degradados=1`, la línea de `history.jsonl` con
+    `"rebote":true,"ladoRebote":"comprable","vecesRebotado":1`, **y el precio
+    conservado en 429.980 con `precioPendiente: 479.980`** — o sea las dos piezas
+    nuevas funcionando por el cableado real de `run.mjs`, que es justo el hueco que
+    `npm test` no puede cubrir.
+  - **y la corrida siguiente**, con la misma página publicando otra vez el valor alto:
+    `subes: 1`, el precio adoptado en 479.980 y el aviso degradado. **El atraso es de
+    una lectura, no un silencio**, comprobado en el pipeline real.
+
+- **POLÍTICA DE SCRAPING: 10 páginas de samsung.com en todo el encargo** (5 corridas
+  de pipeline × 2 páginas), UA `CazadorBot/1.0`, y **`DELAY_MS` subido a 5.000 SOLO EN
+  LA COPIA** porque había una revisión de producción en curso (verificado con
+  `gh run list`: run 37308000451 `in_progress`). **Cero requests extra**: toda la
+  medición y toda la calibración salieron de `data/` y del historial de git. **Jamás
+  se tocó el webhook real** (`env -u DISCORD_WEBHOOK_URL` en cada corrida).
+
+- **`data/` del repo INTACTA**: los md5 de los 5 archivos son idénticos a los del
+  principio (`latest` 17eea3cf…, `history` bcd6c4f2…) y `git status --porcelain data/`
+  está vacío. **No se commiteó nada.**
+
+## PENDIENTES
+
+> ⚠️ **ESTA LISTA QUEDÓ DESACTUALIZADA EL MISMO DÍA.** La manda la de la entrada
+> **"2026-10-05 (segunda vuelta)"**, al final del archivo. Tres de estos cambiaron:
+> el nº2 ("8 rebotes de stock en 2,5 meses") es **19**, y usar 8 como línea de base
+> habría hecho que el comportamiento NORMAL pareciera un parpadeo nuevo; el nº3
+> mandaba a mirar `avisosDegradados`, que con esta defensa puesta **se queda en 0**
+> justo en el caso que hay que detectar (ahora hay un contador propio,
+> `rebotesArribaRetenidos`); y el nº5 ya no aplica, porque la ventana de la
+> reposición se sacó del todo.
+
+1. **MIRAR `avisosMatizStock` LA PRIMERA SEMANA.** Es el contador nuevo. Si se queda
+   alto todos los días, Samsung está moviendo de verdad medio catálogo entre
+   "agotado" y "no está a la venta" y vale la pena preguntarse por qué; si cae a casi
+   0, la ola del 2-oct fue un evento puntual. El número de referencia es **118 en la
+   semana del Cyber, 89 de ellos en una sola revisión**.
+2. **MIRAR `productosRebotando` DE STOCK.** Con la regla nueva el historial completo
+   da 8 rebotes de stock en 2,5 meses. Si aparecen muchos más, hay un parpadeo nuevo
+   sin diagnosticar — la sección compacta lo ordena, pero ordenar no es arreglar.
+3. **LA CAUSA DEL VAIVÉN DEL 1-OCT SIGUE SIN DIAGNOSTICAR**, y la defensa no cubre el
+   caso del valor NUEVO. Lo que haría falta es **capturar en vivo, en una ficha con
+   oferta, la respuesta de `api.shop.samsung.com` y digitalData muestreados cada 250
+   ms**, buscando el estado `model_price === list_price === precio de lista`. Es una
+   medición de 2 a 4 páginas y hay que hacerla cuando el sitio esté libre. Mientras no
+   se haga, el aviso de que volvió a pasar es `avisosDegradados` subiendo de golpe en
+   una sola corrida.
+4. **EL REPARO DEL PRECIO TACHADO QUEDA MEDIDO, NO ARREGLADO** (ver arriba): con mi
+   firma dieron 18 alertas y las 18 son el vaivén del 1-oct, que este arreglo elimina.
+   El caso que el encargo describe —10 alertas fuertes midiendo contra el tachado sin
+   que nada las desmienta— **no lo pude aislar offline**, y confundirlo con las 18
+   habría sido inventar una coincidencia. Hace falta la firma que usó el encargo, o
+   una captura en vivo del `precioTachado` de esas fichas.
+5. **LA VENTANA DE 24 h PARA LA REPOSICIÓN queda como la palanca** si el ruido de
+   reposiciones repetidas apareciera: degradaría 8 cruces más en 2,5 meses, a cambio
+   de volver a perder el caso del Galaxy A27 5G (volvió a los 23,99 h). No se tomó
+   justamente por ese caso.
+6. Siguen los pendientes anteriores: rotar `history.jsonl` antes de los 50 MB, cachear
+   Playwright, medir `duracionPrincipalesMin`, contar las livianas descartadas, las
+   126 `/buy/` duplicadas, el precio de LISTA que la API entrega a las páginas de
+   grupo, la decisión sobre una tercera revisión completa, y el agujero de "la corrida
+   nunca nace".
+
+---
+
+# 2026-10-05 (segunda vuelta) — El freno de la reposición no frenaba nada, los números del historial estaban medidos con otro clasificador, y la señal de vigilancia del vaivén se quedó muda
+
+Tres verificaciones independientes revisaron la entrega de la mañana. **Las tres
+coincidieron en lo mismo que importa: los tres defectos del encargo están de verdad
+arreglados y no se silencia ningún aviso.** Lo que encontraron son 15 defectos
+propios de la entrega, y **todos los medí yo de nuevo antes de tocar nada**, porque
+dos de ellos contradecían números que yo mismo había escrito.
+
+La conclusión incómoda, y va primero: **las cifras del HISTORIAL COMPLETO de la
+entrada anterior estaban mal, y el error no era de redondeo.** Mi script de medición
+leía `e.estado`/`e.estadoAnterior` a mano, y 101 de los 478 eventos de stock del
+historial (los anteriores al 2026-09-12) solo traen los booleanos `disponible`. El
+código **sí** los maneja (`estadoDelCambio` cae a los booleanos), mi medición no. Los
+101 quedaron contados como "matices" cuando son CRUCES de frontera, y 76 de ellos son
+REPOSICIONES. De ahí salían los 241 cruces (342 − 101) y los 237 matices (136 + 101).
+
+---
+
+## LO QUE MEDÍ DE NUEVO, CON EL CLASIFICADOR DEL CÓDIGO
+
+Sin red, sobre `data/history.jsonl`, con `cruceDeStock` / `esMatizNoComprable` /
+`esNotificable` del repo:
+
+```
+eventos de stock notificables (2026-07-20 a 2026-10-05)        478
+  cruces de frontera                                           342   (213 reposiciones · 129 quiebres)
+  matices (no cruzan)                                          136   (113 "sale de venta" · 23 "vuelve al catalogo")
+  ilegibles                                                      0
+eventos del esquema viejo (solo booleanos)                     101   (los que mi medicion anterior dejo afuera)
+
+repeticiones del MISMO cruce, por SKU:                          88
+  de REPOSICION   n=52 · min 20,44 h · p25 143 h · mediana 337 h · max 1.640 h
+  de QUIEBRE      n=36 · min 15,70 h · p25  36 h · mediana  62 h · max   830 h
+  cubiertas por la ventana:  12 h -> 0 · 24 h -> 10 · 48 h -> 22 · 72 h -> 30
+
+efecto del freno sobre los 478 (replay de evaluarEstabilidad por SKU):
+  regla vieja (valor ya visto, 72 h):   403 fuertes / 75 degradados
+  regla de la entrega de la mañana:     323 fuertes / 19 degradados / 136 matices
+  regla de esta entrega:                323 fuertes / 19 degradados / 136 matices  (IDENTICA)
+  los 19 degradados son TODOS quiebres repetidos. Reposiciones degradadas: 0.
+```
+
+Las cifras de la **semana** sí reproducen evento por evento, con `comparar()` real
+(626 notificables de stock+precio: 556 fuertes / 70 degradados con la regla vieja,
+466 / 42 / 118 con la nueva), y son las que el encargo pedía. El problema era solo
+del historial completo — que es justamente de donde salía la calibración.
+
+---
+
+## ARREGLO 1 — LA VENTANA DE 12 h DE LA REPOSICIÓN SE SACÓ (no frenaba nada y era el único freno al único aviso accionable)
+
+**Lo que midieron los tres verificadores y reproduje:** con el piso de 12 h, las
+**213 reposiciones del historial salían fuertes las 213**. La ventana no degradó NI
+UN evento en 2,5 meses. Los 19 que el freno todavía degrada son todos quiebres, así
+que el argumento con que elegí la regla asimétrica —"sigue degradando algo"— se lo
+debía por completo a la ventana de 72 h del quiebre.
+
+Y el número con que la justifiqué era de la otra mitad de la frontera: el **mínimo de
+15,7 h** es una repetición de QUIEBRE (SM-F966BDBJCHO, 2026-10-04). La repetición de
+REPOSICIÓN más rápida que existe está a **20,44 h** (NP750XGJ-KS4CL, 2026-08-15).
+
+**Lo que cambia:** el cruce hacia `comprable` **nunca** se degrada y **nunca entra a
+la memoria** (no hay instante contra el cual compararlo después). `VENTANA_POR_LADO`
+pasa a ser `{ comprable: null, "no-comprable": 72 }`, y `null` significa, explícito,
+"este cruce no se degrada".
+
+**Costo medido: cero eventos distintos** en los 478 del historial (el replay da los
+mismos 323/19/136 antes y después). Lo que se gana es que el freno deja de estar
+aplicado al único aviso de stock con el que el operador puede COMPRAR.
+
+**Y hay además una razón estructural, no solo estadística:** un cambio de stock
+necesita DOS observaciones seguidas para confirmarse, y con 20 revisiones al día dos
+reposiciones del mismo SKU no pueden estar a menos de ~3 h. Un piso de 1 o 2 h sería
+inalcanzable por construcción, o sea código muerto; y uno de 12 h, como quedó medido,
+tampoco tenía material. El único parpadeo de stock DIAGNOSTICADO del proyecto —el A36
+del 2026-09-12/14, el selector de grupo de su `/buy/`— repite sus reposiciones a
+**22,65 h y 26,34 h**: ni ese caso lo tocaba.
+
+**ESTO HACE DESAPARECER UN SEGUNDO DEFECTO**, que un verificador reportó aparte: una
+reposición degradada salía bajo el título *"🌀 Siguen rebotando (ya te los avisé, no
+es novedad)"* —falso, porque de ESA ventana de disponibilidad no se le había
+avisado— y, por ser un rebote, **no salía en vivo**, que es el peor lugar posible
+para esconder el único aviso accionable. Con la regla nueva eso no puede pasar: hay
+una prueba que corre tres reposiciones en un día de Cyber (se agota y vuelve tres
+veces) y exige que las tres salgan **fuertes y en vivo**, y otra que exige que
+`ladoRebote` solo pueda ser el lado no-comprable sobre la semana real.
+
+- **Pruebas:** `una REPOSICION no se degrada NUNCA, ni repetida tres veces en un día
+  de Cyber` · `...y la reposicion tampoco deja memoria` · la de la semana real exige
+  `ladoRebote === "no-comprable"` en los 6 degradados.
+- **Mutantes que mueren:** `M01` (vuelve el piso de 12 h), `M02` (no degrada pero
+  guarda la llave), `M19` (sacarle también la ventana al quiebre: 9 fallas).
+
+---
+
+## ARREGLO 2 — LAS DOS DIRECCIONES DEL MATIZ NO VALEN LO MISMO, Y UNA ANTICIPA UNA COMPRA
+
+Dos verificaciones midieron, por separado, lo mismo: el matiz **"no está a la venta →
+agotado"** es Samsung volviendo a LISTAR el producto, y anticipa que se va a poder
+comprar. Lo reproduje agrupando los 478 eventos por SKU y mirando el evento de stock
+SIGUIENTE:
+
+```
+no-a-la-venta -> agotado   n= 23 · siguiente evento ya DISPONIBLE:  9 · reposicion <=72 h: 10 (43%)
+agotado -> no-a-la-venta   n=113 · siguiente evento ya DISPONIBLE:  0 · reposicion <=72 h:  5 (4,4%)
+base (cualquier evento que deja el producto no comprable): 63 de 265 (24%)
+horas hasta esa reposicion, en los 9: 8,4 x6 · 20,1 · 27,8 · 337,4
+```
+
+Los seis de 8,4 h son los combos **Galaxy Watch8 + Buds** (F-SML34SMR602,
+F-SML35SMR64X, F-SML71SMR602, F-SML34SMR640, F-SML35SMR640, F-SML71SMR640), de
+$674.980 a $1.024.980, en la revisión del 2026-10-02T15:54. Con la regla de la mañana
+esa revisión emitía 6 líneas sin precio ni link bajo un título que decía *"siguen sin
+poder comprarse"*.
+
+**Lo que cambia:** `matizDe` separa las dos clases (`MATIZ.VUELVE` / `MATIZ.SALE`) y
+la que anticipa tiene **su propia sección, con precio y link**:
+
+```
+**🔄 Volvieron al catálogo, todavía sin stock (puede volver el stock) (6)**
+
+⌚ Galaxy Watch8 + Buds Core (F-SML34SMR602) — no está a la venta → **agotado** · $674.980 · 🔗 …
+```
+
+**Lo que NO cambia, a propósito:** las dos siguen sin ser alerta fuerte (en ese
+momento no se puede comprar nada, que es exactamente lo que el encargo autorizó
+degradar) y las dos siguen sin salir en vivo. La reposición, cuando llega, sale fuerte
+y en vivo por su propia cuenta, y eso está verificado sobre la semana real.
+
+Un detalle de borde: los eventos viejos con solo booleanos leen "agotado" en las dos
+puntas, así que la dirección no se puede saber. Caen en la clase genérica, nunca en la
+que promete que el producto puede volver.
+
+- **Pruebas:** `matizDe separa las dos direcciones` · `el matiz que ANTICIPA una
+  reposicion va en su propia seccion, con precio y link` · `...y el otro sentido sigue
+  SIN precio ni link` · `ninguna de las dos clases de matiz sale EN VIVO` · `la SEMANA
+  REAL reparte los 118 matices en 103 + 15, y la reposicion de las 8,4 h sale fuerte`
+  (verifica los seis combos por SKU, su clase y su precio).
+- **Mutantes:** `M10` (matizDe siempre SALE), `M11` (sin precio ni link), `M12` (sin
+  sección propia).
+
+---
+
+## ARREGLO 3 — LA LÍNEA COMPACTA DE STOCK IMPRIMÍA UN PRECIO VIEJO COMO SI FUERA EL DE HOY
+
+El agravante que arreglé en la mañana (ponerle precio y link a la línea compacta de
+stock) se olvidó de la mitad: la alerta FUERTE termina en `sinComprobar` —*"último
+precio conocido: la página no lo publica hace N revisiones"*— y la línea compacta
+imprimía el número **a secas**. El propio comentario de `sinComprobar`, 90 líneas más
+arriba en el mismo archivo, dice por qué eso no se puede hacer: *"imprimirlo a secas
+lo presenta como vigente y el operador puede ir a comprar con un numero viejo"*. Y el
+dato ya viajaba en el cambio (`comparar.mjs` le mete `...sinComprobar(rec)` a todos
+los cambios de stock): simplemente no se usaba. Pesa poco hoy (3 de 1.086 registros
+tienen `corridasSinPrecio > 0`) pero cae justo en el aviso con el que se va a comprar.
+
+Arreglado en las dos líneas compactas (el rebote de stock y el matiz que lleva
+precio). **Prueba:** `el precio de una linea compacta de stock lleva su advertencia si
+esta viejo`. **Mutante:** `M03`.
+
+---
+
+## ARREGLO 4 — EL AVISO TÉCNICO PODÍA DECIR "no se puede comprar" DE UN PRODUCTO DISPONIBLE
+
+`rebotesDe` publicaba las llaves de cruce **crudas** del registro: la poda por cruce
+vivía solo dentro de `memoriaDeStock`, o sea al EVALUAR y no al MOSTRAR. Y el texto
+nuevo de la mañana las traducía a frases afirmativas, así que con una sola llave en la
+memoria la línea quedaba en una afirmación pelada que podía ser falsa.
+
+**Lo reproduje replayando el historial completo con el catálogo al lado** y aplicando
+la deduplicación real de `run.mjs` (una vez por día y por SKU): **8 avisos técnicos
+ENTREGABLES** decían *"no se puede comprar"* de un producto que el catálogo daba por
+**disponible** — NP750XGJ-KS6CL (24, 25 y 26-08), NP750XGJ-KS4CL (10 y 11-09),
+SM-A366ELVGLTL (16 y 17-09), SM-A276BZBKLTL (02-10). Los 8 van en la dirección que
+cuesta plata: le dicen que no puede comprar algo que sí puede.
+
+Dos arreglos, los dos hacían falta:
+
+1. `valoresDe` del stock poda con la ventana de cada cruce (`crucesVigentes`, que
+   ahora es una sola función exportada y la usan la decisión y la vista, para que no
+   puedan divergir).
+2. La línea imprime **el estado de ahora** —que ya viajaba en el mismo item, como
+   `rec.estadoStock`— y deja los cruces etiquetados como lo que son: avisos ya dados.
+
+```
+• 📦 NP750XGJ-KS4CL: ahora **disponible** · ya avisados: se agotó
+```
+
+**Medido con el mismo replay, sobre el texto que llega al operador: 8 → 0.**
+
+- **Pruebas:** `el aviso tecnico dice el estado de AHORA, no solo los cruces ya
+  avisados` · `el aviso tecnico no imprime un cruce que ya salio de SU ventana`.
+- **Mutantes:** `M05` (llaves crudas), `M06` (volver a la afirmación).
+
+---
+
+## ARREGLO 5 — UN MATIZ QUE DISCORD RECHAZABA VOLVÍA COMO ALERTA FUERTE COMPLETA
+
+`notifyDiscord` devuelve en `noEntregados` los cambios de los mensajes que Discord
+rechazó, `run.mjs` los escribe tal cual en `data/pendientes.jsonl` y la corrida
+siguiente los manda en la sección *"⏳ Avisos atrasados"*… que se armaba con
+`lineFor`, sin mirar la clasificación. El flag `matiz` sobrevive el viaje por el
+archivo (`serializarPendientes` guarda el cambio entero), así que un matiz rechazado
+volvía con **bloque de tres líneas y link**: justo lo que el arreglo del día viene a
+quitar. El agujero ya existía para los rebotes, pero ahí la población es ≤5 por
+corrida; los matices fueron **89 en una sola revisión**, así que basta un mensaje
+rechazado (429 o 5xx, que es para lo que existe toda la máquina de reintentos) para
+que ~15 vuelvan convertidos en alertas fuertes, y con Discord caído la corrida entera.
+
+Ahora `lineaPendiente` respeta lo que el cambio ya trae (`esMatiz` → línea de matiz,
+`esRebote` → línea de rebote), con la nota de "detectado en …" en la misma línea para
+no convertir una línea en un bloque.
+
+- **Pruebas:** `un matiz que vuelve por pendientes.jsonl sigue siendo una linea
+  compacta` · `y un rebote atrasado tampoco`. **Mutante:** `M07`.
+
+---
+
+## ARREGLO 6 — LA SECCIÓN DE MATICES NO TENÍA TOPE (89 líneas idénticas, y escalaba lineal)
+
+Rendericé el cierre real de la revisión del 2026-10-02T11:19 con `notifyDiscord` y
+fetch interceptado:
+
+```
+                        mensajes del cierre   caracteres
+codigo de ayer (HEAD)            1              493     (98 de los 100 salian EN VIVO, uno por uno)
+entrega de la mañana             6           10.117
+esta entrega                     3            5.003
+```
+
+El aviso técnico hermano (`mensajeRebotando`) tiene tope desde el 2026-09-13 y esta
+sección no, así que 500 matices serían ~34 mensajes de texto sin nada accionable.
+Ahora se muestran las primeras `TOPE_MATICES = 40` líneas y la cola va **contada y
+agrupada por categoría**:
+
+```
+…y 49 más: 43 televisores · 3 refrigeradores · 3 tv lifestyle. _(el detalle completo queda en el historial)_
+```
+
+**Y NO SILENCIA NADA, que es la mitad del diseño.** Esa línea de resumen **viaja con
+todos los cambios que resume**: si Discord rechaza ese mensaje, los 49 vuelven
+enteros a `data/pendientes.jsonl` y se reintentan en la corrida siguiente, igual que
+cualquier otro aviso (y ahora, gracias al arreglo 5, vuelven como líneas compactas).
+Para eso `armarMensajesConCambios` acepta un item con varios cambios, y el conteo del
+título sigue siendo el de los CAMBIOS (89), no el de las líneas.
+
+**El costo, dicho:** 49 de los 89 productos de esa ola dejan de aparecer por su
+nombre en Discord. Ninguno es accionable —el producto sigue sin poder comprarse— y el
+detalle completo queda en `data/history.jsonl`. Si el operador prefiere los 89
+nombres, es una constante.
+
+**Y el texto que se contradecía:** la línea compacta de stock decía *"(1ª vez en 72
+h)"* dentro de una sección titulada *"ya te los avisé, no es novedad"*.
+`vecesRebotado` cuenta REBOTES, así que la primera repetición es "1ª vez" — se lee
+como lo contrario de lo que el título promete. Ahora dice **"(2º cruce igual en 72
+h)"**, que es el número que no se contradice.
+
+- **Pruebas:** `una ola de 500 matices no se convierte en 34 mensajes` · `...y la cola
+  recortada NO se silencia: viaja con el mensaje que la resume` · `la linea compacta
+  de un QUIEBRE repetido dice el numero de CRUCE, no 'Nª vez'`.
+- **Mutantes:** `M08` (sin tope), `M09` (cola sin sus cambios), `M18` (conteo por
+  líneas), `M04` (vuelve el "Nª vez").
+
+---
+
+## ARREGLO 7 — LA SEÑAL DE VIGILANCIA DEL VAIVÉN SE QUEDABA MUDA (y es el pendiente que importa, porque la causa sigue sin diagnosticar)
+
+El pendiente nº3 de la mañana decía: *"mientras no se haga la captura en vivo, el
+aviso de que volvió a pasar es `avisosDegradados` subiendo de golpe en una sola
+corrida"*. Un verificador lo midió y tiene razón: **esa señal la apaga el propio
+arreglo**. La corrida real del 2026-10-01T17:20 reportó `avisosDegradados: 16` cuando
+el número mal leído todavía se adoptaba; con la guarda puesta, esa misma corrida
+emite **0 cambios** y deja los tres contadores del freno en 0. Las 16 lecturas malas
+quedaban retenidas en `precioPendiente` y **ningún contador del resumen las
+reflejaba**. O sea: el operador quedaba ciego justo en el caso en que hay que escalar.
+
+Dos contadores nuevos en `resumenDeRebotes` (función pura y probada, una sola línea de
+cableado en `run.mjs`):
+
+- **`rebotesArribaRetenidos`**: cuántas lecturas frenó la guarda EN ESTA corrida. La
+  del 1-oct habría marcado **16 de golpe**. Lo normal es 0.
+- **`preciosEnEspera`**: cuántos registros esperan corroboración por cualquier motivo
+  (rebote hacia arriba u otra página del sitio). Son dos y no uno a propósito: si
+  fueran uno, el ruido normal de la corroboración por otra página taparía la señal.
+
+La marca la pone `rec.precioPendientePorRebote`, que se borra en cada corrida junto
+con el pendiente mismo.
+
+- **Pruebas:** `la corrida del vaiven deja los 16 contados en el resumen, aunque no
+  emita ningun aviso` · `...y cuando el pendiente se resuelve, los contadores vuelven
+  a cero` · `un pendiente de OTRA PAGINA cuenta en preciosEnEspera pero no como rebote
+  frenado`. **Mutantes:** `M14`, `M15`, `M16`.
+- **Verificado además en el pipeline real** (ver abajo): la corrida sembrada reporta
+  `rebotesArribaRetenidos: 1` con 0 avisos, y la siguiente `subes: 1`.
+
+---
+
+## ARREGLO 8 — DOS COMPORTAMIENTOS SIN PRUEBA, Y UN COMENTARIO QUE PROMETÍA ALGO QUE NO EXISTÍA
+
+- **La rama de STOCK del aviso técnico no tenía ni una aserción.** Un verificador
+  mató dos mutantes que la suite de la mañana dejaba pasar: `valoresDe` del stock
+  revertido a la forma vieja (la línea sale con el nombre del producto y nada más) y
+  la traducción de LADO a texto (la línea llama "desconocido" al lado que significa
+  "se puede comprar"). Los dos mueren ahora con las pruebas del arreglo 4. Esto
+  **refuta mi propia frase de la mañana** ("MUEREN LOS 27"): sobrevivían tres cambios
+  reales y no declarados.
+- **La poda de llaves ajenas de `memoriaDeStock` tampoco tenía prueba.** Sin ella,
+  una llave que no sea uno de los dos lados no la poda NUNCA el tiempo (la poda es
+  por ventana, y para una llave desconocida no hay ninguna), así que el campo
+  quedaría vivo para siempre en `latest.json`. Prueba: `crucesVigentes descarta las
+  llaves que no tienen ventana`. **Mutante:** `M13`.
+- **Un comentario que describía un respaldo inexistente.** `MAGNITUDES.stock`
+  prometía que `valoresDe` se cae a la memoria heredada "para que el aviso técnico no
+  quede mudo", y la implementación devuelve `[]` para esa forma (y `rebotesDe` la
+  descarta antes, vía `memoriaVigente`). Borrado y dicho al revés, que es lo cierto:
+  el aviso técnico mudo **es** el resultado buscado para una regla retirada.
+- **Un matiz nunca entra a la memoria de cruces**, que ya era cierto pero ahora lo
+  mata un mutante propio (`M20`).
+
+---
+
+## LOS DOS NÚMEROS DE LA SEMANA REAL, REPRODUCIDOS
+
+Ventana 2026-09-28T23:59:59Z → 2026-10-05T23:59:59Z, `comparar()` real sobre la foto
+congelada y replay de `evaluarEstabilidad` sobre `data/history.jsonl` (los dos dan lo
+mismo):
+
+```
+REPOSICIONES QUE SALEN FUERTES ("volvio el stock")
+  antes (codigo de ayer):   58 de 73   (15 degradadas, 1.018 h de disponibilidad real)
+  ahora:                    73 de 73   (0 degradadas, y las 73 salen EN VIVO)
+
+AVISOS INUTILES QUE YA NO SALEN FUERTES (el par agotado <-> no-a-la-venta)
+  antes:                   107 alertas fuertes de 556  (18,1% de la semana)
+  ahora:                     0 alertas fuertes
+                           118 lineas compactas: 103 "siguen sin poder comprarse"
+                                               +  15 "volvieron al catalogo, todavia sin stock"
+                                                     (con precio y link: son las que anticipan)
+  la revision del 2026-10-02T11:19: 89 de esos 118, en 3 mensajes en vez de 6,
+  y 11 avisos en vivo en vez de 98.
+
+Y EL FRENO NO QUEDO MUERTO
+  "se agoto": 35 eventos -> 29 fuertes + 6 compactos (el mismo cruce repetido en 72 h)
+  lo detectado y lo entregado siguen siendo lo mismo: 250 y 250. Nada silenciado.
+```
+
+---
+
+## VERIFICACIÓN
+
+- **`npm test`: 650 → 666 verdes, 0 fallas.** La línea base de 619 nunca baja; de los
+  36 archivos de prueba, esta vuelta toca 3 (`stock-frontera`, `vaiven-adopcion`,
+  `freno-parpadeo`) y no borra ninguna prueba. `test/stock-frontera.test.mjs` pasa de
+  22 a 35 y `test/vaiven-adopcion.test.mjs` de 9 a 12.
+
+- **Las 3 aserciones que cambiaron, y las 3 fijaban el comportamiento equivocado**,
+  con su razón escrita al lado:
+  - *"una reposición repetida DENTRO de las 12 h sí es un rebote"* → **ya no existe**:
+    la reemplaza una que corre tres reposiciones en un día de Cyber y exige que las
+    tres salgan fuertes **y en vivo**.
+  - *"la línea compacta de una REPOSICIÓN repetida dice 12 h, no 72"* → ahora es la
+    del QUIEBRE repetido, y exige **"2º cruce igual en 72 h"** y que NO diga "1ª vez".
+  - *"3ª vez en 72 h"* en `freno-parpadeo` → **"4º cruce igual en 72 h"**.
+  - Una cuarta cambió de forma sin cambiar de exigencia (el caso de la memoria
+    heredada mira ahora un QUIEBRE, porque una reposición ya no deja memoria).
+
+- **MUTANTES: 20, uno por vez, sobre una copia FUERA DEL ÁRBOL (src + test +
+  fixtures + workflows + README + BITACORA), suite entera, restaurando después.
+  MUEREN LOS 20**, y hay uno por cada arreglo de esta entrega. La línea base de la
+  copia sin mutar: 0 fallas.
+
+- **BARRIDO DE SNAPSHOTS VIEJOS DEL CATÁLOGO, PAREADO.** 14 snapshots diarios de
+  `data/latest.json` del historial de git (2026-08-01 a 2026-10-05) instalados como
+  `test/fixtures/catalogo.json` en DOS copias fuera del árbol —la de los cambios y la
+  de HEAD puro— y suite entera en las dos: **14 de 14 con el MISMO número de fallas en
+  las dos versiones, cero diferencias.** Los snapshots anteriores al ~2026-09-12 dan 2
+  a 4 fallas **en las dos**, todas en `alcance.test.mjs` / `alcance-revision.test.mjs`
+  / `censo-entrega.test.mjs` (pruebas agregadas el 2026-09-23 que dependen de la forma
+  del catálogo): es deriva preexistente, no de este entregable.
+
+- **PIPELINE REAL (`src/run.mjs` entero), contra copias del catálogo en carpetas
+  temporales** (`CARPETA_DATOS`, `LIMITE_PAGINAS=2`, `SIN_DESCUBRIMIENTO=1`, `VIVO=0`,
+  `env -u DISCORD_WEBHOOK_URL`):
+  - **completo**: 2 páginas, `alcance: "todo"`, 0 errores, 0 eventos, y el resumen
+    real trae los cuatro campos nuevos: `avisosMatizStock: 0`, `avisosMatizVuelve: 0`,
+    `rebotesArribaRetenidos: 0`, `preciosEnEspera: 0`. `confiable: false` por el
+    límite de páginas, que es lo correcto.
+  - **la segunda corrida escaló a completo sola** (en la copia, la última completa
+    quedó a 17 h y el máximo son 16): la maquinaria de modo no la toca este
+    entregable, y se dejó correr así en vez de falsear el dato.
+  - **CON UN REBOTE HACIA ARRIBA SEMBRADO** (precio guardado 429.980, el de la página
+    479.980 ya en la memoria del freno a 1 h): `rebotesArribaRetenidos: 1`,
+    `preciosEnEspera: 1`, **0 avisos**, y el registro con `precio: 429.980` +
+    `precioPendiente: 479.980` + `precioPendientePorRebote: true`. **Es el hueco que
+    `npm test` no puede cubrir** (`run.mjs` arranca `main()` al importarse).
+  - **y la corrida siguiente**, con la misma página publicando otra vez el valor alto:
+    `subes: 1`, precio adoptado en 479.980, los dos contadores de vuelta en 0 y la
+    línea de `history.jsonl` con `"rebote":true`. **El atraso es de UNA lectura, no un
+    silencio**, comprobado por el cableado real.
+
+- **POLÍTICA DE SCRAPING: 8 páginas de samsung.com en todo el encargo** (4 corridas de
+  pipeline × 2), UA `CazadorBot/1.0`, `DELAY_MS` subido a 5.000 **solo en la copia**, y
+  `gh run list` verificado antes (sin corrida de producción en vuelo). **Toda la
+  medición y toda la calibración salieron de `data/` y del historial de git: cero
+  requests extra.** El webhook real **jamás** se tocó (`fetch` interceptado en las
+  pruebas y `env -u DISCORD_WEBHOOK_URL` en cada corrida).
+
+- **`data/` del repo INTACTA**: los md5 son los mismos del principio (`latest`
+  17eea3cf…, `history` bcd6c4f2…, `ejecuciones` 533abe77…, `censo` 3bb8994e…,
+  `avisos-tecnicos` 3a9b98ce…) y `git status --porcelain data/` está vacío. **No se
+  commiteó nada.**
+
+---
+
+## LO QUE NO SE HIZO, Y POR QUÉ
+
+- **No se tocó la memoria del PRECIO.** Es la magnitud donde "volver a un valor ya
+  visto" sí es una señal y donde toda la calibración se apoya en esa forma. La poda
+  por cruce que se arregló en `rebotesDe` es solo para el stock, que es donde está el
+  defecto medido; para el precio la lista de valores tiene un solo instante (`hasta`)
+  para todo el conjunto y podarla ahí dejaría la línea del aviso técnico muda en
+  casos en que hoy informa.
+- **El matiz que anticipa sigue sin salir EN VIVO.** En ese momento no hay nada que
+  comprar, y la reposición —cuando llega— sale fuerte y en vivo por su cuenta. Lo que
+  se le dio es sección propia, precio y link, que es lo que lo vuelve accionable
+  cuando el operador abra el resumen.
+- **El reparo del precio TACHADO sigue medido y no arreglado** (pendiente nº4): no
+  pude aislar offline la firma que usó el encargo, y sigo prefiriendo decirlo a
+  inventar una coincidencia.
+
+---
+
+## PENDIENTES (esta lista manda sobre la de la entrada anterior)
+
+1. **MIRAR `avisosMatizStock` Y `avisosMatizVuelve` LA PRIMERA SEMANA.** Referencia:
+   **118** en la semana del Cyber (103 + 15), **89** en una sola revisión. Si se queda
+   alto todos los días, Samsung está moviendo de verdad medio catálogo entre "agotado"
+   y "no está a la venta" y vale preguntarse por qué; si cae a casi 0, la ola del
+   2-oct fue puntual.
+2. **MIRAR `productosRebotando` DE STOCK. La línea de base es 19 en 2,5 meses, no 8**
+   (el 8 salía de la medición con el clasificador equivocado). Y los 19 son todos
+   quiebres repetidos: **una reposición ya no puede figurar ahí**. Si aparecen muchos
+   más, hay un parpadeo nuevo sin diagnosticar — la sección compacta lo ordena, pero
+   ordenar no es arreglar.
+3. **LA CAUSA DEL VAIVÉN DEL 1-OCT SIGUE SIN DIAGNOSTICAR**, y la defensa no cubre el
+   caso del valor NUEVO. Lo que haría falta: **capturar en vivo, en una ficha con
+   oferta, la respuesta de `api.shop.samsung.com` y digitalData muestreados cada 250
+   ms**, buscando el estado `model_price === list_price === precio de lista`. Son 2 a
+   4 páginas, con el sitio libre. **Mientras no se haga, la señal es
+   `rebotesArribaRetenidos` subiendo de golpe en una sola corrida** (la del 1-oct
+   habría marcado 16); `avisosDegradados` ya NO sirve para eso, porque esta defensa lo
+   deja en 0.
+4. **EL REPARO DEL PRECIO TACHADO QUEDA MEDIDO, NO ARREGLADO.** Con mi firma dieron 18
+   alertas y las 18 son el vaivén del 1-oct, cuyo mecanismo este arreglo elimina. El
+   caso que el encargo describe —10 alertas fuertes midiendo contra el tachado sin que
+   nada las desmienta— no lo pude aislar offline. Hace falta la firma que usó el
+   encargo, o una captura en vivo del `precioTachado` de esas fichas.
+5. **SI LA SECCIÓN DE MATICES MOLESTA, `TOPE_MATICES` ES UNA CONSTANTE** (hoy 40). Con
+   la ola del 2-oct, subirla a 89 devuelve los 89 nombres a cambio de 6 mensajes en
+   vez de 3.
+6. **190 de los 1.086 registros traen la memoria de stock de la versión anterior.** No
+   habilitan ningún rebote ni figuran en la lista de "rebotando"; se reescriben solas
+   en cuanto cada SKU tenga su próximo cambio de stock. No hace falta hacer nada, pero
+   conviene saberlo si alguien mira `latest.json`. (Y ahora, además, una llave
+   `comprable` escrita por la versión de la mañana también se descarta sola.)
+7. **El matiz "no-a-la-venta → agotado" es un precursor con n=23.** Es muestra chica.
+   Si `avisosMatizVuelve` se mantiene y la fracción seguida de reposición se mantiene
+   cerca del doble de la base, vale subirlo de línea compacta a alerta fuerte de baja
+   prioridad; si cae, se queda donde está.
+8. Siguen los pendientes anteriores: rotar `history.jsonl` antes de los 50 MB, cachear
+   Playwright, medir `duracionPrincipalesMin`, contar las livianas descartadas, las
+   126 `/buy/` duplicadas, el precio de LISTA que la API entrega a las páginas de
+   grupo, la decisión sobre una tercera revisión completa, y el agujero de "la corrida
+   nunca nace".
+9. **NO SE COMMITEÓ NADA.** Antes de pushear: `git pull --rebase`, porque el monitor
+   commitea datos 20 veces al día.

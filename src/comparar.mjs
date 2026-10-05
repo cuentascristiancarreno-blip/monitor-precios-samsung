@@ -46,7 +46,7 @@
 import { enAlcance, horasEntre } from "./alcance.mjs";
 import { normalizar } from "./titulo.mjs";
 import { ESTADO, disponibleDe, estadoObservado } from "./stock.mjs";
-import { MAGNITUDES, VENTANA_REBOTE_HORAS, evaluarEstabilidad } from "./estabilidad.mjs";
+import { HORAS_MIN_REBOTE_ARRIBA, MAGNITUDES, MATIZ, evaluarEstabilidad, reboteArribaReciente } from "./estabilidad.mjs";
 
 export const UMBRAL_AUSENCIAS = 2;
 
@@ -668,6 +668,10 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
   let fuentePrecio = fuenteAnt;
   delete rec.precioPendiente;
   delete rec.precioPendienteDe;
+  // La marca de POR QUE quedo pendiente. Se borra en cada corrida igual que el
+  // pendiente mismo: es el contador de "cuantas lecturas frenó la guarda del
+  // rebote hacia arriba en ESTA corrida" (ver resumenDeRebotes).
+  delete rec.precioPendientePorRebote;
   // UNA LECTURA QUE CONFIRMA EL PRECIO GUARDADO SE LO APROPIA. Es la contracara
   // de todo lo de abajo: si esta pagina publica el mismo numero, es tan duena
   // del precio como la que lo escribio, y el campo `fuentePrecio` desaparece.
@@ -713,6 +717,60 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
       (!ant.precioPendienteDe || !fuenteObs.pagina || ant.precioPendienteDe === fuenteObs.pagina);
     const corridasDistinto = (ant.corridasPrecioDistinto ?? 0) + 1;
 
+    // UN REBOTE HACIA ARRIBA NO SE ADOPTA CON UNA SOLA LECTURA (2026-10-05).
+    //
+    // EL HECHO MEDIDO. El 2026-10-01, tres revisiones seguidas, las tres con 0
+    // errores y marcadas confiables:
+    //     16:37  bajan 26 productos (la oferta real del Cyber)
+    //     17:20  16 de esos mismos "suben" a su precio EXACTO de antes
+    //     18:00  los 16 "bajan" otra vez al precio de oferta EXACTO
+    // Los 16 son 16 paginas distintas (11 /buy/ y 5 fichas planas), de 5
+    // categorias a la vez, todas rango PROPIA. Cuatro dias despues los 16 estan
+    // en el valor BAJO o mas abajo y NINGUNO en el alto: las subidas del 17:20
+    // fueron lecturas malas, no un movimiento de Samsung.
+    //
+    // LA CAUSA RAIZ NO ESTA DIAGNOSTICADA, y no se inventa una. Lo que SI esta
+    // medido es que el camino conocido queda descartado: la corrida del 17:20
+    // informa `digitalDataSinAsentar: 1` y `sinPrecioVisible: 1` sobre 346
+    // paginas, o sea UNA pagina marcada, y una pagina no explica 16 productos en
+    // 16 paginas distintas. La defensa de hidratacion del 2026-09-13 espera a
+    // que `list_price` llegue, y no puede ver el estado en que digitalData
+    // publica `model_price === list_price === el precio de lista` (la promocion
+    // todavia sin aplicar): ahi `dosCandidatos` es false, todas las guardas se
+    // bajan por diseño y no hay etiqueta "Precio original" que delate el numero,
+    // porque una pagina sin promocion no escribe ninguna. Es consistente con lo
+    // observado, PERO no se pudo distinguir offline de "Samsung sirvio 40 min la
+    // pagina sin la promocion aplicada". Las dos posibilidades quedan escritas
+    // en BITACORA.md; esta guarda cubre el SINTOMA, no la causa.
+    //
+    // LA GUARDA: un rebote HACIA ARRIBA que llega a menos de
+    // HORAS_MIN_REBOTE_ARRIBA del cambio de precio que deshace no se adopta ni se
+    // avisa con una sola lectura. Queda `precioPendiente` y necesita que la
+    // lectura siguiente de la MISMA pagina lo repita (la maquinaria de
+    // corroboracion que ya existe para los cambios que vienen de otra fuente). Si
+    // en vez de repetirse vuelve el precio guardado, el pendiente muere solo y no
+    // queda rastro: ni aviso, ni numero malo en el catalogo.
+    //
+    // Las tres condiciones y sus numeros estan en `reboteArribaReciente`
+    // (src/estabilidad.mjs). Lo que importa aca: SOLO frena hacia ARRIBA y solo
+    // dentro de 2 h. Una baja nunca se atrasa -- en Cyber un aviso perdido cuesta
+    // mas que uno de mas -- y un producto que rebota de verdad no se congela,
+    // porque sus vueltas tardan mas que eso (el monitor Odyssey G3, con 58
+    // cambios reales en 30 dias, nunca vuelve en menos de 2,55 h).
+    //
+    // EL COSTO, MEDIDO sobre los 1.598 eventos de precio notificables del
+    // historial completo: 17 lecturas caen bajo la guarda, y son exactamente los
+    // 16 del 2026-10-01T17:20 mas SM-A075MLVGLTL del 22:16 -- los dos episodios
+    // que una medicion independiente (avisos cuya base resulto revertida por la
+    // lectura siguiente) ya habia marcado como lecturas malas. Los 102 rebotes
+    // hacia arriba restantes y las 994 bajas no se tocan.
+    const reboteArriba = reboteArribaReciente({
+      ant,
+      precio: obs.precio,
+      precioAnterior: precioAnt,
+      timestamp,
+    });
+
     // La correccion de la migracion NO pasa por la guarda de rango, y no hace
     // falta: `versionPrecio`, `precioTachado` y `precioInterno` los escribe solo
     // extractSingleProduct, o sea la ficha propia (rango PROPIA). El JSON-LD de
@@ -730,7 +788,7 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
       fuentePrecio = fuenteObs;
       olvidarPrecioDistinto(rec);
       correcciones.push({ modelo, ...paraTitulo(rec), precioAnterior: precioAnt, precio: obs.precio, categoria, url: rec.url });
-    } else if (!rangoMenor && (mismaFuente(fuenteAnt, fuenteObs) || corroborado)) {
+    } else if (!rangoMenor && (mismaFuente(fuenteAnt, fuenteObs) || corroborado) && (corroborado || !reboteArriba)) {
       // MISMA PAGINA Y MISMO RANGO: se avisa AL TIRO, como siempre. Una baja de
       // verdad de Samsung no cambia de donde se lee el numero, asi que esto es
       // el 97% de los cambios (medido: 385 de 397 cambios entre corridas
@@ -770,17 +828,41 @@ export function evaluarObservado({ modelo, ant, obs, timestamp }) {
         precioAnterior: precioAnt,
         categoria,
         url: rec.url,
-        // para que el mensaje pueda decir que el numero viene de otra pagina
+        // para que el mensaje pueda decir que el numero viene de otra pagina.
+        //
+        // SIGUE SIENDO SIEMPRE CIERTO AUNQUE AHORA EL `else` DE ABAJO TAMBIEN
+        // RECIBA REBOTES HACIA ARRIBA DE LA MISMA PAGINA (2026-10-05). Lo
+        // comprobe antes de tocar nada y el resultado fue que no habia nada que
+        // tocar: esta rama exige que hayan pasado HORAS_MIN_PRECIO_OTRA_FUENTE
+        // (6 h) desde `precioDistintoDesde`, y ese ancla se borra con CUALQUIER
+        // emision (`olvidarPrecioDistinto` esta en las tres ramas que avisan),
+        // asi que 6 h sin emitir significa 6 h sin refrescar `rebotePrecio.hasta`
+        // -- y `reboteArribaReciente` exige que ese instante tenga 2 h o menos.
+        // O sea: un rebote hacia arriba NUNCA llega hasta aca, y cuando algo
+        // llega es porque la fuente de verdad cambio. Habia escrito la guarda
+        // `mismaFuente(...) ? {} : {...}` y la saque: era codigo muerto que
+        // ningun mutante podia matar, que es justo lo que este proyecto no quiere
+        // acumular.
         desdeOtraFuente: true,
       });
     } else {
-      // OTRA FUENTE: no se avisa y TAMPOCO se adopta todavia. Queda pendiente,
-      // igual que un cambio de stock sin confirmar. Si la corrida siguiente lo
-      // repite desde la misma pagina, se avisa y se adopta; si vuelve el valor
-      // de siempre, el rebote muere aca sin gastar un aviso.
+      // OTRA FUENTE, O UN REBOTE HACIA ARRIBA: no se avisa y TAMPOCO se adopta
+      // todavia. Queda pendiente, igual que un cambio de stock sin confirmar. Si
+      // la corrida siguiente lo repite desde la misma pagina, se avisa y se
+      // adopta; si vuelve el valor de siempre, el rebote muere aca sin gastar un
+      // aviso -- y, sobre todo, sin dejar el numero mal leido guardado como si
+      // fuera el de hoy, que es lo que midio el vaiven del 2026-10-01 (los 16
+      // avisos del 18:00 median contra el tachado que el 17:20 habia adoptado).
       rec.precio = precioAnt;
       rec.precioPendiente = obs.precio;
       if (fuenteObs.pagina) rec.precioPendienteDe = fuenteObs.pagina;
+      // POR QUE quedo pendiente. Sin esta marca la guarda del rebote hacia
+      // arriba es INVISIBLE en el resumen de la corrida: no emite aviso, no
+      // degrada nada y los tres contadores del freno quedan en 0, asi que el
+      // operador no tendria como enterarse de que el vaiven del 2026-10-01
+      // volvio a pasar (cuya causa raiz sigue sin diagnosticar). La cuenta la
+      // hace resumenDeRebotes -> `rebotesArribaRetenidos`.
+      if (reboteArriba) rec.precioPendientePorRebote = true;
       rec.corridasPrecioDistinto = corridasDistinto;
       // DESDE CUANDO dura la discusion. Se escribe una sola vez (la primera
       // corrida distinta) y se arrastra: es el ancla de reloj que le falta al
@@ -1066,6 +1148,32 @@ export function resumenDeRebotes({ cambios = [], catalogo = {}, nuevosRebotando 
     productosRebotando: rebotesDe(catalogo, timestamp).length,
     // cuantos EMPEZARON a rebotar en esta corrida
     productosNuevosRebotando: (nuevosRebotando ?? []).length,
+    // CAMBIOS DE STOCK QUE NO CRUZAN LA FRONTERA comprable/no comprable
+    // (agotado <-> no esta a la venta). Desde el 2026-10-05 salen compactos en
+    // vez de con su propia alerta fuerte, y este contador es como se mide en
+    // produccion cuanto pesa ese par de estados: la semana del Cyber dio 107 de
+    // 590 alertas fuertes (18,1%) y 89 de ellas en UNA sola revision. Cuenta las
+    // DOS clases de matiz, para que el numero siga siendo comparable con esa
+    // linea de base.
+    avisosMatizStock: cambios.filter((c) => c?.matiz === true).length,
+    // ...y aparte, los que ANTICIPAN una reposicion (volvieron al catalogo,
+    // todavia sin stock). Medido: 9 de 23 tenian el stock de vuelta en el evento
+    // siguiente, 6 de ellos a las 8,4 h.
+    avisosMatizVuelve: cambios.filter((c) => c?.matiz === true && c?.matizClase === MATIZ.VUELVE).length,
+    // LECTURAS RETENIDAS, QUE SON LA SEÑAL DE QUE EL VAIVEN VOLVIO A PASAR
+    // (2026-10-05, segunda vuelta). La guarda del rebote hacia arriba hace que
+    // la lectura mala no se adopte NI se avise, asi que la corrida del vaiven del
+    // 2026-10-01T17:20 -- que informo `avisosDegradados: 16` cuando el numero
+    // malo todavia se adoptaba -- con este codigo emite 0 cambios y dejaria los
+    // tres contadores del freno en 0: el propio plan de vigilancia del pendiente
+    // nº3 se quedaba mudo justo en el caso en que hay que escalar a la captura en
+    // vivo. Estos dos son esa señal.
+    //   `rebotesArribaRetenidos`: cuantas lecturas frenó la guarda EN ESTA
+    //     corrida (16 de golpe = volvio a pasar).
+    //   `preciosEnEspera`: cuantos registros quedan esperando corroboracion por
+    //     cualquier motivo (rebote hacia arriba u otra pagina del sitio).
+    rebotesArribaRetenidos: Object.values(catalogo ?? {}).filter((r) => r?.precioPendientePorRebote === true).length,
+    preciosEnEspera: Object.values(catalogo ?? {}).filter((r) => Number.isFinite(r?.precioPendiente)).length,
   };
 }
 
@@ -1086,15 +1194,26 @@ export function rebotesDe(catalogo, timestamp) {
     for (const mag of MAGNITUDES) {
       const m = rec?.[mag.campo];
       if (!m || !(m.n > 0)) continue;
+      // Una memoria escrita por una version anterior de la regla no cuenta: su
+      // contador lo produjo una regla retirada (ver `memoriaVigente` en
+      // src/estabilidad.mjs).
+      if (!mag.memoriaVigente(m)) continue;
       if (timestamp) {
         const h = horasEntre(m.ultimo, timestamp);
-        if (h === null || h > VENTANA_REBOTE_HORAS) continue;
+        // LA VENTANA ES LA DE CADA MAGNITUD, no una sola para las dos: desde el
+        // 2026-10-05 el stock se mide por CRUCE de la frontera comprable/no
+        // comprable y con sus propios relojes (ver src/estabilidad.mjs).
+        if (h === null || h > mag.ventanaMax) continue;
       }
       lista.push({
         modelo,
         magnitud: mag.clave,
         valor: mag.valorDe(rec),
-        valores: Array.isArray(m.v) ? m.v.slice(0, 3) : [],
+        // PODADOS CON LA VENTANA DE CADA CRUCE, no crudos del registro: la poda
+        // vivia solo dentro de la decision y aca se imprimian las llaves tal
+        // cual, asi que el aviso tecnico podia afirmar "no se puede comprar" de
+        // un producto DISPONIBLE (medido: 8 avisos entregables en el historial).
+        valores: mag.valoresDe(m, timestamp),
         veces: m.n,
         desde: m.desde ?? null,
         ...paraTitulo(rec),

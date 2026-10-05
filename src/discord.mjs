@@ -2,7 +2,7 @@ import { componerTitulo } from "./titulo.mjs";
 import { reloj } from "./reloj.mjs";
 import { ESTADO, textoEstado } from "./stock.mjs";
 import { entorno } from "./entorno.mjs";
-import { VENTANA_REBOTE_HORAS, esRebote } from "./estabilidad.mjs";
+import { VENTANA_REBOTE_HORAS, VENTANA_QUIEBRE_HORAS, LADO, esMatiz, esMatizQueVuelve, esRebote, ventanaDe } from "./estabilidad.mjs";
 
 const CLP = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 
@@ -147,12 +147,127 @@ function lineaRebote(change) {
   const icono = iconoPara(change.categoria);
   const nombre = escaparMarkdown(componerTitulo(change));
   const sku = change.modelo || "sin SKU";
-  const esPrecio = change.tipo === "baja" || change.tipo === "sube";
-  const comoTexto = (v) => (esPrecio ? fmt(v) : textoEstado(v));
-  const actual = esPrecio ? change.precio : change.estado;
-  const entre = (change.valoresRebote ?? []).map(comoTexto).join(" ⇄ ");
-  const veces = Number.isFinite(change.vecesRebotado) ? ` (${change.vecesRebotado}ª vez en ${VENTANA_REBOTE_HORAS} h)` : "";
-  return `${icono} **${nombre}** (${sku}) — 🌀 ${entre} · ahora **${comoTexto(actual)}**${veces}`;
+  const veces = Number.isFinite(change.vecesRebotado) ? ` (${change.vecesRebotado}ª vez en ${ventanaDe(change)} h)` : "";
+
+  // UN REBOTE DE STOCK LLEVA PRECIO Y LINK (2026-10-05, agravante medido).
+  //
+  // La linea compacta de stock no los llevaba, que son justamente las dos cosas
+  // que si lleva la alerta fuerte. El mismo mensaje del 2026-10-02 le dio el
+  // bloque completo con precio y link al 98" The Frame y una linea pelada al
+  // monitor Odyssey OLED G5 ($449.990, 73 h disponible): la unica diferencia era
+  // que el monitor se habia agotado 23,6 h antes. Un cambio de stock degradado
+  // sigue siendo accionable -- "se puede comprar AHORA" --, asi que la linea
+  // tiene que traer con que actuar. Son pocas lineas (medido sobre el historial
+  // completo con la regla nueva: 19 rebotes de stock en 2,5 meses, los 19
+  // quiebres repetidos), asi que el link no amenaza el presupuesto de largo del
+  // mensaje.
+  //
+  // EL PRECIO VA CON SU ADVERTENCIA, igual que en la alerta fuerte (defecto de
+  // la segunda vuelta). `lineFor` termina el caso "stock" en `sinComprobar` y
+  // esta rama no lo hacia: el precio de un aviso de stock es el ULTIMO CONOCIDO
+  // y, si la pagina lleva corridas sin publicarlo, imprimirlo a secas lo
+  // presenta como vigente -- el comentario de `sinComprobar`, 90 lineas mas
+  // arriba, dice exactamente por que no se puede hacer eso. El dato llega:
+  // comparar.mjs le mete `...sinComprobar(rec)` a todos los cambios de stock.
+  //
+  // Y DICE "2º CRUCE", NO "1ª VEZ". `vecesRebotado` cuenta rebotes, asi que la
+  // primera repeticion es "1ª vez" -- dentro de una seccion titulada "ya te los
+  // avisé" eso se lee como lo contrario de lo que el titulo promete. El numero
+  // de cruce (rebotes + 1) es el que no se contradice.
+  if (change.tipo === "stock") {
+    const antes = textoEstado(change.estadoAnterior ?? (change.disponibleAnterior ? ESTADO.DISPONIBLE : ESTADO.AGOTADO));
+    const ahora = textoEstado(change.estado ?? (change.disponible ? ESTADO.DISPONIBLE : ESTADO.AGOTADO));
+    const cruces = Number.isFinite(change.vecesRebotado)
+      ? ` (${change.vecesRebotado + 1}º cruce igual en ${ventanaDe(change)} h)`
+      : "";
+    const precio = Number.isFinite(change.precio) ? ` · ${fmt(change.precio)}${sinComprobar(change)}` : "";
+    const link = change.url ? ` · 🔗 ${change.url}` : "";
+    return `${icono} **${nombre}** (${sku}) — 🌀 ${antes} → **${ahora}**${cruces}${precio}${link}`;
+  }
+
+  const entre = (change.valoresRebote ?? []).map((v) => fmt(v)).join(" ⇄ ");
+  return `${icono} **${nombre}** (${sku}) — 🌀 ${entre} · ahora **${fmt(change.precio)}**${veces}`;
+}
+
+/**
+ * LA LINEA COMPACTA DE UN MATIZ DE "NO SE PUEDE COMPRAR" (2026-10-05).
+ *
+ * Un paso de "agotado" a "no esta a la venta" (o al reves) es un cambio real del
+ * sitio, pero no mueve la unica frontera que le importa al operador: no podia
+ * comprarlo antes y no puede ahora. Medido: 107 de las 590 alertas fuertes de la
+ * semana del Cyber eran esto, 89 de ellas en UNA sola revision.
+ *
+ * NO SE CALLA Y NO SE FUSIONAN LOS ESTADOS -- el operador pidio distinguirlos y
+ * los dos van escritos en la linea. Lo que se le quita es la alerta fuerte con
+ * bloque y link.
+ *
+ * LAS DOS DIRECCIONES NO SE DIBUJAN IGUAL (2026-10-05, segunda vuelta, medido).
+ * "agotado -> no esta a la venta" no lleva precio ni link a proposito: no hay
+ * nada que comprar y en 113 casos del historial NI UNO tenia el stock de vuelta
+ * en el evento siguiente. "no esta a la venta -> agotado" es Samsung volviendo a
+ * LISTAR el producto y SI lleva precio y link: 9 de 23 tenian el stock de vuelta
+ * en el evento siguiente, 6 de ellos a las 8,4 h (ver `matizDe` en
+ * src/estabilidad.mjs). Sigue sin ser alerta fuerte -- en ese momento no se
+ * puede comprar -- pero va en su propia seccion y con que actuar.
+ */
+function lineaMatiz(change) {
+  const icono = iconoPara(change.categoria);
+  const nombre = escaparMarkdown(componerTitulo(change));
+  const sku = change.modelo || "sin SKU";
+  const antes = textoEstado(change.estadoAnterior ?? (change.disponibleAnterior ? ESTADO.DISPONIBLE : ESTADO.AGOTADO));
+  const ahora = textoEstado(change.estado ?? (change.disponible ? ESTADO.DISPONIBLE : ESTADO.AGOTADO));
+  if (esMatizQueVuelve(change)) {
+    const precio = Number.isFinite(change.precio) ? ` · ${fmt(change.precio)}${sinComprobar(change)}` : "";
+    const link = change.url ? ` · 🔗 ${change.url}` : "";
+    return `${icono} **${nombre}** (${sku}) — ${antes} → **${ahora}**${precio}${link}`;
+  }
+  return `${icono} **${nombre}** (${sku}) — ${antes} → **${ahora}**`;
+}
+
+/**
+ * EL TOPE DE LINEAS DE LAS SECCIONES DE MATIZ (2026-10-05, segunda vuelta).
+ *
+ * La ola del 2026-10-02T11:19 dejo 89 matices que decian LITERALMENTE lo mismo
+ * ("agotado → no está a la venta"): 6 mensajes de Discord y 11.037 caracteres de
+ * texto sin nada accionable. El aviso tecnico hermano (`mensajeRebotando`) ya
+ * tenia tope desde el 2026-09-13 y esta seccion no, asi que escalaba lineal: si
+ * Samsung repite la ola a escala de catalogo, 500 matices son ~34 mensajes.
+ *
+ * NO SILENCIA NADA, y eso es la mitad del diseño: lo que no cabe en lineas se
+ * resume CONTADO POR CATEGORIA en una linea final, y esa linea VIAJA CON TODOS
+ * los cambios que resume -- asi, si Discord rechaza ese mensaje, los cambios
+ * vuelven enteros a data/pendientes.jsonl y se reintentan en la corrida
+ * siguiente, igual que cualquier otro aviso. El detalle completo queda siempre
+ * en data/history.jsonl.
+ */
+export const TOPE_MATICES = 40;
+
+function resumenPorCategoria(cambios) {
+  const porCat = new Map();
+  for (const c of cambios) {
+    const cat = c?.categoria || "sin categoría";
+    porCat.set(cat, (porCat.get(cat) ?? 0) + 1);
+  }
+  return [...porCat.entries()]
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+    .map(([cat, n]) => `${n} ${cat.toLowerCase()}`)
+    .join(" · ");
+}
+
+/**
+ * Convierte una lista de matices en items para `armarMensajesConCambios`,
+ * recortada al tope y con la cola resumida por categoria.
+ */
+function itemsDeMatices(cambios, tope = TOPE_MATICES) {
+  const items = cambios.slice(0, tope).map((c) => ({ linea: lineaMatiz(c), cambio: c }));
+  const resto = cambios.slice(tope);
+  if (resto.length > 0) {
+    items.push({
+      linea: `…y ${resto.length} más: ${resumenPorCategoria(resto)}. _(el detalle completo queda en el historial)_`,
+      cambios: resto,
+    });
+  }
+  return items;
 }
 
 const TITULOS = {
@@ -164,6 +279,8 @@ const TITULOS = {
   desaparecido: "❌ Ya no aparecen (confirmado)",
   correccion: "⚠️ Correcciones de avisos en vivo",
   rebote: "🌀 Siguen rebotando (ya te los avisé, no es novedad)",
+  matiz: "📦 Siguen sin poder comprarse (cambió el motivo, no la disponibilidad)",
+  matizVuelve: "🔄 Volvieron al catálogo, todavía sin stock (puede volver el stock)",
   pendiente: "⏳ Avisos atrasados (no se pudieron entregar en la revisión anterior)",
 };
 
@@ -215,10 +332,25 @@ export function lineaCorreccion(aviso, actual) {
 
 // Un aviso que quedo de la revision ANTERIOR porque Discord no lo acepto. Lleva
 // la fecha original para que no se lea como si acabara de pasar.
+//
+// RESPETA LA CLASIFICACION QUE EL CAMBIO YA TRAE (2026-10-05, segunda vuelta,
+// defecto medido). Este camino llamaba a `lineFor` sin mirar nada, asi que un
+// matiz o un rebote rechazado por Discord volvia a la corrida siguiente como
+// ALERTA FUERTE COMPLETA, con bloque de tres lineas y link -- justo lo que el
+// arreglo del dia viene a quitar. El flag viaja entero por data/pendientes.jsonl
+// (`serializarPendientes` guarda el cambio con todos sus campos), asi que basta
+// con leerlo. Antes el agujero daba lo mismo porque los rebotes son <= 5 por
+// corrida; los matices fueron 89 en UNA revision (2026-10-02T11:19), asi que
+// bastaba que Discord rechazara un mensaje para que ~15 volvieran como bloques.
 function lineaPendiente(cambio) {
   const cuando = cambio?.ts ? new Date(cambio.ts) : null;
   const fecha = cuando && !Number.isNaN(cuando.getTime()) ? new Intl.DateTimeFormat("es-CL", { dateStyle: "short", timeStyle: "short", timeZone: "America/Santiago" }).format(cuando) : "la revisión anterior";
-  return `${lineFor(cambio)}\n　_(detectado en ${fecha}; no se pudo avisar en su momento)_`;
+  const nota = `_(detectado en ${fecha}; no se pudo avisar en su momento)_`;
+  // compacto queda compacto: la nota va en la MISMA linea, para no convertir una
+  // linea en un bloque de dos
+  if (esMatiz(cambio)) return `${lineaMatiz(cambio)} ${nota}`;
+  if (esRebote(cambio)) return `${lineaRebote(cambio)} ${nota}`;
+  return `${lineFor(cambio)}\n　${nota}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -447,7 +579,11 @@ export function armarMensajesConCambios(encabezado, secciones) {
   let actual = encabezado;
   let grupo = [];
 
-  const agregarLinea = (linea, cambio) => {
+  // UN ITEM PUEDE LLEVAR VARIOS CAMBIOS (2026-10-05): la linea que resume la
+  // cola de una seccion recortada ("…y 49 más: 20 televisores…") viaja con TODOS
+  // los cambios que resume, para que un mensaje rechazado por Discord los
+  // devuelva enteros a pendientes.jsonl en vez de perderlos.
+  const agregarLinea = (linea, cambios) => {
     if ((actual + "\n\n" + linea).length > LIMITE) {
       mensajes.push({ texto: actual, cambios: grupo });
       actual = linea;
@@ -455,13 +591,16 @@ export function armarMensajesConCambios(encabezado, secciones) {
     } else {
       actual += "\n\n" + linea;
     }
-    if (cambio) grupo.push(cambio);
+    if (cambios) grupo.push(...cambios);
   };
 
   for (const [tipo, items] of secciones) {
     if (items.length === 0) continue;
-    agregarLinea(`**${TITULOS[tipo]} (${items.length})**`);
-    for (const item of items) agregarLinea(item.linea, item.cambio);
+    // el conteo de la seccion es el de los CAMBIOS, no el de las lineas: una
+    // seccion recortada tiene menos lineas que cambios
+    const total = items.reduce((n, i) => n + (i.cambios?.length ?? (i.cambio ? 1 : 0)), 0) || items.length;
+    agregarLinea(`**${TITULOS[tipo]} (${total})**`);
+    for (const item of items) agregarLinea(item.linea, item.cambios ?? (item.cambio ? [item.cambio] : null));
   }
 
   mensajes.push({ texto: actual, cambios: grupo });
@@ -587,12 +726,20 @@ export async function notifyDiscord(webhookUrl, { changes, errores, totalRevisad
   }
 
   const porTipo = { nuevo: [], baja: [], sube: [], stock: [], recuperado: [], desaparecido: [], rebote: [] };
+  // los matices se juntan como CAMBIOS (no como lineas): su seccion se arma
+  // despues, porque lleva tope y resumen por categoria
+  const matices = { matiz: [], matizVuelve: [] };
   // UN REBOTE SE AGRUPA POR SER REBOTE, NO POR SU TIPO. Si fuera por tipo, el
   // vaiven del monitor quedaria repartido entre "Bajas de precio" y "Subas de
   // precio" y volveria a leerse como la seguidilla "bajo/subio/bajo/subio" que
   // el operador reclamo.
+  //
+  // Y un MATIZ entre dos formas de "no se puede comprar" tiene su propia
+  // seccion, no la de los rebotes: no es un vaiven -- es un cambio real del
+  // sitio -- y meterlo bajo "ya te los avise" seria falso (2026-10-05).
   for (const c of changes) {
     if (esRebote(c)) porTipo.rebote.push({ linea: lineaRebote(c), cambio: c });
+    else if (esMatiz(c)) (esMatizQueVuelve(c) ? matices.matizVuelve : matices.matiz).push(c);
     else (porTipo[c.tipo] ?? porTipo.nuevo).push({ linea: lineFor(c), cambio: c });
   }
 
@@ -623,12 +770,19 @@ export async function notifyDiscord(webhookUrl, { changes, errores, totalRevisad
     ["baja", porTipo.baja],
     ["sube", porTipo.sube],
     ["stock", porTipo.stock],
+    // JUSTO DESPUES DE LOS CAMBIOS DE STOCK, y no al fondo: no es accionable hoy
+    // -- el producto sigue sin stock -- pero esta MEDIDO que anticipa que se va a
+    // poder comprar (9 de 23 lo tenian de vuelta en el evento siguiente, 6 a las
+    // 8,4 h), asi que no es "lo que ya sabes" sino un aviso temprano.
+    ["matizVuelve", itemsDeMatices(matices.matizVuelve)],
     ["recuperado", porTipo.recuperado],
     ["nuevo", porTipo.nuevo],
     ["desaparecido", porTipo.desaparecido],
-    // ULTIMA A PROPOSITO: es lo que el operador ya sabe. Va despues de todo lo
-    // que si es novedad, para que no le tape nada.
+    // ULTIMAS A PROPOSITO: son lo que el operador ya sabe (un rebote) o lo que
+    // no le cambia nada (un matiz entre dos formas de no poder comprar). Van
+    // despues de todo lo que si es novedad, para que no le tapen nada.
     ["rebote", porTipo.rebote],
+    ["matiz", itemsDeMatices(matices.matiz)],
   ];
 
   const mensajes = armarMensajesConCambios(encabezado, secciones);
@@ -739,15 +893,40 @@ export function mensajeRebotando(rebotando, tope = 60) {
   const ordenadas = [...lista].sort(
     (a, b) => String(a.magnitud).localeCompare(String(b.magnitud)) || String(a.modelo).localeCompare(String(b.modelo)),
   );
-  const valor = (m, v) => (m === "precio" ? fmt(v) : textoEstado(v));
-  const todas = ordenadas.map(
-    (i) => `• ${i.magnitud === "precio" ? "💲" : "📦"} ${i.modelo}: ${(i.valores ?? []).map((v) => valor(i.magnitud, v)).join(" ⇄ ")}`,
-  );
+  // LO QUE SE RECUERDA DE CADA MAGNITUD NO ES LO MISMO (2026-10-05): del precio
+  // se recuerdan VALORES y del stock, CRUCES de la frontera comprable/no
+  // comprable.
+  //
+  // Y LA LINEA DE STOCK IMPRIME EL ESTADO DE AHORA, NO SOLO LOS CRUCES (defecto
+  // medido en la segunda vuelta). Un cruce guardado dice "esto ya te lo avise",
+  // no "asi esta el producto": con una sola llave en la memoria -- que es el caso
+  // normal desde que la reposicion no se degrada -- la linea quedaba en una
+  // afirmacion pelada ("no se puede comprar") que podia ser FALSA. Medido
+  // replayando el historial completo contra el catalogo al lado: 8 avisos
+  // tecnicos ENTREGABLES lo decian de un producto que el catalogo daba por
+  // DISPONIBLE (NP750XGJ-KS6CL 24/25/26-08, NP750XGJ-KS4CL 10 y 11-09,
+  // SM-A366ELVGLTL 16 y 17-09, SM-A276BZBKLTL 02-10), y los 8 van en la
+  // direccion que cuesta plata: le dicen que no puede comprar algo que si puede.
+  // El estado real ya viajaba en el mismo item (`valor`, o sea `rec.estadoStock`)
+  // y no se imprimia.
+  const cruce = (v) => {
+    if (v === LADO.COMPRABLE) return "volvió el stock";
+    if (v === LADO.NO_COMPRABLE) return "se agotó";
+    return textoEstado(v);
+  };
+  const todas = ordenadas.map((i) => {
+    if (i.magnitud === "precio") {
+      return `• 💲 ${i.modelo}: ${(i.valores ?? []).map((v) => fmt(v)).join(" ⇄ ")}`;
+    }
+    const estado = typeof i.valor === "string" && i.valor ? textoEstado(i.valor) : "sin leer";
+    const cruces = (i.valores ?? []).map(cruce).join(" / ");
+    return `• 📦 ${i.modelo}: ahora **${estado}**${cruces ? ` · ya avisados: ${cruces}` : ""}`;
+  });
   const armar = (n) => {
     const resto = todas.length > n ? `\n…y ${todas.length - n} más.` : "";
     return (
       `🌀 **Monitor Samsung — productos que están rebotando**\n` +
-      `${lista.length} producto(s) volvieron a un valor que ya habían tenido hace menos de ${VENTANA_REBOTE_HORAS} h. Eso es un vaivén, no una novedad.\n` +
+      `${lista.length} producto(s) volvieron a algo que ya habían tenido hace poco: un precio ya visto hace menos de ${VENTANA_REBOTE_HORAS} h, o un segundo "se agotó" en menos de ${VENTANA_QUIEBRE_HORAS} h. Eso es un vaivén, no una novedad. Una reposición nunca entra acá: "volvió el stock" sale siempre como alerta fuerte.\n` +
       `${todas.slice(0, n).join("\n")}${resto}\n` +
       `**No dejo de avisarte nada**: mientras rebotan, sus avisos salen juntos en una línea compacta al final del resumen (sección "Siguen rebotando"), con el valor de ahora. Un valor NUEVO vuelve a salir como alerta normal al instante.\n` +
       `Este aviso sale una vez por episodio de rebote; si el vaivén dura más de una semana, puede repetirse.`

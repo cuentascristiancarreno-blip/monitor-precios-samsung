@@ -31,7 +31,7 @@ import { appendFile, readFile } from "node:fs/promises";
 import { evaluarObservado } from "./comparar.mjs";
 import { esAccesorio, esFamiliaGenerica } from "./catalogo.mjs";
 import { estaSilenciado } from "./silenciados.mjs";
-import { esRebote } from "./estabilidad.mjs";
+import { esMatiz, esRebote } from "./estabilidad.mjs";
 import { enviarTandaVivo } from "./discord.mjs";
 import { reloj } from "./reloj.mjs";
 import { entorno as num } from "./entorno.mjs";
@@ -86,9 +86,16 @@ export function esNotificable(cambio) {
  * aprovechar hoy) y un rebote es, por definicion, un valor que el operador ya
  * escucho. Mandarlo en vivo lo partiria en un mensaje propio y volveria a ser la
  * "notificacion constante" que el pidio sacar; agrupado al cierre es UNA linea.
+ *
+ * Y TAMPOCO los matices entre dos formas de "no se puede comprar" (2026-10-05):
+ * no hay nada urgente en que un producto que no se podia comprar siga sin poder
+ * comprarse. Sin esta linea, los 89 avisos de agotado -> no-a-la-venta de la
+ * revision del 2026-10-02T11:19 habrian salido igual, en vivo y uno por uno,
+ * minutos antes de que el resumen los agrupara -- que es exactamente el mutante
+ * que sobrevivio en la entrega del freno (ver BITACORA.md, 2026-09-13).
  */
 export function esParaVivo(cambio) {
-  return esNotificable(cambio) && !esRebote(cambio);
+  return esNotificable(cambio) && !esRebote(cambio) && !esMatiz(cambio);
 }
 
 /**

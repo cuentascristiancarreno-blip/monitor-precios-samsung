@@ -31,7 +31,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { comparar, rebotesDe, resumenDeRebotes } from "../src/comparar.mjs";
 import { crearDespachadorVivo, esNotificable, esParaVivo, repartirCierre } from "../src/despachador-vivo.mjs";
-import { evaluarEstabilidad, VALORES_RECORDADOS, VENTANA_REBOTE_HORAS, esRebote } from "../src/estabilidad.mjs";
+import { evaluarEstabilidad, VALORES_RECORDADOS, VENTANA_REBOTE_HORAS, esMatiz, esRebote } from "../src/estabilidad.mjs";
 import { mensajeRebotando, notifyDiscord, notifyTecnico } from "../src/discord.mjs";
 import { ESTADO } from "../src/stock.mjs";
 
@@ -143,7 +143,11 @@ function replay({ desde = INICIO + 1 } = {}) {
 }
 
 const cuenta = (lista, sku, tipos) => lista.filter((c) => c.modelo === sku && tipos.includes(c.tipo)).length;
-const fuertes = (lista, sku, tipos) => lista.filter((c) => c.modelo === sku && tipos.includes(c.tipo) && !esRebote(c)).length;
+// "FUERTE" = con su propio bloque, su precio y su link. Desde el 2026-10-05 hay
+// DOS formas de salir compacto: un rebote (ya lo escuchaste) y un matiz entre dos
+// formas de "no se puede comprar" (no cambia lo que podes hacer).
+const fuertes = (lista, sku, tipos) =>
+  lista.filter((c) => c.modelo === sku && tipos.includes(c.tipo) && !esRebote(c) && !esMatiz(c)).length;
 
 // ---------------------------------------------------------------------------
 // LA PRUEBA QUE MAS IMPORTA
@@ -157,13 +161,38 @@ test("la secuencia REAL de los tres SKU: a lo mas UNA alerta fuerte por producto
   assert.ok(cuenta(detectados, "SM-A366ELVGLTL", ["stock"]) >= 2, "el vaiven de stock del A36 existe en la secuencia real");
   assert.ok(cuenta(detectados, "SM-F761BZKJCHO", ["stock"]) >= 3, "el vaiven de stock del Z Flip7 FE existe en la secuencia real");
 
-  // 2. con el freno, el operador recibe a lo mas UNA alerta fuerte de cada cosa
+  // 2. con el freno, el operador recibe UNA sola alerta fuerte de precio
   assert.equal(fuertes(aDiscord, "SM-A366ELVGLTL", ["baja", "sube"]), 1, "A36 precio");
-  assert.equal(fuertes(aDiscord, "SM-A366ELVGLTL", ["stock"]), 1, "A36 stock");
-  assert.equal(fuertes(aDiscord, "SM-F761BZKJCHO", ["stock"]), 1, "Z Flip7 FE stock");
 
-  // 3. el Z Flip6 cambio UNA sola vez de verdad: se avisa igual
-  assert.equal(fuertes(aDiscord, "SM-F741BAKKCHO", ["stock"]), 1, "Z Flip6 stock");
+  // 3. EL STOCK SE CUENTA POR CRUCE DE FRONTERA, NO POR ESTADO (2026-10-05).
+  //
+  // ACA DECIA 1, Y ESA ASERCION FIJABA EL COMPORTAMIENTO EQUIVOCADO. El A36
+  // cruza la frontera comprable/no comprable TRES veces en la secuencia real
+  // (se agota, vuelve, se agota) y las dos primeras son novedades distintas:
+  // "se agoto" y "volvio el stock" no son el mismo aviso, y el operador puede
+  // COMPRAR con el segundo. Con la regla vieja -- "volver a un valor ya visto"
+  // -- la reposicion salia degradada porque "disponible" ya estaba en la
+  // memoria desde el momento en que el producto se agoto, sin que hubiera
+  // habido ningun parpadeo. Medido en pleno Cyber: 15 de los 73 avisos de
+  // reposicion de la semana salieron asi, con 1.018 horas de disponibilidad
+  // real detras y 14 de ellos siendo la PRIMERA vez que ese producto volvia.
+  // Ahora son 2 fuertes (el quiebre y la reposicion) y el tercer cruce -- el
+  // segundo "se agoto", a 71,9 h del primero -- sigue saliendo compacto.
+  assert.equal(fuertes(aDiscord, "SM-A366ELVGLTL", ["stock"]), 2, "A36 stock: quiebre + reposicion");
+
+  // 4. Y DOS FORMAS DE "NO SE PUEDE COMPRAR" NO SON UNA ALERTA FUERTE.
+  //
+  // ACA TAMBIEN DECIA 1 PARA LOS DOS, y era el defecto nº 2 del encargo del
+  // 2026-10-05: 107 de las 590 alertas fuertes de la semana del Cyber (18,1%)
+  // avisaban un paso de "agotado" a "no esta a la venta". El Z Flip7 FE va y
+  // viene cuatro veces entre esos dos estados -- es literalmente el reclamo del
+  // operador ("a veces aparece agotado, despues no esta a la venta, agotado, y
+  // asi") -- y el Z Flip6 pasa de agotado a no-a-la-venta una vez. En los cinco
+  // casos el operador no podia comprar antes y no puede ahora: salen compactos,
+  // en su propia seccion, con los dos estados escritos.
+  assert.equal(fuertes(aDiscord, "SM-F761BZKJCHO", ["stock"]), 0, "Z Flip7 FE stock: los 4 son matices");
+  assert.equal(fuertes(aDiscord, "SM-F741BAKKCHO", ["stock"]), 0, "Z Flip6 stock: agotado -> no a la venta");
+  assert.equal(aDiscord.filter((c) => c.matiz === true).length, 5, "los 5 matices se entregan igual");
 });
 
 test("y NI UNO de esos cambios se pierde: todos llegan a Discord, los repetidos compactos", () => {
@@ -175,8 +204,18 @@ test("y NI UNO de esos cambios se pierde: todos llegan a Discord, los repetidos 
   // y cada rebote entregado trae lo que el operador necesita para decidir
   for (const c of rebotes) {
     assert.equal(esNotificable(c), true);
-    assert.ok(Array.isArray(c.valoresRebote) && c.valoresRebote.length >= 2, "dice entre que valores rebota");
     assert.ok(c.vecesRebotado >= 1, "dice cuantas veces va");
+    // UN REBOTE DE PRECIO dice entre que valores va. UNO DE STOCK no lleva
+    // `valoresRebote` desde el 2026-10-05: lo que se recuerda del stock es el
+    // CRUCE de la frontera, no el estado, asi que la linea compacta se dibuja
+    // con el estado de antes y el de ahora (que el cambio ya trae) mas el
+    // precio y el link. Lo que esta prueba exige es que ninguno salga pelado.
+    if (c.tipo === "stock") {
+      assert.ok(c.estadoAnterior && c.estado, "el rebote de stock dice de donde a donde");
+      assert.equal(c.ladoRebote, "no-comprable", "y de que lado de la frontera es el cruce repetido");
+    } else {
+      assert.ok(Array.isArray(c.valoresRebote) && c.valoresRebote.length >= 2, "dice entre que valores rebota");
+    }
   }
 });
 
@@ -344,7 +383,18 @@ test("una reposicion diaria REAL de 7 dias: el operador se entera las 7 veces", 
   }
   const vuelve = entregados.filter((c) => c.tipo === "stock" && c.estado === D);
   assert.equal(vuelve.length, 7, "las 7 reposiciones reales le llegan");
-  assert.equal(vuelve.filter((c) => !esRebote(c)).length, 1, "solo la primera es alerta fuerte");
+  // ACA DECIA 1 ("solo la primera es alerta fuerte") Y ESA ASERCION FIJABA EL
+  // COMPORTAMIENTO EQUIVOCADO (2026-10-05). Una reposicion diaria son siete
+  // oportunidades de compra distintas, separadas 24 h: ninguna es un rebote de
+  // la anterior. La regla vieja las degradaba todas menos la primera porque
+  // "disponible" ya estaba en la memoria, y eso es exactamente lo que le pasaba
+  // en produccion a 15 de los 73 avisos de reposicion de la semana del Cyber.
+  // Ahora el stock se mide por CRUCE de frontera y una reposicion NO SE DEGRADA
+  // NUNCA (medido sobre el historial completo: la repeticion de reposicion mas
+  // rapida que existe esta a 20,44 h, y el piso de 12 h que tuvo la primera
+  // version de este arreglo no degradaba ni una de las 213 reposiciones), asi
+  // que las 7 salen FUERTES, con precio y link.
+  assert.equal(vuelve.filter((c) => !esRebote(c)).length, 7, "las 7 son alerta fuerte: 24 h de separacion no es un rebote");
 });
 
 test("bajo un ciclo recurrente el freno NO se convierte en silencio: nada queda sin entregar", () => {
@@ -737,7 +787,9 @@ test("rebotesDe nunca reporta 'desconocido' como valor actual", () => {
       precio: 999990,
       estadoStock: ESTADO.DESCONOCIDO,
       disponible: null,
-      reboteStock: { v: [A, D], hasta: "2026-11-01T00:00:00.000Z", n: 2, ultimo: "2026-11-01T00:00:00.000Z", desde: "2026-11-01T00:00:00.000Z" },
+      // la memoria de stock guarda CRUCES desde el 2026-10-05 (antes guardaba
+      // estados; ver src/estabilidad.mjs). Lo que esta prueba afirma no cambia.
+      reboteStock: { c: { "no-comprable": "2026-11-01T00:00:00.000Z" }, n: 2, ultimo: "2026-11-01T00:00:00.000Z", desde: "2026-11-01T00:00:00.000Z" },
     }),
   };
   const lista = rebotesDe(catalogo, "2026-11-01T01:00:00.000Z");
@@ -795,10 +847,14 @@ test("un rebote de STOCK se dibuja con las palabras de stock, no con precios", a
       totalRevisado: 1,
       errores: 0,
       changes: [
+        // UN REBOTE DE STOCK DE VERDAD: el mismo CRUCE repetido (se agoto, y se
+        // vuelve a agotar dentro de la ventana). El material anterior de esta
+        // prueba era `no-a-la-venta -> agotado`, que desde el 2026-10-05 no es un
+        // rebote sino un MATIZ -- tiene su propia seccion y su propia prueba.
         {
-          tipo: "stock", modelo: "SM-F761BZKJCHO", nombre: "Galaxy Z Flip7 FE", estado: A, estadoAnterior: N,
-          disponible: false, precio: 999990, categoria: "Smartphones", url: "https://x/3",
-          rebote: true, valoresRebote: [A, N], vecesRebotado: 3,
+          tipo: "stock", modelo: "SM-A366ELVGLTL", nombre: "Galaxy A36", estado: A, estadoAnterior: D,
+          disponible: false, disponibleAnterior: true, precio: 999990, categoria: "Smartphones", url: "https://x/3",
+          rebote: true, ladoRebote: "no-comprable", vecesRebotado: 3,
         },
       ],
     });
@@ -808,7 +864,23 @@ test("un rebote de STOCK se dibuja con las palabras de stock, no con precios", a
   const texto = enviados.join("\n");
   assert.match(texto, /Siguen rebotando/);
   assert.match(texto, /agotado/i);
-  assert.doesNotMatch(texto, /\$999\.990/, "el precio no es la magnitud que rebota");
+  // el cambio se dibuja con las palabras del stock y no como una alerta de precio
+  assert.doesNotMatch(texto, /Precio antes:/, "un rebote de stock no se dibuja como uno de precio");
+  // Y SI LLEVA EL PRECIO Y EL LINK (2026-10-05, el agravante medido). ACA DECIA
+  // doesNotMatch(/\$999\.990/) y esa asercion fijaba el comportamiento
+  // equivocado: la linea compacta de stock salia sin las dos cosas que si lleva
+  // la alerta fuerte, que son justamente las que hacen falta para comprar. El
+  // mismo mensaje del 2026-10-02 le dio el bloque completo al 98" The Frame y
+  // una linea pelada al monitor Odyssey OLED G5 ($449.990, 73 h disponible).
+  assert.match(texto, /\$999\.990/, "un stock degradado sigue siendo accionable: lleva precio");
+  assert.match(texto, /https:\/\/x\/3/, "...y link");
+  // Y DICE "4º CRUCE", NO "3ª VEZ" (2026-10-05, segunda vuelta). `vecesRebotado`
+  // cuenta REBOTES, asi que la primera repeticion se anunciaba como "1ª vez"
+  // dentro de una seccion titulada "ya te los avisé, no es novedad" -- se leia
+  // como lo contrario de lo que el titulo promete. El numero de cruce (rebotes
+  // + 1) es el que no se contradice con el titulo.
+  assert.match(texto, /4º cruce igual en 72 h/, "y la ventana que le aplica a ESE cruce");
+  assert.doesNotMatch(texto, /3ª vez/, "no se anuncia como 'vez', que es lo que confundia");
 });
 
 // ---------------------------------------------------------------------------

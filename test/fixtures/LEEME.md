@@ -9,8 +9,20 @@
 |---|---|---|
 | `catalogo.json` | una copia entera de `data/latest.json` | del commit `3d1f32e`, 2026-09-22T08:27:50Z — la última revisión buena antes del incidente |
 | `ejecuciones.jsonl` | las últimas 24 filas de `data/ejecuciones.jsonl` | el mismo día |
+| `stock-semana-cyber.json` | los 243 eventos de stock notificables entre el 2026-09-26 y el 2026-10-05 | de `data/history.jsonl`, congelado el 2026-10-05 |
+| `vaiven-1-oct.json` | los 16 productos del vaivén de precios del 2026-10-01, con sus cuatro precios y los contadores de diagnóstico de las tres corridas | de `data/history.jsonl`, del historial de git de `data/latest.json` y de `data/ejecuciones.jsonl`, congelado el 2026-10-05 |
 
 Son **fotos**: no se actualizan solas y no tienen que hacerlo.
+
+**Y las dos últimas no se refrescan NUNCA, ni hay por qué.** Son distintas de las
+dos primeras: `catalogo.json` y `ejecuciones.jsonl` sustituyen a un censo (las
+pruebas que las usan preguntan "¿el catálogo tiene esta forma?", así que envejecen
+y el censo avisa cuando hay que renovarlas). Estas dos son **la evidencia de un
+hecho que ya pasó**: la semana del Cyber en que 15 avisos de reposición salieron
+degradados y las tres revisiones del 1 de octubre en que 16 precios fueron y
+vinieron. Refrescarlas borraría justamente lo que las pruebas defienden. Si algún
+día el formato del registro cambia tanto que el replay no corre, lo que hay que
+cambiar es el replay, no la foto.
 
 ## Por qué existen (el incidente de las 30 horas)
 

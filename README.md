@@ -402,6 +402,14 @@ Esto es lo que pediste con todas sus letras: *"si ya me notificaste este cambio 
 
 **La regla, en una frase:** si un producto **vuelve a un precio (o a un estado) que ya te conté en los últimos 3 días**, eso no es una novedad, es un vaivén — así que **deja de tener su propia alerta** y pasa a **una sola línea** al final del resumen, en una sección que se llama **"🌀 Siguen rebotando"**.
 
+> ⚠️ **La mitad del STOCK de esta regla se corrigió el 2026-10-05, porque estaba
+> mal.** Para el stock, "vuelve a un estado que ya te conté" se le comía
+> reposiciones de verdad: 15 avisos de "volvió el stock" salieron como línea
+> chica cuando eran la primera vez que ese producto volvía. El stock se mide
+> ahora por **cruce de la frontera entre poder comprarlo y no poder comprarlo**,
+> con 12 horas de ventana para la reposición y 3 días para el "se agotó".
+> **Lo del precio no cambió.** Ver [la sección del 2026-10-05](#lo-del-stock-corregido-en-pleno-cyber-2026-10-05).
+
 Una línea así se ve más o menos así:
 
 ```
@@ -441,9 +449,184 @@ En vez de la alerta grande de siempre, con su bloque, su porcentaje y su link.
 
 Esa última fila importa tanto como las otras: **un cambio que ocurre una sola vez se sigue avisando igual.**
 
+> ⚠️ **Las tres filas de stock de esa tabla cambiaron el 2026-10-05**, con la
+> corrección de arriba. Las cifras nuevas, con la misma secuencia real: el A36
+> pasa a **2** alertas grandes de stock (el "se agotó" y el "volvió el stock" son
+> dos novedades distintas, no una), y el Z Flip7 FE y el Z Flip6 pasan a **0**,
+> porque sus cambios van de "agotado" a "no está a la venta" y al revés — no
+> cruzan la frontera de poder comprarlos. Los cinco cambios te llegan igual, en
+> la sección compacta nueva. La fila del precio no cambia.
+
 **Dónde lo ves.** En `data/ejecuciones.jsonl`, cada revisión trae ahora `avisosDegradados` (cuántos salieron compactos), `productosRebotando` (cuántos están rebotando en este momento) y `productosNuevosRebotando` (cuántos empezaron hoy). Si `productosRebotando` crece y no baja, es que apareció un vaivén nuevo que todavía nadie diagnosticó — el freno lo ordena, pero ordenar no es arreglar.
 
 **Lo que se guarda igual.** Los avisos degradados **sí** quedan escritos en el historial del monitor, marcados. Cada uno de los vaivenes de este proyecto se encontró midiendo ese historial, y borrarlos dejaría ciega a la próxima investigación.
+
+---
+
+## Lo del stock, corregido en pleno Cyber (2026-10-05)
+
+Dos cosas que vas a notar en los avisos, las dos medidas sobre la semana del Cyber.
+
+### 1. "Volvió el stock" vuelve a ser una alerta grande
+
+**Lo que estaba pasando.** Esta semana llegaron **15 avisos de "volvió el stock"**
+como línea chica, bajo el título *"Siguen rebotando (ya te los avisé, no es
+novedad)"* — y no era cierto: **14 de los 15 eran la primera vez que ese producto
+volvía**. Entre ellos:
+
+| producto | precio | cuánto estuvo comprable |
+|---|---|---|
+| 75" Micro RGB R85H | $1.399.990 | 97 h, sigue disponible |
+| S26 Ultra 256GB + monitor Odyssey OLED G5 | $1.346.490 | 92 h, sigue disponible |
+| Aire WindFree Inverter 24.000 BTU | $699.990 | 145 h, sigue disponible |
+| 65" Neo QLED QN70H | $699.990 | 120 h |
+| Monitor 27" Odyssey OLED G5 | $449.990 | 73 h, sigue disponible |
+| Galaxy A27 5G | $289.990 | 116 h, sigue disponible |
+
+Son **1.018 horas de disponibilidad real** repartidas en 15 productos, 10 de ellos
+disponibles un día o más. Y la línea chica **no llevaba precio ni link**, que son
+justo las dos cosas con las que se puede comprar.
+
+**Por qué.** El freno anti-rebote mira si el producto "vuelve a algo que ya te
+conté". Para el **precio** eso tiene sentido: hay cientos de valores posibles y
+volver al valor exacto de antes es una señal de vaivén. Para el **stock** no: solo
+hay tres estados, así que *"volver a un valor que ya escuchaste"* es, simplemente,
+volver a estar disponible. Cuando un producto se agotaba, el freno anotaba las dos
+puntas del cambio a la vez — "disponible" y "agotado" —, y 48 h después, al volver
+el stock, ya lo consideraba conocido. La ventana de 3 días, que es correcta para el
+precio, era absurda para el stock.
+
+**Lo que cambia.** Para el stock, lo que cuenta como "ya te lo conté" dejó de ser el
+estado y pasó a ser **cruzar la frontera entre poder comprarlo y no poder
+comprarlo**. Y los dos cruces no se tratan igual:
+
+- **"volvió el stock"**: **nunca** se considera repetido. Siempre es alerta grande y
+  siempre sale en vivo. Medido sobre todo el historial (342 cruces de frontera): de
+  las 213 reposiciones, el piso de 12 horas que tuvo la primera versión de este
+  arreglo no degradó **ninguna**, así que sacarlo no cambia ni un aviso — y es el
+  único aviso de stock con el que puedes comprar. La repetición de reposición más
+  rápida que existe está a 20,44 h; además, un cambio de stock necesita dos
+  revisiones seguidas para confirmarse, así que dos reposiciones del mismo producto
+  no pueden estar a menos de ~3 h.
+- **"se agotó"**: 3 días, como antes. Un "se agotó" repetido no te cuesta plata, y
+  ahí sí hay material: 19 de los 36 quiebres repetidos del historial caen dentro.
+
+La asimetría es a propósito: una reposición es el único aviso de stock con el que
+puedes **comprar**, y en Cyber un aviso de reposición perdido cuesta más que uno de
+más.
+
+**Medido sobre la semana del Cyber:** los 73 avisos de reposición pasan de 58
+alertas grandes a **73**. Y el freno sigue vivo donde de verdad hace falta: el
+vaivén diagnosticado del A36 sigue saliendo compacto en sus repeticiones de "se
+agotó" (de sus 7 cruces: 5 grandes y 2 compactos).
+De yapa, **la línea compacta de stock ahora lleva precio y link** — y, si ese precio
+lleva revisiones sin publicarse, lo dice.
+
+### 2. "Agotado" → "no está a la venta" deja de ser una alerta grande
+
+**Lo que estaba pasando.** **107 de las 590 alertas grandes de la semana (una de
+cada cinco)** te avisaban que un producto pasó de *"agotado"* a *"no está a la
+venta"*. Las dos cosas significan lo mismo para ti: no lo podías comprar antes y no
+lo puedes comprar ahora. **89 de ellas salieron en una sola revisión** (el 2 de
+octubre a las 11:19): 43 televisores, 14 de lavado y secado, 6 aspiradoras, 6
+monitores, 6 de cocina, uno tras otro diciendo lo mismo.
+
+**No era una lectura mala.** 124 de esos productos seguían en "no está a la venta"
+tres días después: Samsung cambió algo de verdad. Y era nuevo — ese par de estados
+dio 12, 5, 1 y 0 avisos en las semanas anteriores y esta semana dio 117.
+
+**Lo que cambia.** Los dos estados **se siguen distinguiendo** (lo pediste y sigue
+así: el catálogo, el historial y el mensaje los muestran). Lo que cambia es que el
+paso de uno al otro ya no se lleva una alerta grande: sale como **una línea
+compacta** en una sección propia, al final del resumen:
+
+```
+**📦 Siguen sin poder comprarse (cambió el motivo, no la disponibilidad) (89)**
+
+📺 75" Neo QLED QN800D (QN75QN800DGXZS) — agotado → **no está a la venta**
+```
+
+Lo que **sí** sigue siendo alerta grande, siempre, es cruzar la frontera: **"se
+agotó"** y **"volvió el stock"**. Eso lo fija una prueba.
+
+Tampoco salen en vivo: no hay nada urgente en que algo que no podías comprar siga
+sin poderse comprar.
+
+**Pero las dos direcciones no valen lo mismo, y eso se midió.** El camino de vuelta
+—de *"no está a la venta"* a *"agotado"*— es Samsung **volviendo a listar** el
+producto, y resultó ser un aviso temprano de que vas a poder comprarlo: de los 23
+casos del historial, **9 ya estaban disponibles en el evento siguiente, 6 de ellos
+8,4 horas después** (seis combos Galaxy Watch + Buds de $674.980 a $1.024.980, el 2
+de octubre). En la dirección contraria eso no pasó **ni una vez en 113 casos**. Así
+que ese sentido tiene su propia sección, y **sí lleva precio y link**:
+
+```
+**🔄 Volvieron al catálogo, todavía sin stock (puede volver el stock) (6)**
+
+⌚ Galaxy Watch8 + Buds Core (F-SML34SMR602) — no está a la venta → **agotado** · $674.980 · 🔗 …
+```
+
+Sigue sin ser alerta grande (en ese momento no hay nada que comprar) y sigue sin
+salir en vivo; cuando vuelva el stock de verdad, **esa** sí es alerta grande.
+
+**Y la sección tiene tope.** La ola del 2 de octubre dejó 89 líneas que decían
+literalmente lo mismo: 6 mensajes de Discord. Ahora se muestran las primeras 40 y la
+cola va **contada y agrupada por categoría** (`…y 49 más: 43 televisores · 3
+refrigeradores · 3 TV Lifestyle`), así que la misma ola son 3 mensajes en vez de 6, y
+una ola de 500 no se convierte en 34. El detalle completo queda siempre en
+`data/history.jsonl`, y si Discord rechaza ese mensaje los avisos que resume vuelven
+enteros a la revisión siguiente: **nada se pierde**.
+
+**Dónde lo ves.** `data/ejecuciones.jsonl` trae dos contadores nuevos por revisión:
+`avisosMatizStock` (cuántos de estos hubo) y `avisosMatizVuelve` (cuántos de los que
+anticipan stock).
+
+### 3. Y una tercera cosa, que no vas a notar porque es para que no pase
+
+El 1 de octubre, tres revisiones seguidas (las tres sanas, 0 errores):
+
+```
+16:37  bajan 26 productos  — la oferta real del Cyber
+17:20  16 de esos "suben" a su precio exacto de antes
+18:00  los 16 "bajan" otra vez al precio de oferta exacto
+```
+
+El freno hizo su trabajo y **no te llegó ninguna alerta grande falsa**. Pero pasó
+otra cosa peor y más silenciosa: el monitor **se creyó el número mal leído** y lo
+guardó, así que la línea compacta te dijo que el precio de ahora era el alto, y los
+16 avisos de las 18:00 midieron la "baja" contra ese número equivocado.
+
+**La causa no está diagnosticada y no se inventó ninguna.** Lo que sí está medido:
+son 16 páginas distintas, de 5 categorías, y la revisión del medio marcó **una sola
+página** como problemática — una página no explica 16 productos. O sea que el camino
+por el que entró esa lectura no es ninguno de los que se arreglaron en septiembre.
+Las dos hipótesis que quedan están escritas en `BITACORA.md`.
+
+**La defensa que sí cubre el síntoma:** si un precio **sube** a un valor que ya
+tenía y lo hace **a menos de 2 horas** del cambio que deshace, el monitor **no se lo
+cree con una sola lectura**: espera a que la misma página lo repita. Si en vez de
+repetirse vuelve el precio de oferta, el asunto muere solo — ni aviso, ni número
+malo guardado. Si la subida era de verdad, te llega en la revisión siguiente (unos
+40 minutos).
+
+**Las bajas nunca se atrasan**, ni un minuto: la regla solo mira hacia arriba. Y el
+umbral de 2 horas está medido — de los 119 rebotes hacia arriba de todo el
+historial, **17 caen bajo 2 h y son exactamente los dos episodios falsos**; el más
+rápido de los reales está a 2,55 h.
+
+**El límite, dicho de frente:** si la próxima vez el salto cae en un precio
+**nuevo**, esta defensa no lo ve, porque un número que nadie escuchó antes es
+indistinguible de un cambio real. Eso no tiene arreglo sin saber la causa.
+
+**Cómo nos vamos a enterar de que volvió a pasar.** Como la defensa hace que la
+lectura mala no se avise *ni* se guarde, la revisión del vaivén ahora no deja rastro
+en ningún aviso. Así que `data/ejecuciones.jsonl` trae un contador nuevo:
+`rebotesArribaRetenidos`, cuántas lecturas frenó la guarda en esa revisión. La del 1
+de octubre habría marcado **16 de golpe**: si vuelve a aparecer un número así en una
+sola revisión, es la señal de que hay que ir a capturar la página en vivo (está
+anotado como pendiente en `BITACORA.md`). Lo normal es 0. Al lado va
+`preciosEnEspera`, cuántos precios están esperando que una segunda lectura los
+confirme, por cualquier motivo.
 
 ---
 
