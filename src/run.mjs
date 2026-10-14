@@ -8,9 +8,10 @@ import { procesarEntrada } from "./resolver.mjs";
 import { comparar, marcarSinPrecioProlongado, marcarSinVerificarProlongado, rebotesDe, resumenDeRebotes, UMBRAL_SIN_VERIFICAR } from "./comparar.mjs";
 import { integrarVariantes } from "./catalogo.mjs";
 import { resumirSilenciados } from "./silenciados.mjs";
-import { mensajeCorreccionesDePrecio, mensajeRebotando, notifyDiscord, notifyTecnico } from "./discord.mjs";
-import { crearDespachadorVivo, repartirCierre } from "./despachador-vivo.mjs";
-import { leerPendientes, serializarPendientes } from "./pendientes.mjs";
+import { mensajeCorreccionesDePrecio, mensajePulsoDeLaRegla, mensajeRebotando, notifyDiscord, notifyTecnico } from "./discord.mjs";
+import { crearDespachadorVivo, pendientesParaAvisar, repartirCierre } from "./despachador-vivo.mjs";
+import { serializarPendientes } from "./pendientes.mjs";
+import { pulsoDeLaRegla } from "./solo-bajas.mjs";
 import { entorno } from "./entorno.mjs";
 import { bloqueDelEntorno, medicionPrincipales, prepararRecorrido, skusQueCambiaronDeSeccion } from "./prioridad.mjs";
 import { claveNoConfiable, decidirModo, evaluarConfiabilidad, modoPedido, MODO_LIVIANO, ultimoCompleto, ultimoRecorrido } from "./alcance.mjs";
@@ -549,7 +550,15 @@ async function main() {
   // correcciones de un SKU que se re-emitio con otro precio en la misma corrida.
   // `suprimidos` es el conteo honesto de lo omitido (incluye las huellas
   // heredadas de una corrida muerta, que statsVivo.avisados no cuenta).
-  const { paraDiscord: cambiosParaDiscord, suprimidos } = repartirCierre(cambios, despachador);
+  // `detectados` y `noNotificadosPorRegla` salen de la misma funcion probada: la
+  // formula vivia aca suelta y ningun mutante la mataba (ver el comentario de
+  // repartirCierre, src/despachador-vivo.mjs).
+  const {
+    paraDiscord: cambiosParaDiscord,
+    suprimidos,
+    detectados,
+    noNotificadosPorRegla,
+  } = repartirCierre(cambios, despachador);
 
   // AUDITORIA DE LO AVISADO EN VIVO. comparar() es la autoridad del estado, asi
   // que tambien es la autoridad sobre si un aviso en vivo era cierto: un aviso
@@ -563,14 +572,45 @@ async function main() {
   }
 
   // Avisos que la corrida ANTERIOR detecto y que Discord nunca acepto.
-  const pendientes = leerPendientes(await readFile(PENDIENTES_PATH, "utf-8").catch(() => ""));
+  // `pendientesParaAvisar` los lee y los vuelve a pasar por las reglas de
+  // notificacion de HOY: los escribio otra corrida, posiblemente con otras
+  // reglas, y sin esto el primer despliegue de la regla del 2026-10-14 habria
+  // reenviado como alertas completas hasta 1.000 avisos que esa regla ya no
+  // quiere. Ademas descarta un pendiente que diga "baja" con los montos al reves
+  // o marcado como matiz: es el unico material que llega al canal de productos
+  // sin pasar por el detector de esta corrida (ver src/solo-bajas.mjs).
+  const pendientes = pendientesParaAvisar(await readFile(PENDIENTES_PATH, "utf-8").catch(() => ""));
   if (pendientes.length > 0) console.log(`INFO avisos atrasados de una corrida anterior que Discord no acepto: ${pendientes.length}`);
 
   resumen.suprimidosPorVivo = suprimidos;
   resumen.correccionesEnVivo = correcciones.length;
   resumen.avisosAtrasados = pendientes.length;
+  // LOS DOS NUMEROS DE LA REGLA DEL OPERADOR (2026-10-14, src/solo-bajas.mjs).
+  // `cambiosDetectados` son los cambios de productos vigilados que la revision
+  // encontro; `noNotificadosPorRegla`, cuantos de esos no se avisaron por ser de
+  // un tipo distinto de "baja". Van los dos porque el segundo solo o el primero
+  // solo no permiten ver si la regla esta tapando mas de lo que deberia.
+  // Referencia medida sobre la semana 2026-10-07/14: 185 detectados y 174 no
+  // notificados por dia-semana (11 bajas). Si `cambiosDetectados` se cae a casi
+  // 0 sin que `bajas` suba, el que esta roto es el detector, no la regla.
+  // Los dos salen ademas por el canal TECNICO una vez al dia (el pulso, abajo):
+  // aca solos no servian de nada, porque el operador no lee este archivo.
+  resumen.cambiosDetectados = detectados;
+  resumen.noNotificadosPorRegla = noNotificadosPorRegla;
   await appendFile(EJECUCIONES_PATH, JSON.stringify(resumen) + "\n");
   console.log(`INFO resumen ${JSON.stringify(resumen)}`);
+
+  // EL PULSO DEL DIA, por el canal TECNICO y una sola vez al dia.
+  // Sin esto, los dos contadores de arriba viven solo en data/ejecuciones.jsonl y
+  // el operador -- que no programa -- no los ve nunca: medido, 283 de las 437
+  // corridas reales no mandan ni un mensaje al canal de productos (64,8%), asi
+  // que una semana sin bajas no se distinguia de un detector roto. El por que
+  // esta entero en pulsoDeLaRegla (src/solo-bajas.mjs) y el texto en
+  // mensajePulsoDeLaRegla (src/discord.mjs); aca queda una sola linea.
+  await avisarUnaVezAlDia(
+    "pulso-regla",
+    mensajePulsoDeLaRegla(pulsoDeLaRegla(ejecucionesPrevias, { ahora: resumen.fin, deEstaCorrida: resumen })),
+  );
 
   if (momificados.length > 0) {
     const lista = masCorridas(momificados, 15).map((m) => `• ${m.modelo} (${m.corridas} revisiones)`).join("\n");
@@ -670,6 +710,7 @@ async function main() {
     avisadosEnVivo: suprimidos,
     correcciones,
     pendientes,
+    detectados,
   });
 
   // Lo que Discord no acepto queda anotado para la corrida siguiente; si se

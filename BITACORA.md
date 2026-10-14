@@ -4712,3 +4712,885 @@ Y EL FRENO NO QUEDO MUERTO
    nunca nace".
 9. **NO SE COMMITEÓ NADA.** Antes de pushear: `git pull --rebase`, porque el monitor
    commitea datos 20 veces al día.
+
+---
+
+# 2026-10-14 — Solo las bajas de precio: 185 avisos por semana pasan a 11, y el aviso por fin dice que es una baja
+
+Encargo del operador, textual: *"para notificaciones discord, solo notifica si hay
+bajas de precio. Si sube el precio o se agotó un producto no lo notifiques. La
+notificacion de discord debería mostrar que hubo una baja de producto y una flecha
+verde por ejemplo, el nombre del producto completo y de que precio a que precio
+bajó."*
+
+Son dos encargos: **el filtro** (quién pasa) y **el formato** (cómo se ve lo que
+pasa). Los dos están hechos. Cero requests a samsung.com en todo el encargo y el
+webhook real jamás se tocó.
+
+## LA MEDICIÓN PREVIA, SIN RED, SOBRE EL REPO
+
+Ventana: 2026-10-07T00:00:00Z a 2026-10-14T23:59:59Z, sobre `data/history.jsonl`
+con el filtro REAL del repo (`esAccesorio` + `estaSilenciado`).
+
+```
+eventos crudos en la ventana                      194
+eventos notificables                              185
+  bajas de precio ....................... 11   <- LO UNICO QUE SIGUE AVISANDO
+  subidas de precio ......................  9
+  se agoto ............................... 84
+  volvio el stock ........................ 44
+  cambio de motivo (sigue sin comprarse) . 16
+  desaparecido ........................... 12
+  recuperado .............................  8
+  producto nuevo .........................  1
+TOTAL 185 -> 11. Reduccion del 94,1%.
+de los 185 notificables: 16 rebotes y 16 matices
+de las 11 bajas: 0 son rebotes
+```
+
+**Los números del encargo se reproducen exactos, los ocho.** Las 11 bajas, una por
+una, con su SKU y su hora, están en la salida del script de medición; nueve de
+ellas salieron juntas en la revisión del 2026-10-07T22:28 (soundbars, monitores y
+dos Mini LED) y dos el 2026-10-11 (los Galaxy Buds4, −30%).
+
+## DÓNDE QUEDÓ EL FILTRO, Y POR QUÉ AHÍ
+
+**En `esNotificable()` (`src/despachador-vivo.mjs`), que es el ÚNICO portón que
+comparten los dos caminos de envío.** No hizo falta elegir entre los dos: ya
+pasaban los dos por ahí.
+
+- camino EN VIVO: `esParaVivo()` → `esNotificable()`, llamado dentro de `evaluar()`.
+- camino del CIERRE: `repartirCierre()` → `esNotificable()`, lo único que `run.mjs`
+  llama.
+
+La lección está escrita en el comentario de `repartirCierre` y es la razón de que
+esa función exista: *"vive acá y no dentro de run.mjs porque run.mjs no tiene
+pruebas: mientras esta línea estuvo allí se le podía borrar el filtro de
+accesorios, o la deduplicación, y la suite seguía 196/196 en verde (probado
+mutándola)"*. Y la razón de que `esNotificable` sea UN portón y no dos filtros
+escritos a mano es el mutante que sobrevivió en la entrega del freno del
+2026-09-13: *"el filtro estaba escrito a mano en el despachador y duplicado en el
+cierre, así que se podía arreglar uno y no el otro — y el aviso frenado habría
+salido igual, en vivo, minutos antes"*.
+
+**La regla en sí vive en su propio módulo, `src/solo-bajas.mjs`**, exactamente como
+`src/silenciados.mjs`: es una decisión del operador, no una regla del mecanismo, así
+que lleva su medición, lo que cuesta y las instrucciones para revertirla (borrar un
+`&& esBajaDePrecio(cambio)`). `esNotificable` quedó en dos capas:
+
+```js
+export function esDeProductoVigilado(cambio) {   // reglas de CATALOGO
+  return !esAccesorio(cambio?.categoria) && !estaSilenciado(cambio);
+}
+export function esNotificable(cambio) {          // + la regla del OPERADOR
+  return esDeProductoVigilado(cambio) && esBajaDePrecio(cambio);
+}
+```
+
+`esDeProductoVigilado` se exporta porque es la vara del **conteo honesto** (abajo).
+
+**Y un tercer camino que no pasaba por el portón, y había que taparlo:** los avisos
+atrasados de `data/pendientes.jsonl`. Los escribió una corrida ANTERIOR, con las
+reglas de ESA corrida, y `run.mjs` los mandaba tal cual. Sin arreglarlo, el primer
+despliegue de esta regla habría reenviado como alertas completas hasta
+`MAX_PENDIENTES` = 1.000 avisos que la regla nueva ya no quiere. Ahora pasan por
+`soloNotificables()` — el mismo portón, en una función exportada y probada, con una
+sola línea de cableado en `run.mjs`. Hoy el archivo está vacío, así que el riesgo
+era de despliegue, no actual; queda comprobado en el pipeline real con tres
+pendientes sembrados (abajo).
+
+## LO QUE SE SIGUE REGISTRANDO (el punto 2 del encargo), COMPROBADO
+
+Es un filtro de NOTIFICACIÓN, no de detección, y está comprobado por el cableado
+real y no de escritorio. Segunda pasada del pipeline con un "se agotó" sembrado:
+
+```
+resumen: cambiosStock: 1 · cambiosDetectados: 1 · noNotificadosPorRegla: 1
+history.jsonl: 2 eventos ["baja:SM-R540NZKACHO", "stock:UN55M70HAGXZS"]
+catalogo:      UN55M70HAGXZS estado=agotado   (el estado SE ADOPTO)
+mensajes al canal de productos: 0
+```
+
+O sea: el cambio de stock se detectó, se confirmó en 2 observaciones (la primera
+pasada solo dejó el `stockPendiente`), se escribió en el historial, se adoptó en el
+catálogo, y **no produjo ningún mensaje**. La confirmación en 2 corridas, el freno
+anti-parpadeo, las correcciones silenciosas y los 30+ contadores del resumen siguen
+funcionando igual: el resumen de las cuatro corridas los trae todos.
+
+## EL CANAL TÉCNICO NO SE TOCÓ (el punto 3)
+
+> ⚠️ **No tocar el código no alcanzaba: su TEXTO quedó mintiendo** (dos
+> verificadores, corregido el mismo día). `mensajeRebotando` seguía prometiendo
+> "**No dejo de avisarte nada**" y "Una reposición nunca entra acá: 'volvió el
+> stock' sale siempre como alerta fuerte", y desde esta regla las dos frases son
+> falsas para todo lo que no sea una baja. Ver la entrada de la segunda vuelta.
+
+`notifyTecnico` no pasa por `esNotificable` y no se cambió una línea. Verificado
+contra un webhook local: en la corrida del pipeline salieron **4 mensajes técnicos**
+(categoría principal ausente, productos rebotando, revisión no confiable, más el de
+la segunda pasada) y **1 mensaje de producto**. Hay además una prueba dedicada que
+manda los tres avisos técnicos y exige que los tres se entreguen.
+
+## EL FORMATO: QUÉ SALÍA HOY Y QUÉ SALE AHORA
+
+Renderizado con `notifyDiscord` real y `globalThis.fetch` interceptado, sobre una
+baja REAL de la semana (los Galaxy Buds4 negros, 2026-10-11T19:51, $199.990 →
+$139.990). **ANTES**, texto literal:
+
+```
+🎧 **Galaxy Buds4 · Negro** (SM-R540NZKACHO)
+　🟢 Precio antes: $199.990 → **ahora: $139.990** (−$60.000 · −30.0%)
+　🔗 https://www.samsung.com/cl/audio-sound/galaxy-buds/galaxy-buds4-black-sm-r540nzkacho/
+```
+
+**DESPUÉS**, texto literal:
+
+```
+🟢⬇️ **BAJÓ DE PRECIO** · 🎧 **Galaxy Buds4 · Negro** (SM-R540NZKACHO)
+　De $199.990 a **$139.990** · ahorras $60.000 (−30,0%)
+　🔗 https://www.samsung.com/cl/audio-sound/galaxy-buds/galaxy-buds4-black-sm-r540nzkacho/
+```
+
+Las cuatro piezas, una por cada cosa que pidió:
+
+1. **Que se vea que es una BAJA:** la palabra, escrita. El mensaje anterior no la
+   decía en ninguna parte; el único indicio del sentido era un círculo verde, que
+   es un color, no una dirección. La prueba exige además que NO sobreviva nada del
+   formato viejo (`doesNotMatch(/Precio antes:/)`).
+2. **La flecha verde:** `🟢⬇️`. En Twemoji —el set que usa Discord— **no existe
+   ninguna flecha verde de un solo carácter**: `⬇️` se dibuja azul oscuro y `🔻` es
+   roja. El verde lo pone el círculo pegado a la flecha, que es la única
+   combinación que se ve verde y se ve flecha en todas las plataformas.
+3. **El nombre completo**, con su variante y su SKU, sin recortar.
+4. **De qué precio a qué precio**, en castellano llano y con el monto de AHORA en
+   negrita, que es el único accionable, más cuánto se ahorra.
+
+**La bandera va PRIMERA, antes del nombre, y es deliberado:** la vista previa de la
+notificación del teléfono muestra el comienzo de la primera línea, así que ahora se
+lee "🟢⬇️ BAJÓ DE PRECIO · Galaxy Buds4 · Negro" sin abrir Discord. Antes la primera
+línea era solo el producto y había que abrir el mensaje para saber qué le pasó.
+
+> ⚠️ **ESA JUSTIFICACIÓN ES FALSA y la midieron los tres verificadores
+> (corregido el mismo día, segunda vuelta).** Esta es la línea del PRODUCTO, no la
+> primera del mensaje. En el camino EN VIVO la primera línea es el encabezado de
+> la tanda (`⚡ **Monitor Samsung — aviso en curso** · 22:28`) y la del producto va
+> tercera, además con `🔥 ` delante cuando la baja es >= 15%; en el cierre la
+> primera línea es `**Monitor de precios Samsung Chile**`. Y el camino en vivo es
+> el de casi todas las bajas: en la semana medida, las 11 de 11 (`esParaVivo` da
+> true en las 11). La bandera al principio de la línea del producto **sí** es una
+> mejora y se queda; lo que se arregló es el encabezado de la tanda, que ahora
+> declara "🟢⬇️ **BAJÓ DE PRECIO: N productos**" cuando la tanda es toda de bajas
+> — ver la entrada de la segunda vuelta al final de este archivo.
+
+### LAS PREMISAS DEL ENCARGO SOBRE EL TÍTULO: DOS NO ESTÁN EN ESTE ARCHIVO Y NO REPRODUCEN
+
+El encargo decía *"hay 17 SKU notificables que comparten título y 107 que salen con
+el icono genérico"*, y *"más pistas de lo que ya está medido en BITACORA.md"*.
+**Esos dos números no están en BITACORA.md.** Lo que hay es el 107 de los avisos del
+par agotado↔no-a-la-venta (2026-10-05) y el 17 de los SKU cuyo título se acortaba
+entre corridas (2026-07-29): ninguno de los dos habla de títulos compartidos ni de
+iconos. Lo medí yo, sobre `data/latest.json` (1.088 registros, 913 vivos, 552
+notificables con el filtro real):
+
+```
+titulos compartidos entre notificables:   6 SKU en 3 titulos   (el encargo decia 17)
+  "Aspiradora Stick Jet 85 Pet + Lavadora 8Kg · Midnight Blue" -> F-WA80CVS2031, F-WA80HVS2032
+  "The Wall All-in-One"                                        -> LH012IABMHS/ZA, LH016IABMHS/ZA
+  "Galaxy Watch8 Classic (Bluetooth, 46 mm) · Blanco"          -> SM-L500NZWACHO, SM-L500NZWALTA
+notificables con icono GENERICO (🔹):    75                    (el encargo decia 107)
+  los 75 son la categoria "Familia (auto-descubierta)" y NADA mas
+bajas historicas con icono generico:     29 de 1.411 (2,1%)
+titulos que se RECORTAN en el mensaje:    0 de 552
+largo del titulo: min 12 · mediana 51 · p90 73 · max 136 caracteres
+titulos sin ninguna caracteristica:     193 de 552
+```
+
+Cuatro conclusiones, y cambian lo que había que arreglar:
+
+- **"El nombre sale recortado": falso.** Ninguno de los 552 se recorta, ni en vivo
+  ni en el cierre. La verificación corrió `empaquetarCambios` real sobre los 552.
+- **"El nombre sale repetido entre SKU distintos": casi no.** Son 6 SKU en 3
+  títulos, y los tres son pares que Samsung publica con nombre y datos idénticos
+  (los mismos que la entrada del 2026-07-30 ya había dejado documentados como no
+  distinguibles con los datos del sitio). El código de modelo entre paréntesis los
+  separa. **No se tocó nada:** inventar un diferenciador donde el sitio no publica
+  ninguno es lo que esta bitácora ya refutó dos veces.
+- **"Sin características": 193 de 552, y NO es un defecto.** Mirados uno por uno,
+  son casi todos aire acondicionado de sistemas, cuyo nombre ya ES la descripción
+  completa ("Unidad Interior Cassette Wind-Free 4-Way 12.000 BTU"): no hay
+  capacidad ni color que agregar. `componerTitulo` ya hace lo correcto.
+- **Lo único de verdad pobre era el ICONO**, y eso sí se arregló (abajo).
+
+### EL ARREGLO QUE SÍ SALIÓ DE ESA MEDICIÓN: EL ICONO DE LOS PACKS
+
+Los 75 con 🔹 son los **packs**: Watch + Buds, S26 Ultra + adaptador, Tab +
+teclado. Solo existen en una página familia descubierta por sitemap, así que no
+tienen categoría del listado y `ICONO_CATEGORIA` no los encuentra. Sus nombres
+siempre fueron completos y buenos ("Galaxy Watch9 (Bluetooth, 40 mm) Cream + Galaxy
+Buds4 Pro Black"): lo pobre era el icono.
+
+El respaldo nuevo (`ICONO_SECCION` + `iconoDe`) lo deduce de la **sección de la
+URL**, y el mapa no es una suposición: censando los 552 notificables, **cada una de
+las 22 secciones del sitio la usa UNA sola categoría**.
+
+```
+secciones de los 75 packs:  smartphones=34 · tablets=17 · watches=16 · computers=8
+seccion -> categoria, medido:  smartphones->Smartphones(58) · tablets->Tablets(22)
+  watches->Relojes(11) · computers->Computadores(8) · tvs->Televisores(140) · ...
+  (22 secciones, 1 categoria cada una, 0 ambiguas)
+```
+
+Es la misma propiedad del sitio en que se apoya `src/prioridad.mjs` desde el
+2026-09-12. **Solo se consulta cuando la categoría no está en la tabla**, así que
+una categoría real no puede perder su icono por esto (hay prueba y mutante).
+
+### Y EL PORCENTAJE IBA CON PUNTO
+
+`variacion()` usaba `.toFixed(1)` → `−30.0%`, mientras el comentario de esa misma
+función prometía `−15,9%`. El que estaba mal era el código: los montos ya usaban
+es-CL. Ahora sale `−30,0%`.
+
+### LA BAJA DEGRADADA POR EL FRENO TAMBIÉN DICE QUE ES UNA BAJA
+
+La línea compacta de un rebote de precio decía
+`🌀 $199.990 ⇄ $139.990 · ahora **$139.990** (2ª vez en 72 h)`. El `⇄` es un símbolo
+de ida y vuelta: **no declaraba el sentido**, y la palabra "baja" no aparecía. Daba
+lo mismo mientras por ese canal salieran los dos sentidos (el título de la sección
+los agrupa a propósito para que el vaivén no se lea como "bajó/subió/bajó/subió").
+Desde esta regla por ese canal **solo salen bajas**, así que una línea que no dice
+el sentido miente por omisión justo en el aviso con el que se va a comprar. Medido
+sobre los 30 días del 2026-09-13: **de 149 avisos degradados, 71 eran bajas** — no
+es un caso raro. Ahora:
+
+```
+🟢⬇️ **BAJÓ DE PRECIO** · 🖥️ **Monitor Odyssey G3** (LS32DG300ELXZS) — De $279.990 a **$199.990** · ahorras $80.000 (−28,6%) · 🌀 rebota entre $199.990 ⇄ $279.990 (7ª vez en 72 h)
+```
+
+Sigue siendo **UNA línea y sin link** (ya salió con link la primera vez, cuando era
+novedad de verdad), y hay una prueba que lo fija. **No se calla nada**: callar una
+baja que rebota es el defecto grave del 2026-09-13 que se tragaba 61 bajas reales
+en 30 días, y hay un mutante (`M06`) que muere si esta regla lo reabre.
+
+## EL CONTEO NO PUEDE MENTIR POR OMISIÓN
+
+El encabezado decía `Revisados 1185 productos · N cambios`, donde N es lo que se
+MANDÓ. Con la regla nueva eso dejó de ser lo que la revisión detectó: en la semana
+medida son **185 detectados y 11 avisos**, y el operador leería "11 cambios" y
+creería que el sitio solo se movió 11 veces. Es exactamente la regla que el proyecto
+ya se había fijado con los avisos en vivo (*"el conteo tiene que declarar la corrida
+COMPLETA, no la lista ya deduplicada: si no, una corrida con 237 cambios de los que
+229 salieron en vivo diría '8 cambios'"*), aplicada al filtro nuevo.
+
+```
+**Monitor de precios Samsung Chile**
+Revisados 1185 productos · 11 avisos
+_(se detectaron 185 cambios en total; por tu regla solo se avisan las bajas de precio — los demás quedaron registrados en el historial)_
+```
+
+> ⚠️ **ESE ENCABEZADO ES SINTÉTICO: ninguna corrida lo produce** (lo midió un
+> verificador, corregido el mismo día). 185 y 11 son los totales de la SEMANA,
+> repartidos en 3 corridas. El de la corrida real más grande, renderizado con
+> `notifyDiscord` y los números reales de `data/ejecuciones.jsonl` (1.175 páginas)
+> y `data/history.jsonl` (15 cambios vigilados, 9 bajas):
+>
+> ```
+> **Monitor de precios Samsung Chile**
+> Revisados 1175 productos · 9 avisos (9 ya avisados en vivo · 0 en este resumen)
+> _(se detectaron 15 cambios en total; por tu regla solo se avisan las bajas de precio — los demás quedaron registrados en el historial)_
+> ✅ Revisión terminada. Todas las bajas de precio ya se avisaron en vivo.
+> ```
+>
+> La última línea decía **"Todo lo detectado ya se avisó en vivo"** en el mismo
+> mensaje que declaraba haber filtrado 6 cambios: es el defecto ALTO de la segunda
+> vuelta (al final de este archivo).
+
+`notifyDiscord` recibe `detectados` (un parámetro opcional: omitirlo deja el
+encabezado como estaba) y `run.mjs` lo calcula con
+`cambios.filter(esDeProductoVigilado).length`. **La línea solo aparece cuando hay
+algo que declarar**: si no se filtró nada, no se dice nada — hay prueba y mutante
+para las dos mitades (`M16`, `M17`). Y en `data/ejecuciones.jsonl` quedan
+`cambiosDetectados` y `noNotificadosPorRegla`, los dos, porque uno solo no permite
+ver si la regla está tapando más de lo que debe.
+
+## LA CONTRADICCIÓN CON UNA REGLA ANTERIOR, DICHA Y NO RESUELTA SOLA
+
+**Esta regla apaga los 44 avisos de "volvió el stock" de la semana**, que eran el
+único aviso de stock con el que el operador puede COMPRAR. Conseguir que llegaran
+completos —con precio, con link y en vivo— fue el entregable entero del 2026-10-05:
+15 de los 73 de la semana del Cyber salían degradados, con 1.018 h de
+disponibilidad real detrás y 14 de ellos siendo la PRIMERA vez que ese producto
+volvía. El encargo dice que al operador ya se le avisó y que es su decisión, así que
+**no se revivió por cuenta propia**. Queda escrito en tres lugares para que nadie lo
+"arregle" después: en `src/solo-bajas.mjs`, en el README (en lenguaje de operador) y
+en una **aserción** de `test/solo-bajas.test.mjs` que recorre las 44 reposiciones de
+la semana real y exige `esNotificable === false` en cada una, con el motivo al lado.
+
+Las secciones del README que describen avisos que ya no llegan quedaron marcadas con
+un recuadro que lo dice, en vez de quedar mintiendo.
+
+## LAS ASERCIONES VIEJAS QUE CAMBIARON, Y POR QUÉ CADA UNA
+
+Cambiaron **23 pruebas en 6 archivos**, y todas por la misma razón de fondo: fijaban
+la frase *"lo detectado y lo entregado son lo mismo"*, que es la regla que el
+proyecto se fijó cuando el freno se estaba comiendo bajas y reposiciones reales
+(2026-09-13 y 2026-10-05) y que **el operador acaba de cambiar a propósito**. La
+transformación es siempre la misma y **no debilita nada**: se parte en sus dos
+mitades y se exigen las dos.
+
+- **mitad A, EL FRENO no se traga nada:** las cuentas de "cuántas alertas fuertes
+  produce la secuencia real" pasan a medirse sobre los cambios DETECTADOS y
+  CLASIFICADOS (`esDeProductoVigilado` + `esRebote`/`esMatiz`), que es lo que esas
+  pruebas de verdad preguntan. Medirlas sobre lo entregado las habría dejado en 0
+  por una razón ajena al freno, y el defecto que defienden —una reposición real
+  degradada— habría vuelto a ser invisible el día que el operador reactive el resto.
+- **mitad B, LA REGLA DEL OPERADOR** saca del canal todo lo que no sea baja, y eso
+  se exige explícitamente, con el tipo y el número.
+
+Los casos que valen nombrarse:
+
+- *"NO se silencia ni un aviso: 250 y 250"* (`stock-frontera`) → ahora son dos
+  aserciones: el freno no pierde ni uno de los 250, y de esos 250 sale al canal
+  exactamente el conjunto de las bajas.
+- *"una reposición diaria REAL de 7 días: el operador se entera las 7 veces"* →
+  *"el freno no degrada ni una de las 7"*, más `entregados === 0` con el motivo
+  escrito. Las 7 siguen quedando clasificadas como alerta fuerte, que es lo que las
+  hace volver solas si se revierte la regla.
+- *"las tres reposiciones del día salen fuertes y en vivo"* → `vivo` era
+  `esParaVivo()`, que ahora da false para cualquier cambio de stock **por el tipo y
+  no por el freno**: medirlo así dejaba los tres veredictos en false y la prueba
+  habría dejado de ver el defecto. Pasa a medir que el freno no la aparte del camino
+  en vivo (`!esRebote && !esMatiz`).
+- *"los cinco tipos en vivo se detectan apenas se observa la página"* → se exige por
+  separado que los cinco se sigan DETECTANDO con `evaluarObservado` (si se evaluaran
+  menos, no volverían solos al revertir) y que de los cinco se encole UNO.
+- *"el resumen final no repite lo ya avisado en vivo"* → su SKU-2 era una suba, así
+  que la prueba habría quedado con un solo aviso y habría dejado de probar la
+  deduplicación de dos. Pasa a ser otra baja: misma exigencia. De paso, su filtro
+  estaba copiado a mano (`!esAccesorio && !estaSilenciado`) y ahora llama al portón
+  real — un filtro duplicado es justo lo que deja aplicar una regla en un camino y
+  olvidarla en el otro.
+- *"postergar un SKU nuevo no lo pierde: sale en el resumen final"* → `paraDiscord`
+  quedaría vacío tanto si el aviso se postergó bien como si se perdió, o sea que la
+  aserción ya no distinguía las dos cosas. Se mueve a `cambios` (lo que `comparar()`
+  detectó y escribió en el historial), que es el eslabón que la guarda podría
+  romper.
+- *"$100.000 → **ahora: $80.000**"*, *"ahora: $699.990"*, *"−8.3%"*, *"1 cambios"*,
+  *"…ahora **$199.990**"* → formato, los cinco. Cada uno con el texto viejo citado
+  al lado.
+
+## VERIFICACIÓN
+
+- **`npm test`: 666 → 680 verdes, 0 fallas.** La línea base de 666 nunca baja.
+  Archivo nuevo: `test/solo-bajas.test.mjs` (14 pruebas). Ninguna prueba se borró.
+- **LA PRUEBA QUE MÁS IMPORTA: la semana REAL, los dos números.**
+  `test/fixtures/semana-2026-10-14.json` es la foto congelada de los **194 eventos
+  crudos** de `data/history.jsonl` entre el 2026-10-07 y el 2026-10-14, tal cual
+  (el candado no abre `data/`: es la regla del 2026-09-23). La prueba corre el
+  filtro real sobre ellos y exige:
+  - **185** cambios de productos vigilados detectados y **11** entregados;
+  - que los 11 sean **todos del tipo baja** (no "11 cosas cualesquiera") y que sean
+    **TODAS** las bajas de la semana (ni una callada);
+  - el desglose completo de lo que se apaga, recalculado con el clasificador del
+    repo: `{baja:11, sube:9, stock:144, nuevo:1, recuperado:8, desaparecido:12}`, y
+    dentro del stock `84` quiebres, `44` reposiciones y `16` cambios de motivo;
+  - que las **44 reposiciones** den `esNotificable === false`, una por una, con el
+    motivo escrito al lado;
+  - que la reducción pase del 93% (medida: 94,1%).
+  - Y una prueba aparte que fija la FORMA de la foto (que los eventos traigan `ts`,
+    `tipo`, `modelo`, `categoria`; que las 11 bajas traigan los dos precios, que de
+    verdad bajen y que traigan su link), para que un refresco mal hecho no deje las
+    dos de arriba en verde con material que no es el del operador.
+- **MUTANTES: 26, uno por vez, sobre una copia FUERA DEL ÁRBOL (src + test +
+  fixtures + workflows + README), suite entera, restaurando después. MUEREN LOS
+  26.** Línea base de la copia sin mutar: 0 fallas.
+  - 7 del filtro: el filtro borrado (18 fallas) · aplicado solo en vivo (2) · solo
+    en el cierre (2) · `esBajaDePrecio` dejando pasar las subas (12) · dejando pasar
+    todo (18) · **callando las bajas que rebotan (7)** · `soloNotificables` sin
+    filtrar, o sea los pendientes colándose (1).
+  - 8 del formato: la bandera sin la flecha verde (6) · sin la palabra (6) · la
+    línea de baja de vuelta al formato anterior (8) · `tramoDePrecio` sin el precio
+    de ANTES (8) · el ahorro mudo (4) · el porcentaje de vuelta al punto decimal (4)
+    · la línea compacta del rebote de vuelta al `⇄` sin bandera (2) · el título de
+    la sección sin la flecha (1).
+  - 2 del conteo honesto: el encabezado sin declarar lo detectado (1) · declarándolo
+    SIEMPRE, o sea mintiendo cuando no se filtró nada (1).
+  - 4 del icono: sin el respaldo por sección (1) · el respaldo pisándole el icono a
+    una categoría real (1) · perdiendo el respaldo genérico (1) · `lineFor` mirando
+    solo la categoría (1).
+  - 5 del banco anterior, para comprobar que no se debilitó nada viejo: deja pasar
+    accesorios (5) · deja pasar Book3 (3) · `esParaVivo` dejando salir los rebotes
+    en vivo (1) · `repartirCierre` sin filtro (4) · la línea de stock perdiendo su
+    advertencia de precio viejo (2).
+  - **Ninguno sobrevivió en la primera pasada**, y hay que decir por qué eso no es
+    mérito: el banco se escribió DESPUÉS de las pruebas y contra las piezas que las
+    pruebas ya fijaban. Es una medida de cobertura de esas piezas, no de mi
+    imaginación — la lección del 2026-09-13 sigue valiendo.
+- **PIPELINE REAL (`src/run.mjs` ENTERO) EN LOS DOS MODOS, SIN RED.** Copia fuera
+  del árbol sustituyendo solo las tres puertas al exterior (`src/resolver.mjs` por
+  un doble que sirve dos fichas construidas con los registros REALES del catálogo,
+  `src/discover.mjs` por `[]`, y `playwright` por un stub que **revienta** si
+  alguien intenta abrir una página). `CARPETA_DATOS` en carpetas temporales con
+  copia del catálogo real, `SIN_DESCUBRIMIENTO=1`, `LIMITE_PAGINAS=2`. **Cuatro
+  corridas:**
+
+  | corrida | detectados | noNotificadosPorRegla | history.jsonl | al canal de productos |
+  |---|---|---|---|---|
+  | **completo**, `env -u DISCORD_WEBHOOK_URL` | 1 | 0 | `baja:SM-R540NZKACHO` | — (sin webhook) |
+  | **liviano**, `env -u DISCORD_WEBHOOK_URL` | 1 | 0 | `baja:SM-R540NZKACHO` | — (sin webhook) |
+  | **completo**, webhook LOCAL en `127.0.0.1` + **3 pendientes sembrados** (sube, stock, baja) | 1 | 0 | `baja` | **1 aviso**: la baja en vivo con el formato nuevo, y de los 3 pendientes volvió **solo la baja** (`INFO avisos atrasados … : 1`) |
+  | **segunda pasada** (el "se agotó" se confirma) | 1 | **1** | `baja` + **`stock:UN55M70HAGXZS`** | **0 avisos de producto** (solo el técnico) |
+
+  La tercera corrida es la que cubre el hueco que `npm test` no puede cubrir
+  (`run.mjs` arranca `main()` al importarse): el cableado de `soloNotificables`
+  sobre los pendientes, medido sobre el texto que llegó al webhook de mentira. La
+  cuarta es el punto 2 del encargo: el stock se detectó, se confirmó, se escribió en
+  el historial y se adoptó en el catálogo (`estado=agotado`) **sin mandar ningún
+  mensaje**, y los dos contadores nuevos lo declaran.
+  El webhook local además dejó ver que **el canal técnico sigue hablando**: 4
+  mensajes técnicos contra 1 de producto.
+- **POLÍTICA DE SCRAPING: CERO REQUESTS A SAMSUNG.COM** en todo el encargo, como lo
+  prohibía el encargo. No hizo falta ninguno: toda la medición salió de `data/` y
+  toda la verificación de dobles. El stub de `playwright` revienta si alguien lo
+  intenta, y en las cuatro corridas no reventó. **El webhook real jamás se tocó**
+  (`globalThis.fetch` interceptado en las pruebas, `env -u DISCORD_WEBHOOK_URL` en
+  dos corridas y un servidor HTTP propio en `127.0.0.1` en las otras dos).
+- **`data/` del repo INTACTA:** `git status --porcelain data/` vacío y los md5 de
+  los 7 archivos idénticos a los del principio (`latest` 6c44fbbb…, `history`
+  770a2161…). **No se commiteó nada.**
+- **README.md y BITACORA.md actualizados.** El README abre con la sección nueva
+  (primera cosa que se lee, porque es lo que el operador va a notar), con la tabla
+  de los 8 números, el ANTES y el DESPUÉS del mensaje, lo que se pierde dicho sin
+  adornos y cómo revertirlo. Las tres secciones viejas que describen avisos que ya
+  no llegan quedaron marcadas con un recuadro.
+
+## LO QUE NO SE HIZO, Y POR QUÉ
+
+- **No se tocaron los 6 SKU que comparten título** (3 pares). Son pares que Samsung
+  publica con nombre y datos idénticos, ya documentados como no distinguibles con lo
+  que el sitio publica (2026-07-30), y el SKU entre paréntesis los separa. Inventar
+  un diferenciador donde el sitio no publica ninguno es lo que esta bitácora ya
+  refutó dos veces.
+- **No se borraron las secciones de subas, stock, matices, nuevos, recuperados y
+  desaparecidos de `src/discord.mjs`.** Siguen enteras y sin material. Es lo que
+  hace que revertir la regla sea borrar UNA línea, igual que con
+  `src/silenciados.mjs`; `armarMensajesConCambios` ya salta las secciones vacías.
+- **No se tocó el texto "Nª vez" de la línea compacta de PRECIO.** La entrada del
+  2026-10-05 (segunda vuelta) corrigió esa contradicción para el stock ("2º cruce"
+  en vez de "1ª vez") y **dejó el precio como estaba a propósito**. No es lo que se
+  pidió y mover el texto del rebote de precio sin su medición propia sería repetir
+  lo que esa entrada evitó.
+- **No se agregó un mensaje de "revisión terminada, 0 bajas".** Hoy una revisión sin
+  bajas no manda nada, y eso es exactamente lo que el operador pidió: agregarlo
+  devolvería 20 mensajes diarios.
+  > ⚠️ **Media verdad, y la midieron dos verificadores.** Mandar el resumen en cada
+  > revisión sigue descartado por esa razón, pero "no manda nada" resultó ser el
+  > caso NORMAL (283 de 437 corridas reales, 64,8%), y con él la nota del conteo
+  > honesto no llega nunca: los dos contadores quedaban solo en
+  > `data/ejecuciones.jsonl`, que el operador no lee. La salida fue **una** línea
+  > al día por el canal técnico (el "pulso"), no 20 resúmenes. Ver la entrada de
+  > la segunda vuelta.
+
+## PENDIENTES
+
+1. **MIRAR `cambiosDetectados` Y `noNotificadosPorRegla` LA PRIMERA SEMANA.** La
+   referencia medida es **185 detectados y 174 no notificados en la semana**
+   (promedio ~26 y ~25 por día, con 20 revisiones diarias). Los dos juntos, no uno
+   solo: si `cambiosDetectados` se cae a casi 0 sin que suba `bajas`, el que está
+   roto es el detector y no la regla, y ningún otro contador lo delataría.
+2. **MIRAR `bajas` DE `ejecuciones.jsonl`, QUE AHORA ES EL ÚNICO AVISO QUE QUEDA.**
+   La referencia es **11 en la semana medida**. Si pasa una semana en 0, hay que
+   mirar `cambiosDetectados`: con un solo tipo de aviso vivo, una falla del detector
+   de precios ya no se compensa con el ruido de los otros seis tipos. Es el costo
+   oculto de esta regla y conviene dejarlo escrito: **el canal de productos perdió
+   el 94% de su señal de vida.**
+3. **SI EL OPERADOR ECHA DE MENOS "VOLVIÓ EL STOCK", la palanca está medida y es
+   chica:** son 44 avisos por semana y la vuelta es aceptar además el cruce HACIA
+   comprable en `esBajaDePrecio` (`cruceDeStock`, `src/estabilidad.mjs`, ya lo
+   distingue y ya tiene sus pruebas). Sería *"bajas de precio + volvió el stock"*:
+   55 avisos por semana en vez de 11, o sea 70% menos que los 185 de hoy en vez de
+   94%. **Es una decisión de producto, no técnica.**
+4. **SI ALGÚN DÍA SE REVIERTE LA REGLA, hay que invertir las aserciones de entrega.**
+   `test/fixtures/semana-2026-10-14.json` es evidencia de un hecho que ya pasó y no
+   se refresca nunca (está escrito en `test/fixtures/LEEME.md`), pero las aserciones
+   de `test/solo-bajas.test.mjs` sobre lo ENTREGADO sí habría que invertirlas, y
+   están todas en un solo archivo justamente por eso.
+5. **NO SE COMMITEÓ NADA.** Antes de pushear: `git pull --rebase`, porque el monitor
+   commitea datos 20 veces al día.
+6. Siguen los pendientes anteriores: rotar `history.jsonl` antes de los 50 MB,
+   cachear Playwright, medir `duracionPrincipalesMin`, contar las livianas
+   descartadas, las 126 `/buy/` duplicadas, el precio de LISTA que la API entrega a
+   las páginas de grupo, la causa sin diagnosticar del vaivén del 1-oct, el reparo
+   del precio tachado, la decisión sobre una tercera revisión completa, y el agujero
+   de "la corrida nunca nace".
+
+---
+
+# 2026-10-14 (segunda vuelta) — El cierre se contradecía solo, el canal técnico seguía prometiendo lo que ya no manda, y el 65% de las revisiones quedaba muda sin que nadie lo supiera
+
+Tres verificaciones independientes revisaron la entrega de la mañana. **Las tres
+coincidieron en lo que importa y una la refutó.** Ninguna encontró una fuga (nada
+que no sea una baja llega al canal de productos) ni una baja perdida (las 11 de la
+semana llegan las 11), y las tres reprodujeron los ocho números del encargo. Lo
+que encontraron son **9 defectos propios de la entrega**, y tres de ellos son
+exactamente de la clase que esa entrega decía haber cerrado: *"el conteo no puede
+mentir por omisión"*.
+
+Están los 9 arreglados. Todo medido ejecutando, sin un solo request a
+samsung.com salvo el accidente que se declara al final, y sin tocar nunca el
+webhook real.
+
+## LOS DOS NÚMEROS DE LA SEMANA, REPRODUCIDOS POR TERCERA VEZ
+
+Medición propia sobre `data/history.jsonl` con el filtro real del repo
+(`esDeProductoVigilado` + `esNotificable`), ventana 2026-10-07T00:00:00Z a
+2026-10-14T23:59:59Z:
+
+```
+eventos crudos en la ventana                      194
+cambios de productos vigilados DETECTADOS         185
+  {stock:144, desaparecido:12, baja:11, sube:9, recuperado:8, nuevo:1}
+  dentro del stock: 84 quiebres · 44 reposiciones · 16 cambios de motivo
+ENTREGADOS al canal de productos                   11   {baja:11}
+reduccion                                        94,1%
+```
+
+Los 11 SKU con su hora coinciden uno a uno con los declarados: 9 juntos en la
+revisión del 2026-10-07T22:28 y 2 el 2026-10-11 (los Galaxy Buds4, −30%).
+
+## LO QUE NADIE HABÍA MEDIDO, Y ES LA RAÍZ DE TRES DE LOS DEFECTOS
+
+`data/history.jsonl` agrupado por corrida (una corrida = un `ts` de `comparar()`),
+con el filtro real:
+
+```
+corridas reales con >= 1 cambio de producto vigilado        437
+  ...que NO mandarian NI UN mensaje al canal de productos   283  (64,8%)
+     cambios de productos vigilados dentro de esas 283   11.348
+  ...donde el cierre se contradice (ver defecto 1)         103  (23,6%)
+en la semana del operador: 67 corridas con cambios, 64 mudas, 168 cambios dentro
+```
+
+O sea: con esta regla el silencio total **es el caso normal**, no el raro. Eso es
+lo que el operador pidió, y hay que decirlo con el número — pero además rompía
+dos cosas que la entrega de la mañana daba por hechas.
+
+## LOS 9 DEFECTOS, Y CÓMO QUEDÓ CADA UNO
+
+### 1. (ALTA, los tres verificadores) El mensaje de cierre se desmentía a sí mismo
+
+La entrega agregó la nota del conteo honesto y dejó intacta la línea de abajo.
+Texto LITERAL que producía la corrida REAL del 2026-10-07T22:28 (15 cambios
+vigilados, 9 bajas, las 9 avisadas en vivo), renderizado con `notifyDiscord` y
+`fetch` interceptado:
+
+```
+**Monitor de precios Samsung Chile**
+Revisados 1175 productos · 9 avisos (9 ya avisados en vivo · 0 en este resumen)
+_(se detectaron 15 cambios en total; por tu regla solo se avisan las bajas de precio — los demás quedaron registrados en el historial)_
+✅ Revisión terminada. Todo lo detectado ya se avisó en vivo.
+```
+
+Las dos últimas líneas se desmienten entre sí, y el comentario del propio código
+decía que esa frase "solo puede salir cuando eso es literalmente cierto".
+**No era un caso raro: como las bajas salen EN VIVO, lo normal es que `changes`
+quede vacío — 103 de las 437 corridas reales (23,6%) caen en esa combinación.**
+
+**Arreglo:** la frase no se borra (es la única señal de que la revisión terminó),
+se dice lo que es cierto. `silenciadosPorRegla` ya estaba calculado tres líneas
+arriba:
+
+```
+✅ Revisión terminada. Todas las bajas de precio ya se avisaron en vivo.
+```
+
+Y cuando la regla no filtró nada, sale la de siempre. Las dos mitades tienen
+prueba (`M01` y `M02` mueren).
+
+### 2. (MEDIA) El encabezado decía "0 avisos" encima de una baja entregada
+
+`totalCambios = changes.length + avisadosEnVivo` no contaba `pendientes`, y un
+aviso atrasado de `data/pendientes.jsonl` SE ENTREGA en ese mismo mensaje. Antes
+era un subconteo cosmético; con la palabra "avisos" y con la nota de la regla
+pegada debajo pasó a ser una contradicción abierta. Medido en el pipeline real:
+el cierre de la corrida con un pendiente entregado decía
+`Revisados 2 productos · 0 avisos` y dos líneas más abajo traía el bloque
+`🟢⬇️ **BAJÓ DE PRECIO**`.
+
+**Arreglo:** `enEsteResumen = changes.length + pendientes.length` y
+`totalCambios = enEsteResumen + avisadosEnVivo`, que es lo que el desglose
+también declara. **Lo que NO se hizo, y es la mitad del arreglo:**
+`silenciadosPorRegla` sigue midiéndose contra lo que ESTA revisión entregó de lo
+que ella misma detectó. Restarle los pendientes (que son de otra corrida) dejaba
+el número en negativo y **la nota desaparecía justo en la corrida que más tiene
+que declarar** — el mutante `M05` sobrevivió en la primera pasada por esto y se
+le escribió su prueba. Verificado en el pipeline real:
+`Revisados 2 productos · 2 avisos (1 ya avisados en vivo · 1 en este resumen)`.
+
+### 3. (MEDIA, dos verificadores) El canal técnico prometía lo que ya no manda
+
+`mensajeRebotando` sale por `notifyTecnico`, que esta regla no filtra — y por eso
+la entrega anterior declaró, con razón, que no se tocó una línea de código. Pero
+el TEXTO quedó mintiendo, en negrita:
+
+- *"Una reposición nunca entra acá: \"volvió el stock\" sale siempre como alerta
+  fuerte."*
+- *"**No dejo de avisarte nada**: mientras rebotan, sus avisos salen juntos en una
+  línea compacta al final del resumen…"*
+
+Medido sobre `data/history.jsonl` con `esRebote` + el filtro real: de los **121
+rebotes de productos vigilados del historial, 101 ya no llegan al canal de
+productos** (82 de stock + 19 subas) y solo las 20 bajas siguen saliendo; en la
+semana del operador los **16 rebotes son los 16 de stock**, o sea que ese aviso
+llegaba anunciando una línea compacta que no iba a existir. Lo peor posible para
+la confianza: el mensaje técnico dice "no se te oculta nada" y lo prometido no
+llega nunca.
+
+**Arreglo:** el texto se acota a lo que es cierto y nombra la regla con su fecha
+("De las bajas de precio no dejo de avisarte nada…" + "De los cambios de STOCK y
+de las subas de precio no te llega nada desde tu regla del 2026-10-14…").
+**Y la prueba es de las que importan:** exige que el texto y `esNotificable` no se
+puedan contradecir — si la regla se revierte, la prueba pide la promesa general
+de vuelta; si la regla sigue, prohíbe la frase vieja (`M20`, `M21`, `M22`).
+
+### 4. (MEDIA, dos verificadores) La nota del conteo honesto no llegaba nunca en las corridas que la necesitaban
+
+`notifyDiscord` corta temprano cuando no hay `changes`, ni avisos en vivo, ni
+correcciones, ni pendientes — que es exactamente la corrida con cambios
+detectados y 0 bajas. Con los números de arriba: **283 de 437 corridas (64,8%)
+mudas, 11.348 cambios dentro; 64 de 67 en la semana del operador**. Los dos
+contadores de la entrega anterior (`cambiosDetectados`, `noNotificadosPorRegla`)
+quedaban solo en `data/ejecuciones.jsonl`, un archivo del repo que el operador
+—que no programa— no lee. O sea: **la mitigación que la propia entrega escribió
+para su riesgo nº6 era inerte justo donde tenía que servir.**
+
+**Arreglo, y es una decisión de producto que conviene dejar escrita:** mandar el
+resumen de cierre en cada corrida está descartado (20 revisiones al día: desharía
+el encargo). Lo que se agregó es **UNA línea al día por el canal TÉCNICO** —el
+que el operador no pidió filtrar—, con el freno de "una vez al día por clave" que
+ya existía (`src/avisos-repetidos.mjs`):
+
+```
+📊 **Monitor Samsung — pulso del día**
+Últimas 24 h, 20 revisiones: **185 cambios detectados** en el sitio y **11 avisos de baja de precio** enviados.
+El resto (subas de precio, stock, productos nuevos, desaparecidos) se sigue midiendo y queda en el historial: por tu regla del 2026-10-14 solo se avisan las bajas.
+Esta línea existe para que una semana sin bajas se distinga de un monitor roto. Sale una vez al día y no es un aviso de producto.
+```
+
+Trae los DOS números por la misma razón que el resumen: permiten distinguir "el
+sitio no se movió" de "se movió y no hubo ninguna baja" de "el detector está
+roto". Con 0 cambios detectados en 24 h agrega una línea que lo dice. Las filas
+escritas antes de esta regla no traen los contadores y se cuentan aparte: sumar 0
+por ellas haría que el primer día se leyera como un detector roto. `pulsoDeLaRegla`
+es puro y probado (`src/solo-bajas.mjs`), el texto vive en
+`mensajePulsoDeLaRegla` (`src/discord.mjs`) y en `run.mjs` queda UNA línea.
+Verificado en el pipeline real contra un webhook local: el pulso salió en la
+primera corrida del día y **no se repitió en la segunda**.
+
+### 5. (BAJA, los tres verificadores) La razón estrella del formato no se cumplía en ningún camino
+
+El informe, el comentario de `BANDERA` y el punto 3 del README prometían que, con
+la bandera al principio de la línea, "la vista previa de la notificación del
+teléfono" dejaría leer "BAJÓ DE PRECIO · Galaxy Buds4" **sin abrir Discord**.
+Medido sobre los mensajes reales: la primera línea NUNCA es la del producto. En
+vivo es el encabezado de la tanda (`⚡ **Monitor Samsung — aviso en curso** ·
+22:28`) y la del producto va tercera, además con `🔥 ` delante; en el cierre es
+`**Monitor de precios Samsung Chile**`. Y el camino en vivo es el de casi todas
+las bajas: **en la semana real, `esParaVivo` da true en las 11 de 11**.
+
+**Arreglo: en vez de borrar la promesa, se cumplió.** `encabezadoTanda`
+(`src/despachador-vivo.mjs`) declara la baja cuando la tanda es toda de bajas
+—que con esta regla es siempre—, y esa es la línea que el push del teléfono sí
+muestra. Texto literal del pipeline real:
+
+```
+⚡ 🟢⬇️ **BAJÓ DE PRECIO: 1 producto** · 13:18
+　revisando página 2 de 2 _(la revisión sigue en marcha)_
+
+🔥 🟢⬇️ **BAJÓ DE PRECIO** · 📱 **Samsung Galaxy A27 5G 256GB Awesome Blue + Bateria** (F-SMA27EBU25W)
+　De $479.980 a **$383.984** · ahorras $95.996 (−20,0%)
+　🔗 https://www.samsung.com/cl/smartphones/galaxy-a56/
+```
+
+No se pierde ninguna de las dos cosas que ese encabezado tiene que decir (que la
+revisión sigue y por qué página va), y **si la regla se revierte vuelve solo al
+resumen por iconos**: una tanda con tipos mezclados no puede anunciarse como si
+fuera toda de bajas (`M10`, `M11`, `M12`). La afirmación falsa quedó corregida en
+los tres lugares donde estaba escrita.
+
+### 6. (BAJA) `esBajaDePrecio` se justificaba con un hecho que no es cierto
+
+El comentario decía que no se miran los montos porque "en el camino de los avisos
+atrasados un cambio viejo puede llegar sin `precioAnterior` legible". **No puede:**
+`serializarPendientes` guarda el cambio con todos sus campos (`{ts, ...c}`) y
+`leerPendientes` no borra ninguno — el propio comentario de `lineaPendiente` ya lo
+decía. La razón buena es la otra: `comparar()` emite el tipo "baja" dentro de
+`obs.precio < precioAnt` con los dos montos finitos, así que ya los comparó.
+Corregido.
+
+### 7. (BAJA) Y el archivo de pendientes sí había que endurecerlo, por otra razón
+
+`data/pendientes.jsonl` es el único material que llega al canal de productos **sin
+pasar por el detector de esta corrida**: lo escribió otra corrida, se fusiona por
+UNIÓN ante un conflicto de git (`.gitattributes`) y el caso ambiguo se conserva a
+propósito al leerlo. Sembrado a mano, un pendiente con `tipo:"baja"` y los montos
+al revés salía rotulado `🟢⬇️ **BAJÓ DE PRECIO** … De $300.000 a **$400.000**
+(+$100.000 · +33,3%)`, y uno con `matiz:true` salía como una línea de STOCK sin
+precio ni bandera. No es alcanzable desde el detector (y por eso ningún
+verificador lo marcó como fuga), pero es la puerta por la que entraría un archivo
+corrupto.
+
+**Arreglo:** `pendienteCreible` (`src/solo-bajas.mjs`) exige que, cuando los dos
+montos vengan legibles, de verdad bajen, y descarta un cambio marcado `matiz`. El
+descarte **se dice en el log**: un pendiente que desaparece en silencio es justo
+la pérdida silenciosa que ese archivo existe para evitar. Un pendiente sin precio
+anterior legible NO se descarta: no hay con qué desmentirlo (`M06`, `M07`, `M08`).
+
+### 8. (BAJA) Tres cosas nuevas sin una prueba que muriera al deshacerlas
+
+Eran las tres de cableado en `run.mjs`, y la regla no negociable del proyecto es
+que cada cosa nueva tenga una. Lo que se podía sacar, se sacó:
+
+- **`repartirCierre` devuelve ahora `detectados` y `noNotificadosPorRegla`**,
+  calculados en la misma pasada que ya recorre los cambios. La fórmula
+  `Math.max(0, detectados - (paraDiscord.length + suprimidos))` y el
+  `cambios.filter(esDeProductoVigilado).length` vivían sueltos en `run.mjs`
+  (`M13`, `M14`).
+- **`pendientesParaAvisar`** (leer + pasar por el portón) vive con el portón
+  (`M09`).
+- El `test/cierre-vivo.test.mjs` que imita a `run.mjs` llama ahora a lo mismo, así
+  que el espejo no puede divergir.
+
+**Lo que queda, dicho como deuda y no como logro:** las 4 líneas de cableado que
+quedan en `run.mjs` siguen sin cubrir `npm test`, porque `run.mjs` arranca
+`main()` al importarse y el candado del 2026-09-23 prohíbe importarlo. Se midió:
+los 4 mutantes de cableado (`R01` pendientes sin portón, `R02` sin pasarle
+`detectados` a `notifyDiscord`, `R03` borrar los dos contadores del resumen, `R04`
+borrar el pulso) **SOBREVIVEN los 4 a la suite entera**, y lo que los cubre son
+las corridas del pipeline real de abajo. Es la limitación estructural conocida, y
+queda escrita otra vez porque sigue sin cerrarse.
+
+### 9. (BAJA) El "DESPUÉS" del encabezado que el informe pegó como literal era sintético
+
+185 y 11 son totales de la SEMANA, repartidos en 3 corridas: ninguna corrida tiene
+esos números. El de la corrida real más grande está arriba, en el defecto 1, con
+los números reales de `data/ejecuciones.jsonl` (1.175 páginas). Corregido en
+BITACORA y en el README, con la aclaración al lado.
+
+## LO QUE NO SE TOCÓ, Y POR QUÉ
+
+- **La regla de oro del 2026-09-13 ("una baja real nunca se calla")**: intacta. El
+  filtro sigue siendo por TIPO y una baja degradada por el freno sigue siendo una
+  baja; `V03` (callar las bajas que rebotan) muere con 7 fallas.
+- **Los 44 avisos de "volvió el stock" de la semana siguen apagados.** Es la
+  contradicción que el encargo anticipó y es decisión del operador; sigue escrita
+  en `src/solo-bajas.mjs`, en el README y en la aserción que recorre las 44
+  reposiciones una por una.
+- **El canal técnico sigue sin filtrarse** y ahora, además, su texto no se puede
+  contradecir con la regla.
+- **No se cambió la cadencia del pulso ni se mandó el resumen en cada corrida**:
+  20 mensajes diarios es lo que el operador pidió sacar.
+
+## VERIFICACIÓN
+
+- **`npm test`: 680 → 689 verdes, 0 fallas.** La línea base de 666 nunca bajó y
+  ninguna prueba se borró. Las 9 pruebas nuevas van todas en
+  `test/solo-bajas.test.mjs` (14 → 23), que es donde están todas las aserciones de
+  esta regla, a propósito: el día que se revierta hay un solo archivo que mirar.
+- **DOS ASERCIONES VIEJAS CAMBIARON, y las dos fijaban un texto que dejó de ser
+  cierto**, con la razón escrita al lado:
+  - `test/freno-parpadeo.test.mjs`: *"el aviso técnico dice que NO se pierde
+    nada"* exigía la frase **"No dejo de avisarte nada"** a secas. Pasa a exigir
+    la acotada **y** a prohibir explícitamente la promesa de alertas de stock. La
+    exigencia de fondo no se debilita: lo que no se puede perder (que una baja que
+    rebota siga saliendo) se sigue exigiendo.
+  - `test/vivo.test.mjs`: *"tiene que quedar claro que la revisión sigue"* se
+    medía con la frase "aviso en curso" del encabezado. Ahora se mide con
+    `_(la revisión sigue en marcha)_`, que es la que de verdad lo dice, y se
+    agrega que la PRIMERA línea declare la baja.
+- **MUTANTES: 29 propios de esta vuelta, uno por vez, sobre una copia FUERA DEL
+  ÁRBOL (src + test + fixtures + workflows + README + BITACORA), suite entera,
+  restaurando desde el repo y verificando por md5 después de cada uno. MUEREN LOS
+  29.** Línea base de la copia sin mutar: 0 fallas, **y sin `data/` copiada**, que
+  es además la comprobación del desacople del 2026-09-23.
+  - 22 de los arreglos: `todoAvisado` sin mirar lo silenciado (1) · el cierre
+    callándose cuando se filtró (1) · `totalCambios` sin los pendientes (1) · el
+    desglose sin los pendientes (1) · lo silenciado descontando los pendientes (1)
+    · `soloNotificables` sin desconfiar del archivo (2) · `pendienteCreible` sin
+    los montos (2) y sin el matiz (1) · `pendientesParaAvisar` sin el portón (1) ·
+    `encabezadoTanda` sin la bandera (2), con la bandera siempre (1) y sin decir
+    que la revisión sigue (2) · `repartirCierre` contando accesorios (1) y sin
+    restar lo avisado en vivo (1) · el pulso sin ventana (1), dando por buenas las
+    filas viejas (1), sin sumar la corrida de ahora (1), sin la alarma de cero (1)
+    y declarando un solo número (1) · `mensajeRebotando` con las dos frases viejas
+    (2+2) y sin decir que el stock ya no llega (1).
+  - 7 del banco anterior, para comprobar que no se debilitó nada: el filtro del
+    operador borrado (23 fallas) · `esBajaDePrecio` dejando pasar las subas (16) ·
+    el filtro callando las bajas que rebotan (7) · deja pasar accesorios (7) ·
+    `repartirCierre` sin filtro (5) · la bandera sin la flecha verde (6) · la línea
+    de baja de vuelta al formato anterior (9).
+  - **En la primera pasada sobrevivió 1 y tenía razón:** "lo silenciado descuenta
+    los pendientes". La prueba que lo mata exige que, con una baja propia
+    entregada, un cambio silenciado y dos avisos atrasados, la nota del conteo
+    siga saliendo.
+  - **Y los 4 del cableado de `run.mjs` SOBREVIVEN** (ver defecto 8): es el hueco
+    estructural conocido, no un olvido.
+- **PIPELINE REAL (`src/run.mjs` ENTERO) SIN RED, 6 corridas.** Copia fuera del
+  árbol sustituyendo solo las tres puertas al exterior: `src/resolver.mjs` por un
+  doble que sirve 2 fichas construidas con registros REALES del catálogo
+  (F-SMA27EBU25W y F-SMA27EBU25X), `src/discover.mjs` por `[]`, y `playwright` por
+  un stub que **REVIENTA** si alguien intenta abrir una página (en las 6 corridas
+  no reventó). `CARPETA_DATOS` en carpetas temporales con copia del catálogo real,
+  `SIN_DESCUBRIMIENTO=1`, `LIMITE_PAGINAS=2`, `DELAY_MS=0`.
+
+  | corrida | resultado |
+  |---|---|
+  | **1. completo**, `env -u DISCORD_WEBHOOK_URL` | `cambiosDetectados:1 · noNotificadosPorRegla:0`, `history.jsonl: ["baja:F-SMA27EBU25W"]`, precio adoptado 383.984, el "se agotó" en `stockPendiente` |
+  | **2. liviano**, `env -u DISCORD_WEBHOOK_URL` | `alcance:"principales"`, `noVerificadosPorAlcance:1086`, mismo resultado |
+  | **3. completo** + webhook LOCAL en `127.0.0.1` + **5 pendientes sembrados** (sube, stock, baja, baja-con-montos-invertidos, matiz) | **2 mensajes de producto y 3 técnicos**. De los 5 pendientes volvió **SOLO la baja buena** (`avisosAtrasados:1`). El cierre dice `· 2 avisos (1 ya avisados en vivo · 1 en este resumen)` — el defecto 2, corregido por el cableado real. Y **el pulso del día salió** |
+  | **4. segunda pasada** (el "se agotó" se confirma) | `cambiosStock:1 · cambiosDetectados:1 · noNotificadosPorRegla:1`, 2 eventos en `history.jsonl`, catálogo con `estado=agotado`, **0 mensajes de producto** y **el pulso NO se repitió** (freno de una vez al día) |
+  | **5a + 5b. el caso del defecto 1 por el cableado real** (la baja sale en vivo y el "se agotó" se confirma en la MISMA corrida) | `cambiosDetectados:2 · noNotificadosPorRegla:1`, y el cierre: `· 1 aviso (1 ya avisados en vivo · 0 en este resumen)` + `_(se detectaron 2 cambios en total…)_` + **`✅ Revisión terminada. Todas las bajas de precio ya se avisaron en vivo.`** La contradicción no está |
+
+  La corrida 4 es el punto 2 del encargo, otra vez y con el código nuevo: el
+  cambio de stock se detectó, se confirmó en 2 observaciones, se escribió en el
+  historial, se adoptó en el catálogo y **no produjo ningún mensaje**.
+- **`data/` del repo INTACTA**: `git status --porcelain data/` vacío y los md5
+  idénticos a los del principio (`latest` 6c44fbbb…, `history` 770a2161…,
+  `ejecuciones` 2ca42bd3…). **No se commiteó nada.**
+- **EL WEBHOOK REAL JAMÁS SE TOCÓ**: `globalThis.fetch` interceptado en las
+  pruebas, `env -u DISCORD_WEBHOOK_URL` en dos corridas y un servidor HTTP propio
+  en `127.0.0.1` en las otras cuatro. La variable `DISCORD_WEBHOOK_URL` no existe
+  ni en el entorno de esta sesión (comprobado).
+
+## ⚠️ UN ACCIDENTE QUE HAY QUE DECLARAR: SE TOCÓ SAMSUNG.COM, Y EL ENCARGO LO PROHIBÍA
+
+Para comprobar la sintaxis de los módulos se corrió
+`node -e "import('./src/run.mjs')"` **dentro del repo**. `src/run.mjs` arranca
+`main()` al importarse —el hecho que está escrito en diez lugares de esta
+bitácora— así que eso **lanzó una revisión de verdad**: pidió los sitemaps del
+descubrimiento y empezó a cargar páginas. Se cortó al descubrirlo, del orden de
+tres minutos después. El log alcanzado muestra el descubrimiento (1.179 páginas) y
+**2 páginas de producto cargadas** (`INFO sin_precio ×2`); el techo de lo que pudo
+alcanzar en ese tiempo, al ritmo medido de 6-9 s por página, es del orden de 20-30
+páginas. No hubo ningún daño en los datos (la corrida escribe `latest.json` solo
+al final: `git status --porcelain data/` quedó vacío y los md5 intactos) ni en
+Discord (`DISCORD_WEBHOOK_URL` no existe en este entorno). Todo el resto del
+encargo se hizo sin red.
+
+**La lección, para que no se repita:** `node --check <archivo>` comprueba la
+sintaxis sin ejecutar nada. **Nunca se importa `src/run.mjs`** — y por eso el
+candado `test/candado-offline.test.mjs` prohíbe importarlo desde las pruebas.
+
+## PENDIENTES
+
+1. **MIRAR EL PULSO LOS PRIMEROS DÍAS.** Es el contador nuevo y es el único que
+   puede delatar un detector roto: la referencia medida es **185 cambios
+   detectados y 11 avisos en la semana** (del orden de 26 y 1,6 por día con 20
+   revisiones). Si alguna vez dice "Cero cambios detectados en 24 h" dos días
+   seguidos, el roto es el detector.
+2. **EL HUECO DE `run.mjs` SIGUE ABIERTO** y ahora tiene 4 mutantes vivos con
+   nombre (defecto 8). Cerrarlo de verdad exige que `main()` no arranque al
+   importarse, que es un cambio de otra naturaleza y merece su propio ticket.
+3. **SI EL OPERADOR ECHA DE MENOS "VOLVIÓ EL STOCK"**: la palanca sigue medida y
+   sigue siendo chica (44 avisos por semana; "bajas + volvió el stock" serían 55
+   en vez de 11). Es decisión de producto.
+4. Siguen los pendientes de la entrada de la mañana y de las anteriores.

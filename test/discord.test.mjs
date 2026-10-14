@@ -32,9 +32,18 @@ test("cada tipo de cambio muestra su precio de referencia y el link", async () =
     ],
   });
   const texto = enviados.join("\n");
-  assert.match(texto, /\$100\.000 → \*\*ahora: \$80\.000\*\*/);
-  assert.match(texto, /−\$20\.000 · −20\.0%/); // diferencia en pesos y porcentaje
-  assert.match(texto, /\+\$20\.000 · \+20\.0%/);
+  // CAMBIADO EL 2026-10-14, y la asercion anterior fijaba el formato que el
+  // operador pidio reemplazar. Decia /\$100\.000 → \*\*ahora: \$80\.000\*\*/, o
+  // sea un mensaje donde la palabra "baja" no aparecia nunca y el unico indicio
+  // del sentido era un circulo verde (un color, no una direccion). Lo que se
+  // exige ahora son las cuatro cosas que pidio, textual: "que se vea que hubo
+  // una baja de producto y una flecha verde por ejemplo, el nombre del producto
+  // completo y de que precio a que precio bajo".
+  assert.match(texto, /🟢⬇️ \*\*BAJÓ DE PRECIO\*\* · 📺 \*\*Tele\*\* \(M1\)/, "bandera verde + palabra + nombre completo + SKU");
+  assert.match(texto, /De \$100\.000 a \*\*\$80\.000\*\*/, "de que precio a que precio");
+  assert.match(texto, /ahorras \$20\.000 \(−20,0%\)/); // cuanto se ahorra, con coma decimal es-CL
+  assert.match(texto, /🔴⬆️ \*\*SUBIÓ DE PRECIO\*\* · 💻 \*\*Notebook\*\* \(M2\)/, "la suba es el opuesto exacto");
+  assert.match(texto, /\+\$20\.000 · \+20,0%/);
   assert.match(texto, /Precio actual: \*\*\$50\.000\*\*/); // stock muestra precio
   assert.match(texto, /\*\*\$30\.000\*\* \(primera vez/);
   assert.match(texto, /Volvió a aparecer.*\$70\.000/);
@@ -104,7 +113,10 @@ test("el titulo del mensaje trae las caracteristicas y el SKU sigue visible", as
     changes: [{ ...S26, tipo: "baja", precio: 1099990, precioAnterior: 1199990 }],
   });
   assert.match(enviados[0], /📱 \*\*Galaxy S26 Ultra \(Exclusivo en Samsung\.com\) · 256GB · Pink Gold\*\* \(SM-S948BZDJLTL\)/);
-  assert.match(enviados[0], /−\$100\.000 · −8\.3%/, "la variacion en pesos y porcentaje sigue intacta");
+  // CAMBIADO EL 2026-10-14: el porcentaje iba con PUNTO decimal ("−8.3%")
+  // mientras el comentario de `variacion` en src/discord.mjs prometia la coma
+  // ("−15,9%"). El que estaba mal era el codigo: los montos ya usaban es-CL.
+  assert.match(enviados[0], /ahorras \$100\.000 \(−8,3%\)/, "la variacion en pesos y porcentaje sigue intacta");
   assert.ok(enviados[0].includes(S26.url), "el link sigue intacto");
 });
 

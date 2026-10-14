@@ -12,7 +12,7 @@ import { mkdtemp, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { crearDespachadorVivo, firmaCambio, repartirCierre, esNotificable } from "../src/despachador-vivo.mjs";
+import { crearDespachadorVivo, esDeProductoVigilado, esNotificable, firmaCambio, repartirCierre } from "../src/despachador-vivo.mjs";
 import { comparar } from "../src/comparar.mjs";
 import { notifyDiscord, reiniciarRitmo, enviarMensaje } from "../src/discord.mjs";
 import { integrarVariantes } from "../src/catalogo.mjs";
@@ -91,7 +91,9 @@ function crear(opciones = {}) {
 /** El cierre tal cual lo arma run.mjs, para no probar una version de juguete. */
 async function cerrarComoRunMjs(despachador, { previo, observado, corridaConfiable = true, pendientes = [], errores = 0, totalRevisado = 1183 }) {
   const { catalogo, cambios } = comparar({ previo, observado, paginasFallidas: new Set(), corridaConfiable, timestamp: TS });
-  const { paraDiscord, suprimidos } = repartirCierre(cambios, despachador);
+  // igual que run.mjs: los cuatro valores salen de la MISMA llamada, y
+  // `detectados` es lo que el encabezado declara (lo detectado, no lo mandado)
+  const { paraDiscord, suprimidos, detectados, noNotificadosPorRegla } = repartirCierre(cambios, despachador);
   const correcciones = despachador.avisosNoRatificados(cambios).map((aviso) => ({ aviso, actual: catalogo[aviso.modelo] }));
   const envio = await notifyDiscord(WEBHOOK, {
     changes: paraDiscord,
@@ -100,8 +102,9 @@ async function cerrarComoRunMjs(despachador, { previo, observado, corridaConfiab
     avisadosEnVivo: suprimidos,
     correcciones,
     pendientes,
+    detectados,
   });
-  return { catalogo, cambios, paraDiscord, suprimidos, correcciones, envio };
+  return { catalogo, cambios, paraDiscord, suprimidos, detectados, noNotificadosPorRegla, correcciones, envio };
 }
 
 // --- DEFECTO CRITICO: aviso en vivo falso que nadie desmiente ----------------
@@ -119,7 +122,8 @@ test("un aviso en vivo que la revision NO ratifica sale corregido en el cierre",
   d.evaluar(observado, ["SM-S931BDBKLTL"], { pagina: 1 });
   await d.cerrar();
   assert.equal(envios.length, 1);
-  assert.match(envios[0].content, /ahora: \$699\.990/, "el aviso en vivo salio de verdad");
+  // El tramo de precio del formato nuevo (2026-10-14): antes era "ahora: $699.990".
+  assert.match(envios[0].content, /De \$899\.990 a \*\*\$699\.990\*\*/, "el aviso en vivo salio de verdad");
   const enVivo = envios.length;
 
   // pagina 6 (linea blanca) vuelve a publicar el MISMO SKU con el precio viejo
@@ -160,7 +164,7 @@ test("un aviso no ratificado por CORRECCION de precio no se desmiente dos veces"
   assert.equal(correcciones.length, 0, "la linea corregida ya es la correccion");
   assert.equal(paraDiscord.length, 1);
   assert.equal(paraDiscord[0].precio, 749990);
-  assert.match(textoDe(envios.slice(enVivo)), /ahora: \$749\.990/);
+  assert.match(textoDe(envios.slice(enVivo)), /De \$899\.990 a \*\*\$749\.990\*\*/);
 });
 
 test("un aviso en vivo ratificado por la revision NO genera correccion", async () => {
@@ -177,7 +181,10 @@ test("un aviso en vivo ratificado por la revision NO genera correccion", async (
   assert.equal(correcciones.length, 0);
   assert.equal(suprimidos, 1);
   const cierre = textoDe(envios.slice(enVivo));
-  assert.match(cierre, /1 cambios \(1 ya avisados en vivo · 0 en este resumen\)/);
+  // "1 aviso" y no "1 cambios": el encabezado cuenta AVISOS desde el 2026-10-14,
+  // porque con el filtro del operador lo mandado ya no es lo detectado (lo
+  // detectado va en su propia linea, ver `detectados` en src/discord.mjs).
+  assert.match(cierre, /1 aviso \(1 ya avisados en vivo · 0 en este resumen\)/);
   assert.match(cierre, /Todo lo detectado ya se avisó en vivo/);
 });
 
@@ -377,12 +384,23 @@ test("postergar un SKU nuevo no lo pierde: sale en el resumen final", async () =
   await d.cerrar();
   assert.equal(envios.length, 0, "en vivo no");
 
-  const { paraDiscord, correcciones } = await cerrarComoRunMjs(d, { previo, observado });
-  assert.deepEqual(
-    paraDiscord.map((c) => c.modelo),
-    ["TV-NUEVO"],
-    "en el cierre si: ahi la categoria ya es la definitiva",
+  const { cambios, paraDiscord, correcciones } = await cerrarComoRunMjs(d, { previo, observado });
+  // CAMBIADO EL 2026-10-14. La asercion era `paraDiscord === ["TV-NUEVO"]`, y lo
+  // que de verdad protege esta prueba es que el aviso POSTERGADO no se PIERDA
+  // (la guarda de `esFamiliaGenerica` en evaluar() lo saca del camino en vivo
+  // porque su categoria todavia no es la definitiva). Desde la regla del
+  // operador (src/solo-bajas.mjs) un "nuevo" ya no se notifica, asi que
+  // `paraDiscord` quedaria vacio tanto si el cambio se postergo bien como si se
+  // perdio: la asercion anterior ya no distingue las dos cosas. Se mueve a
+  // `cambios` --lo que comparar() DETECTO y escribio en el historial--, que es
+  // el eslabon que la guarda podria romper, y se declara aparte que lo unico
+  // que lo frena es el tipo.
+  assert.ok(
+    cambios.some((c) => c.modelo === "TV-NUEVO" && c.tipo === "nuevo"),
+    "el cierre SI lo detecta: ahi la categoria ya es la definitiva",
   );
+  assert.equal(esDeProductoVigilado(cambios.find((c) => c.modelo === "TV-NUEVO")), true, "y es un producto vigilado: lo unico que lo frena es ser 'nuevo' y no 'baja'");
+  assert.deepEqual(paraDiscord.map((c) => c.modelo), [], "pero no se notifica: solo salen las bajas");
   assert.equal(correcciones.length, 0);
 });
 
@@ -420,7 +438,7 @@ test("integrarVariantes marca los SKU que escribio de verdad, y solo esos", asyn
   assert.equal(d.evaluar(observado, escritos2, { pagina: 1 }), 0, "el SKU no escrito no se evalua...");
   assert.equal(d.evaluar(observado, escritos1, { pagina: 1 }), 1, "...y el escrito si");
   await d.cerrar();
-  assert.match(textoDe(envios), /ahora: \$899\.990/);
+  assert.match(textoDe(envios), /De \$999\.990 a \*\*\$899\.990\*\*/);
 });
 
 test("repartirCierre descarta accesorios, silenciados y lo ya confirmado en vivo", () => {
@@ -467,7 +485,7 @@ test("con huellas heredadas de una corrida muerta el cierre igual se manda y cue
   assert.equal(suprimidos, 1, "el heredado igual es un cambio de esta corrida");
   assert.equal(correcciones.length, 0, "un heredado no se desmiente: su aviso salio en otra corrida");
   assert.equal(envios.length, 1, "el operador tiene que recibir la senal de que la revision termino");
-  assert.match(envios[0].content, /1 cambios \(1 ya avisados en vivo · 0 en este resumen\)/);
+  assert.match(envios[0].content, /1 aviso \(1 ya avisados en vivo · 0 en este resumen\)/);
 });
 
 // --- DEFECTO BAJO: una huella con fecha ilegible silenciaba para siempre -----

@@ -1,6 +1,115 @@
 # Monitor de precios Samsung Chile
 
-Revisa el precio, stock y catálogo de los productos de samsung.com/cl y avisa por Discord cuando algo cambia (precio nuevo, producto nuevo, producto que desapareció, cambio de stock). Corre solo, en la nube (GitHub Actions), sin necesidad de tener el computador prendido.
+Revisa el precio, el stock y el catálogo de los productos de samsung.com/cl, y **te avisa por Discord cuando un precio BAJA**. Todo lo demás se sigue midiendo y guardando, pero no te llega como mensaje (ver la sección siguiente). Corre solo, en la nube (GitHub Actions), sin necesidad de tener el computador prendido.
+
+## Solo te avisamos las bajas de precio (2026-10-14) — **esto es lo que cambió**
+
+Lo pediste así: *"para notificaciones discord, solo notifica si hay bajas de precio. Si sube el precio o se agotó un producto no lo notifiques."*
+
+**Lo que vas a notar: muchísimos menos mensajes.** Medido sobre tu última semana real (7 al 14 de octubre), estos son los avisos que te habrían llegado antes y los que te llegan ahora:
+
+| Lo que pasó en el sitio | Antes te llegaba | Ahora |
+|---|---|---|
+| **Bajó de precio** | 11 | **11** ← lo único que sigue avisando |
+| Subió de precio | 9 | — |
+| Se agotó | 84 | — |
+| Volvió el stock | 44 | — |
+| Cambió el motivo (sigue sin poder comprarse) | 16 | — |
+| Ya no aparece en el sitio | 12 | — |
+| Volvió a aparecer en el sitio | 8 | — |
+| Producto nuevo | 1 | — |
+| **TOTAL** | **185** | **11** |
+
+Son **94% menos mensajes**, que es exactamente lo que pediste.
+
+**Nada deja de vigilarse.** Esto es un filtro de *mensajes*, no de *medición*: el monitor sigue revisando igual, sigue guardando cada cambio en `data/history.jsonl` y en el catálogo, y las reglas que evitan las falsas alarmas (confirmar un cambio en 2 revisiones, el freno anti-rebote, las correcciones silenciosas) siguen funcionando exactamente igual. Si algún día quieres volver a recibir el resto, se reactiva borrando **una línea** (está explicado abajo).
+
+**Lo que sí pierdes, dicho antes y no después:** el aviso de **"volvió el stock"** era el único aviso de stock con el que podías *comprar* — te avisaba que un producto agotado volvió a estar disponible. Esta semana fueron 44. Conseguir que esos avisos llegaran completos, con precio y link y en vivo, fue el trabajo entero del 5 de octubre. Esta regla los apaga. Ya lo conversamos y es tu decisión, pero queda escrito acá para que nadie lo "arregle" por su cuenta.
+
+**Los avisos técnicos NO se tocaron**, porque no son avisos de producto: la revisión que salió sospechosa, el censo del catálogo, los productos que no se pueden verificar hace días, los precios corregidos de origen y el aviso de que el monitor dejó de correr siguen llegando igual. (Dos cosas sí cambiaron ahí, el 2026-10-14 por la tarde: el aviso de "productos que están rebotando" te prometía que no se dejaba de avisar nada y que "volvió el stock" salía siempre como alerta fuerte — las dos frases ya no eran ciertas y quedaron corregidas; y se agregó **una** línea nueva al día, el "pulso", explicada más abajo.)
+
+**Y el mensaje te dice cuánto se filtró**, para que no te quedes con la impresión de que el sitio no se movió. Así quedó el cierre de **la revisión más grande de esa semana** (la del 7 de octubre a las 22:28, texto literal: 1.175 páginas revisadas, 15 cambios detectados, 9 bajas, las 9 avisadas en vivo):
+
+> **Monitor de precios Samsung Chile**
+> Revisados 1175 productos · 9 avisos (9 ya avisados en vivo · 0 en este resumen)
+> *(se detectaron 15 cambios en total; por tu regla solo se avisan las bajas de precio — los demás quedaron registrados en el historial)*
+> ✅ Revisión terminada. Todas las bajas de precio ya se avisaron en vivo.
+
+(Los 185 y los 11 de la tabla de arriba son los totales de la **semana**, repartidos en 3 revisiones: ninguna revisión sola tiene esos números.) Esa última línea decía antes *"Todo lo detectado ya se avisó en vivo"* — y era mentira en el mismo mensaje que declaraba haber filtrado 6 cambios. Corregido el 2026-10-14 por la tarde.
+
+### Cómo se ve ahora un aviso de baja
+
+También pediste esto: *"la notificación debería mostrar que hubo una baja de producto y una flecha verde por ejemplo, el nombre del producto completo y de qué precio a qué precio bajó."* Antes el mensaje era así:
+
+```
+🎧 **Galaxy Buds4 · Negro** (SM-R540NZKACHO)
+　🟢 Precio antes: $199.990 → **ahora: $139.990** (−$60.000 · −30.0%)
+　🔗 https://www.samsung.com/cl/audio-sound/galaxy-buds/galaxy-buds4-black-sm-r540nzkacho/
+```
+
+La palabra "baja" no aparecía en ninguna parte: el único indicio de que había bajado (y no subido) era el circulito verde. Ahora es así:
+
+```
+🟢⬇️ **BAJÓ DE PRECIO** · 🎧 **Galaxy Buds4 · Negro** (SM-R540NZKACHO)
+　De $199.990 a **$139.990** · ahorras $60.000 (−30,0%)
+　🔗 https://www.samsung.com/cl/audio-sound/galaxy-buds/galaxy-buds4-black-sm-r540nzkacho/
+```
+
+Cuatro cosas cambiaron, una por cada cosa que pediste:
+
+1. **Dice "BAJÓ DE PRECIO"**, con todas sus letras.
+2. **Lleva la flecha verde** (🟢⬇️). En el set de emojis que usa Discord no existe ninguna flecha verde de un solo carácter — la flecha sola se dibuja azul oscuro y el triángulo es rojo —, así que el verde lo pone el círculo pegado a la flecha.
+3. **La flecha y la palabra van PRIMERO**, antes del nombre, así que la dirección del cambio se lee de un golpe sin tener que bajar a la segunda línea.
+4. **De qué precio a qué precio**, en castellano llano ("De $199.990 a $139.990") y con el precio de hoy en negrita, más **cuánto te ahorras**. El porcentaje ahora va con coma decimal (−30,0%), como se escribe en Chile; antes salía con punto.
+
+### Y el aviso del teléfono también lo dice (corregido el 2026-10-14, segunda vuelta)
+
+La primera versión de esto decía que, con la flecha al principio de la línea, te enterarías de que algo bajó **sin abrir Discord**, porque el teléfono muestra el comienzo de la primera línea. **Era falso y hay que decirlo:** la primera línea de un aviso en vivo no es la del producto, es el encabezado de la tanda, que decía *"⚡ Monitor Samsung — aviso en curso · 22:28"*. Y ese es el camino por el que llegan casi todas las bajas (en la semana medida, las 11 de 11).
+
+Así que en vez de borrar la promesa, se cumplió: cuando lo que llega son bajas —que desde tu regla es siempre—, el encabezado lo dice:
+
+```
+⚡ 🟢⬇️ **BAJÓ DE PRECIO: 2 productos** · 22:28
+　revisando página 300 de 1170 _(la revisión sigue en marcha)_
+
+🔥 🟢⬇️ **BAJÓ DE PRECIO** · 📺 **65" Mini LED M70H 4K Samsung Vision AI Smart TV (2026) · Titanium Black** (UN65M70HAGXZS)
+　De $539.990 a **$479.990** · ahorras $60.000 (−11,1%)
+　🔗 https://www.samsung.com/cl/tvs/mini-led-tv/m70h-65-inch-4k-smart-tv-un65m70hagxzs/
+```
+
+Lo que sigue estando en la primera línea es cuánto falta de la revisión, que es la otra cosa que ese encabezado tiene que decir.
+
+### Una línea al día, por el canal técnico (nueva)
+
+Con esta regla, **la mayoría de las revisiones no te manda ningún mensaje**: medido sobre el historial real, de 437 revisiones con algún cambio, **283 (el 65%) quedan en silencio total**, y en tu última semana fueron 64 de 67. Eso es lo que pediste, pero tiene un costo: una semana sin bajas dejaba de distinguirse de un monitor roto.
+
+Por eso, una vez al día, por el **canal técnico** (el de los avisos de mantención, que no se filtra), llega una línea así:
+
+```
+📊 **Monitor Samsung — pulso del día**
+Últimas 24 h, 20 revisiones: **185 cambios detectados** en el sitio y **11 avisos de baja de precio** enviados.
+El resto (subas de precio, stock, productos nuevos, desaparecidos) se sigue midiendo y queda en el historial: por tu regla del 2026-10-14 solo se avisan las bajas.
+Esta línea existe para que una semana sin bajas se distinga de un monitor roto. Sale una vez al día y no es un aviso de producto.
+```
+
+Si alguna vez dice **"Cero cambios detectados en 24 h"**, eso no es un día tranquilo: es la señal de que lo que está roto es el detector y no la regla. Es un mensaje al día, no veinte.
+
+Dos arreglos chicos que vienen de paso:
+
+- **Los packs ya no salen con el ícono genérico.** Los combos (Watch + Buds, S26 Ultra + adaptador, Tab + teclado) solo existen en una página "familia" que el monitor descubre solo, así que no tienen categoría del listado y salían con un 🔹 en vez de su ícono. Medido: de las 1.411 bajas de toda la historia del monitor, 29 salieron así. Ahora el ícono se deduce de la dirección de la página (`/watches/` → ⌚) y el nombre del producto, que siempre estuvo completo, se ve con su ícono correcto.
+- **Un aviso de baja que el freno anti-rebote agrupa** (porque el precio ya había estado en ese valor hace poco) sale compacto, en una línea, como antes — pero ahora **también** dice "BAJÓ DE PRECIO" y de qué precio a qué precio. Antes esa línea usaba un símbolo de ida y vuelta (⇄) que no decía el sentido, y mientras llegaban los dos sentidos daba lo mismo; ahora que solo llegan bajas, no decirlo sería engañoso.
+
+### Si quieres volver a recibir todo
+
+Es una línea en `src/despachador-vivo.mjs`, dentro de la función `esNotificable`: donde dice
+
+```js
+return esDeProductoVigilado(cambio) && esBajaDePrecio(cambio);
+```
+
+se borra el `&& esBajaDePrecio(cambio)` y vuelve todo. Las secciones de subas, stock, productos nuevos, recuperados y desaparecidos siguen enteras en el código: simplemente no les llega material. El por qué, la medición y lo que cuesta están todos escritos en `src/solo-bajas.mjs`.
+
+En `data/ejecuciones.jsonl` quedan dos números nuevos por revisión para poder vigilar que la regla no esté tapando más de lo que debe: **`cambiosDetectados`** (cuántos cambios de productos vigilados encontró la revisión) y **`noNotificadosPorRegla`** (cuántos de esos no se avisaron por no ser bajas). Si `cambiosDetectados` se cae a casi 0 sin que suba `bajas`, el que está roto es el detector, no la regla. **Los dos son los que te llegan sumados una vez al día en el "pulso"** (más arriba): en un archivo del repo no te servían de nada.
 
 ## Cómo funciona
 
@@ -11,11 +120,12 @@ Revisa el precio, stock y catálogo de los productos de samsung.com/cl y avisa p
 - `src/catalogo.mjs`: arma el catálogo de la corrida (un producto por SKU) y decide qué categorías no se notifican. La identidad de un producto es **siempre su SKU**: el nombre nunca influye en si algo se considera nuevo, desaparecido o cambiado.
 - `src/comparar.mjs`: la lógica que decide qué cambió y qué se notifica (ver reglas abajo). Es un módulo puro con pruebas automatizadas.
 - `src/titulo.mjs`: arma el título legible de cada producto agregándole las características que lo distinguen (capacidad, RAM, color, pulgadas), porque el nombre que publica Samsung es igual para todas las variantes ("Galaxy S26 Ultra (Exclusivo en Samsung.com)" son 4 productos distintos). No hace **ninguna consulta extra** al sitio: las características salen de la misma página que ya se carga para leer el precio (Samsung las publica por código de modelo), más el listado y la dirección de la página como respaldo. Ejemplo real: `Galaxy S26 Ultra (Exclusivo en Samsung.com) · 256GB · 12GB RAM · Oro rosa`.
-- `src/discord.mjs`: arma y envía los avisos (íconos por categoría, link por producto, antes/después con diferencia en pesos y %). También le pone el ritmo al envío para no chocar con el límite de Discord, y reintenta cuando Discord contesta "más despacio".
-- `src/despachador-vivo.mjs`: los **avisos en vivo** — ver la sección siguiente.
+- `src/discord.mjs`: arma y envía los avisos (bandera "BAJÓ DE PRECIO" con la flecha verde, ícono por categoría —o por la dirección de la página, cuando el producto no tiene categoría del listado—, el tramo "De $X a $Y", cuánto te ahorras y el link). También le pone el ritmo al envío para no chocar con el límite de Discord, y reintenta cuando Discord contesta "más despacio".
+- `src/solo-bajas.mjs`: **la regla de que solo se avisan las bajas de precio** (ver la primera sección). Es el único lugar donde vive esa decisión, con su medición y con las instrucciones para revertirla.
+- `src/despachador-vivo.mjs`: los **avisos en vivo**, y el único portón por el que pasan los dos caminos de envío (el aviso en vivo y el resumen de cierre) — ver la sección siguiente.
 - `data/latest.json`: catálogo con el último estado conocido de cada producto (precio, stock confirmado, presencia). El historial git de este archivo es el snapshot completo de cada revisión.
 - `data/history.jsonl`: eventos de cambio (una línea por cambio detectado, con campo `tipo`).
-- `data/ejecuciones.jsonl`: registro de cada corrida — duración, páginas, errores, conteos por tipo de cambio, si fue confiable, **cuánto tardó el bloque de categorías principales** (`paginasPrincipales`, `duracionPrincipalesMin`) y **qué se propuso mirar** (`modo`, `alcance`, `paginasDelAlcance`, `noVerificadosPorAlcance`, `productosEsperados`, `escaladoACompleto`). Sin esos últimos, una revisión completa y una liviana no se podrían comparar entre sí: `productosEncontrados` pasa de ~929 a ~196 sin ninguna explicación en el archivo.
+- `data/ejecuciones.jsonl`: registro de cada corrida — duración, páginas, errores, conteos por tipo de cambio, si fue confiable, **cuántos cambios se detectaron y cuántos no se avisaron por la regla de solo-bajas** (`cambiosDetectados`, `noNotificadosPorRegla`), **cuánto tardó el bloque de categorías principales** (`paginasPrincipales`, `duracionPrincipalesMin`) y **qué se propuso mirar** (`modo`, `alcance`, `paginasDelAlcance`, `noVerificadosPorAlcance`, `productosEsperados`, `escaladoACompleto`). Sin esos últimos, una revisión completa y una liviana no se podrían comparar entre sí: `productosEncontrados` pasa de ~929 a ~196 sin ninguna explicación en el archivo.
 - `data/notificados.jsonl`: apunte temporal de lo que ya se avisó en vivo. Se borra solo al terminar cada revisión; solo sirve para que una revisión que se muere a mitad no haga que la siguiente te avise dos veces lo mismo.
 - `data/pendientes.jsonl`: avisos que Discord nunca llegó a aceptar (por ejemplo, Discord caído durante toda la revisión). Se mandan al principio del resumen de la revisión siguiente y ahí se borran.
 - `data/avisos-tecnicos.jsonl`: qué avisos técnicos ya salieron hoy, para que una condición que dura días (por ejemplo, una categoría que Samsung renombró) no te mande 7 mensajes idénticos por día. Se poda solo a los 7 días.
@@ -26,13 +136,13 @@ Revisa el precio, stock y catálogo de los productos de samsung.com/cl y avisa p
 
 Antes había que esperar a que terminara la revisión completa (unas 3 horas) para recibir todo junto. Ahora **cada página que se revisa avisa al toque**: si a las 14:32 baja un precio, el mensaje llega alrededor de las 14:32, no a las 17:00.
 
-- Llegan en vivo: **baja, sube, producto nuevo, cambio de stock y producto recuperado**. Cada aviso dice "aviso en curso" y por qué página va la revisión, para que se note que todavía falta.
-- Llegan **al final**, como siempre: los **productos desaparecidos** (recién ahí se sabe que no apareció en ninguna página) y la alerta técnica si la revisión fue sospechosa. Al final llega además un mensaje de cierre con el total de la revisión ("237 cambios · 229 avisados en vivo · 8 en este resumen").
+- Llegan en vivo: **las bajas de precio** (desde el 2026-10-14 — antes también llegaban en vivo las subas, los productos nuevos, los cambios de stock y los recuperados; ver la primera sección de este archivo). Cada aviso dice "aviso en curso" y por qué página va la revisión, para que se note que todavía falta.
+- Llegan **al final**: la alerta técnica si la revisión fue sospechosa, y el mensaje de cierre con el total de la revisión ("11 avisos · 9 ya avisados en vivo · 2 en este resumen", más la línea que dice cuántos cambios se detectaron en total). Los **productos desaparecidos** se siguen decidiendo al final —recién ahí se sabe que no apareció en ninguna página— pero desde el 2026-10-14 ya no se avisan.
 - Las bajas de 15% o más van marcadas con 🔥 y se muestran primero: la idea es reconocer una oportunidad de un vistazo.
 - Los **accesorios y el Galaxy Book3 siguen silenciados** también en los avisos en vivo. Un producto que nunca se había visto y que aparece por primera vez en una página "familia" espera al resumen final: ahí recién se sabe si es un accesorio, y así no te llega un cargador en vivo.
 - Nada se avisa dos veces y nada se pierde: el resumen final descarta exactamente lo que Discord confirmó haber recibido en vivo, y vuelve a mandar lo que no.
 - **Correcciones.** Un aviso en vivo sale con lo que vio *esa* página. Si más adelante, en la misma revisión, otra página publica otro dato para el mismo producto, manda siempre la revisión completa — y el mensaje de cierre te avisa con un ⚠️ que ese aviso no se confirmó y cuál es el precio vigente. Antes ese aviso falso se quedaba sin desmentir y además se repetía en todas las revisiones siguientes.
-- **Si Discord se cae**, lo que no se pudo entregar queda anotado en `data/pendientes.jsonl` y se manda al principio del resumen de la revisión siguiente, con su fecha original. Caduca a las 48 horas (un precio de anteayer ya no sirve para ir a comprar).
+- **Si Discord se cae**, lo que no se pudo entregar queda anotado en `data/pendientes.jsonl` y se manda al principio del resumen de la revisión siguiente, con su fecha original. Caduca a las 48 horas (un precio de anteayer ya no sirve para ir a comprar). Esos avisos atrasados **vuelven a pasar por las reglas de hoy** antes de mandarse: si quedaron anotados con reglas viejas (por ejemplo, un "se agotó" de antes del 2026-10-14), no se mandan.
 
 Se puede ajustar sin tocar código, con variables de entorno (todas tienen un valor por defecto razonable):
 
@@ -361,6 +471,8 @@ Y después lo comprobé contra las dos páginas de verdad, cargándolas con el s
 
 ## El stock que iba y venía, y el freno nuevo (2026-09-13, noche)
 
+> ⚠️ **Los avisos de stock de los que habla esta sección ya no te llegan** (regla del 2026-10-14, primera sección de este archivo): se siguen midiendo y guardando, pero no se mandan. El **freno anti-rebote** sí sigue afectando lo que recibes, porque también se aplica a las bajas de precio.
+
 Dos cosas distintas, y las dos vienen de lo que reportaste: *"el Galaxy A36… 539.990, después 369.990, después vuelve a 539.990"* y *"el Galaxy Z Flip6, que a veces aparece agotado, después no está a la venta, agotado, no está a la venta"*.
 
 El baile del **precio** del A36 ya estaba arreglado. Lo que faltaba era el del **stock**, que es otro camino, y el **freno** que pediste para cuando vuelva a pasar por otra causa.
@@ -398,6 +510,8 @@ El monitor veía esa palabra "Agotado" y la guardaba **como si fuera del Violeta
 
 ### Parte 2: el freno anti-rebote (lo vas a notar, así que acá está explicado)
 
+> ⚠️ **Desde el 2026-10-14, de todo lo que cuenta esta sección solo te llegan las BAJAS DE PRECIO** (ver la primera sección de este archivo). El freno sigue funcionando igual y sigue importando, porque también se aplica a las bajas: una baja que rebota te llega compacta, en una línea, y **nunca se calla**. Los rebotes de stock y las subas se siguen midiendo y quedan en el historial, pero no se mandan. Donde abajo dice "no dejo de avisarte nada", hoy hay que leer "no dejo de avisarte ninguna baja".
+
 Esto es lo que pediste con todas sus letras: *"si ya me notificaste este cambio una vez, no es necesario volver a notificarlo las veces siguientes"* — pero también dijiste *"si efectivamente Samsung está cambiando el precio, ya, está bien que me notifiques"*. Las dos cosas juntas.
 
 **La regla, en una frase:** si un producto **vuelve a un precio (o a un estado) que ya te conté en los últimos 3 días**, eso no es una novedad, es un vaivén — así que **deja de tener su propia alerta** y pasa a **una sola línea** al final del resumen, en una sección que se llama **"🌀 Siguen rebotando"**.
@@ -410,15 +524,15 @@ Esto es lo que pediste con todas sus letras: *"si ya me notificaste este cambio 
 > con 12 horas de ventana para la reposición y 3 días para el "se agotó".
 > **Lo del precio no cambió.** Ver [la sección del 2026-10-05](#lo-del-stock-corregido-en-pleno-cyber-2026-10-05).
 
-Una línea así se ve más o menos así:
+Una línea así se ve hoy así (texto literal, renderizado con el código de ahora):
 
 ```
-🖥️ Monitor Odyssey G3 32" (LS32DG300ELXZS) — 🌀 $199.990 ⇄ $279.990 · ahora $199.990 (7ª vez en 72 h)
+🟢⬇️ **BAJÓ DE PRECIO** · 🖥️ **32" Odyssey G3 G30F FHD 180Hz Monitor Gamer** (LS32DG300ELXZS) — De $279.990 a **$199.990** · ahorras $80.000 (−28,6%) · 🌀 rebota entre $199.990 ⇄ $279.990 (6ª vez en 72 h)
 ```
 
-En vez de la alerta grande de siempre, con su bloque, su porcentaje y su link.
+En vez de la alerta grande de siempre, con su bloque y su link. (Hasta el 2026-10-14 esa línea era `🖥️ Monitor Odyssey G3 32" — 🌀 $199.990 ⇄ $279.990 · ahora $199.990`: el símbolo de ida y vuelta no decía si había subido o bajado, y ahora que solo llegan bajas tiene que decirlo.)
 
-**Lo importante: no dejo de avisarte nada.** El primer intento de este freno sí callaba los vaivenes, y al medirlo contra los últimos 30 días resultó que **se habría tragado 61 bajas de precio de verdad**, 49 de ellas de 20% o más (la mayor, una tablet de $1.599.990 a $849.990). Eso es justo lo contrario de lo que sirve. Así que el freno cambia **la forma** del aviso, nunca lo borra:
+**Lo importante: no dejo de avisarte ninguna baja.** El primer intento de este freno sí callaba los vaivenes, y al medirlo contra los últimos 30 días resultó que **se habría tragado 61 bajas de precio de verdad**, 49 de ellas de 20% o más (la mayor, una tablet de $1.599.990 a $849.990). Eso es justo lo contrario de lo que sirve. Así que el freno cambia **la forma** del aviso, nunca lo borra:
 
 1. **Un valor NUEVO siempre es alerta grande, al instante.** Si el A36 baja a $299.990 —un precio que no tenía— te llega como siempre, aunque el producto venga rebotando hace días. Una baja de Cyber es, por definición, un número nuevo.
 2. **Un regreso a un precio que ya conocías sale compacto, en la misma revisión**, con el precio de HOY. Si el monitor está otra vez a $199.990, eso lo lees igual y puedes ir a comprar.
@@ -464,6 +578,8 @@ Esa última fila importa tanto como las otras: **un cambio que ocurre una sola v
 ---
 
 ## Lo del stock, corregido en pleno Cyber (2026-10-05)
+
+> ⚠️ **Esta sección describe avisos que desde el 2026-10-14 ya NO te llegan.** Pediste que solo se notifiquen las bajas de precio (ver la primera sección de este archivo), así que los avisos de stock de los que habla acá —"volvió el stock", "se agotó", "sigue sin poder comprarse"— se siguen detectando y guardando, pero no se mandan. La sección se conserva porque el mecanismo sigue vivo y vuelve solo si algún día reactivas el resto; y porque lo que explica —que "volvió el stock" era el único aviso de stock con el que podías comprar— es justo lo que esta regla apaga.
 
 Dos cosas que vas a notar en los avisos, las dos medidas sobre la semana del Cyber.
 

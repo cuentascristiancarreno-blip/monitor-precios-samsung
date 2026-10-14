@@ -193,9 +193,20 @@ test("...y los 118 avisos de agotado <-> no-a-la-venta NO salen como alerta fuer
   assert.equal(elPico.filter(esFuerte).length, 0);
 });
 
-test("NO se silencia ni un aviso: lo detectado y lo entregado siguen siendo lo mismo", () => {
+// CAMBIADA EL 2026-10-14. La asercion era `entregados.length ===
+// detectados.length` ("250 y 250, nada silenciado"), que es la regla que el
+// proyecto se fijo cuando el freno se estaba comiendo bajas y reposiciones
+// reales. Esa regla sigue valiendo para EL FRENO --que es lo que esta prueba
+// vigila-- pero ya no se puede escribir asi, porque el operador pidio
+// explicitamente que solo se le avisen las bajas (src/solo-bajas.mjs). Las dos
+// mitades se exigen por separado: el freno no se traga ni uno de los 250, y de
+// esos 250 salen al canal exactamente las bajas.
+test("el freno no silencia ni un aviso, y lo que sale al canal son las bajas", () => {
   const { detectados, entregados } = replaySemana();
-  assert.equal(entregados.length, detectados.length, "ningun cambio se calla");
+  const bajas = detectados.filter((c) => c.tipo === "baja");
+  assert.equal(entregados.length, bajas.length, "ni una baja se calla, y nada que no sea baja sale");
+  assert.deepEqual([...new Set(entregados.map((c) => c.tipo))], ["baja"]);
+  assert.ok(detectados.length > entregados.length, "lo detectado sigue siendo mucho mas: es un filtro de notificacion, no de deteccion");
   // los dos avisos que el operador NO puede perder siguen enteros
   const seAgoto = detectados.filter((c) => c.tipo === "stock" && deLaSemana(c) && c.estadoAnterior === D);
   const volvio = detectados.filter((c) => c.tipo === "stock" && deLaSemana(c) && c.estado === D);
@@ -293,16 +304,27 @@ test("una REPOSICION no se degrada NUNCA, ni repetida tres veces en un dia de Cy
     const cambio = i % 2 === 0 ? cambioStock(D, A) : cambioStock(A, D);
     const r = evaluarEstabilidad({ ant, cambios: [cambio], timestamp: ts });
     ant = { reboteStock: r.memorias.reboteStock };
-    if (i % 2 === 1) veredictos.push({ fuerte: !esRebote(r.cambios[0]), vivo: esParaVivo(r.cambios[0]) });
+    // CAMBIADO EL 2026-10-14: `vivo` era `esParaVivo(cambio)`, que desde la regla
+    // del operador (src/solo-bajas.mjs) da false para CUALQUIER cambio de stock,
+    // por el tipo y no por el freno -- medirlo asi dejaba los tres veredictos en
+    // false y la prueba habria dejado de ver el defecto que vigila. Lo que se
+    // mide ahora es que el freno no la saque del camino en vivo: una reposicion
+    // no es un rebote ni un matiz, que son las dos razones por las que un cambio
+    // de stock se queda fuera del vivo. El dia que el operador reactive el stock,
+    // las tres vuelven a salir en vivo sin tocar nada.
+    if (i % 2 === 1) {
+      const c = r.cambios[0];
+      veredictos.push({ fuerte: !esRebote(c), vivoSegunElFreno: !esRebote(c) && !esMatiz(c) });
+    }
   }
   assert.deepEqual(
     veredictos,
     [
-      { fuerte: true, vivo: true },
-      { fuerte: true, vivo: true },
-      { fuerte: true, vivo: true },
+      { fuerte: true, vivoSegunElFreno: true },
+      { fuerte: true, vivoSegunElFreno: true },
+      { fuerte: true, vivoSegunElFreno: true },
     ],
-    "las tres reposiciones del dia salen fuertes y en vivo",
+    "las tres reposiciones del dia quedan fuertes y el freno no las aparta del camino en vivo",
   );
 });
 
@@ -496,9 +518,18 @@ test("una reposicion sale con su bloque, su precio y su link", async () => {
 test("un matiz no sale EN VIVO: no hay nada urgente en seguir sin poder comprar", () => {
   const matiz = { tipo: "stock", modelo: "SM-X", estadoAnterior: A, estado: N, disponible: false, categoria: "Televisores", matiz: true };
   const cruce = { tipo: "stock", modelo: "SM-X", estadoAnterior: A, estado: D, disponible: true, categoria: "Televisores" };
-  assert.equal(esNotificable(matiz), true, "se entrega igual, al cierre");
-  assert.equal(esParaVivo(matiz), false, "pero no en vivo");
-  assert.equal(esParaVivo(cruce), true, "una reposicion si sale en vivo");
+  // CAMBIADO EL 2026-10-14. Decia `esNotificable(matiz) === true` ("se entrega
+  // igual, al cierre") y `esParaVivo(cruce) === true` ("una reposicion si sale en
+  // vivo"), y las dos eran ciertas hasta que el operador pidio no recibir avisos
+  // de stock (src/solo-bajas.mjs). Lo que esta prueba defiende es el filtro de
+  // EN VIVO del matiz --el mutante que sobrevivio en la entrega del 2026-09-13,
+  // que habria mandado los 89 matices del 2026-10-02 uno por uno, en vivo-- y eso
+  // se exige igual: el matiz queda fuera del vivo por ser matiz, no por su tipo.
+  assert.equal(esParaVivo(matiz), false, "un matiz no sale en vivo");
+  assert.equal(esMatiz(matiz), true, "...y la razon es que es un matiz");
+  assert.equal(esMatiz(cruce), false, "una reposicion NO es un matiz: el freno no la aparta");
+  assert.equal(esNotificable(matiz), false, "hoy no se entrega: solo salen las bajas (regla del operador del 2026-10-14)");
+  assert.equal(esNotificable(cruce), false, "y tampoco la reposicion, por la misma regla");
 });
 
 test("la linea compacta de un QUIEBRE repetido dice el numero de CRUCE, no 'Nª vez'", async () => {
@@ -634,8 +665,12 @@ test("ninguna de las dos clases de matiz sale EN VIVO", () => {
   // la reposicion, cuando llegue, sale fuerte y en vivo por su propia cuenta.
   assert.equal(esParaVivo(vuelve), false);
   assert.equal(esParaVivo(sale), false);
-  assert.equal(esNotificable(vuelve), true, "pero se entregan las dos, al cierre");
-  assert.equal(esNotificable(sale), true);
+  // CAMBIADO EL 2026-10-14: decia `esNotificable === true` ("se entregan las dos,
+  // al cierre"). Desde la regla del operador (src/solo-bajas.mjs) ningun cambio
+  // de stock se avisa. Lo que esta prueba defiende --que las dos clases queden
+  // fuera del VIVO, y que se sigan distinguiendo entre si-- se exige igual.
+  assert.equal(esNotificable(vuelve), false, "hoy no se entregan: solo salen las bajas");
+  assert.equal(esNotificable(sale), false);
   assert.equal(esMatizQueVuelve(vuelve), true);
   assert.equal(esMatizQueVuelve(sale), false);
 });

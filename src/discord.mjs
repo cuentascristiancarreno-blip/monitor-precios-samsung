@@ -3,6 +3,7 @@ import { reloj } from "./reloj.mjs";
 import { ESTADO, textoEstado } from "./stock.mjs";
 import { entorno } from "./entorno.mjs";
 import { VENTANA_REBOTE_HORAS, VENTANA_QUIEBRE_HORAS, LADO, esMatiz, esMatizQueVuelve, esRebote, ventanaDe } from "./estabilidad.mjs";
+import { seccionDeUrl } from "./identidad.mjs";
 
 const CLP = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 
@@ -10,13 +11,83 @@ function fmt(n) {
   return Number.isFinite(n) ? CLP.format(n) : "sin precio";
 }
 
+// El porcentaje con COMA decimal, que es como se escribe en Chile. Antes era
+// `.toFixed(1)`, o sea punto ("−5.0%"), mientras el comentario de esta misma
+// funcion prometia "−15,9%": el texto y el codigo decian cosas distintas y el
+// que estaba mal era el codigo. Los montos ya usaban es-CL (el formateador CLP).
+const PCT = new Intl.NumberFormat("es-CL", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
 // diferencia en pesos y porcentaje, ej: " (−$170.000 · −15,9%)"
 function variacion(anterior, nuevo) {
   if (!Number.isFinite(anterior) || !Number.isFinite(nuevo) || anterior === 0) return "";
   const diff = nuevo - anterior;
   const signo = diff > 0 ? "+" : "−";
-  const pctAbs = Math.abs((diff / anterior) * 100).toFixed(1);
+  const pctAbs = PCT.format(Math.abs((diff / anterior) * 100));
   return ` (${signo}${CLP.format(Math.abs(diff))} · ${signo}${pctAbs}%)`;
+}
+
+/**
+ * LO QUE EL OPERADOR PIDIO VER EN UN AVISO DE BAJA (2026-10-14), textual: "que
+ * se vea que hubo una baja de producto y una flecha verde por ejemplo, el nombre
+ * del producto completo y de que precio a que precio bajo".
+ *
+ * Son cuatro cosas y las cuatro tienen su pieza:
+ *  - QUE ES UNA BAJA: la palabra, escrita. El mensaje anterior decia "Precio
+ *    antes: … → ahora: …" y nunca la palabra "baja": el unico indicio del
+ *    sentido era un circulo verde, que es un color, no una direccion.
+ *  - LA FLECHA VERDE: `BANDERA.baja`. En el set de emoji que usa Discord
+ *    (Twemoji) no existe ninguna flecha verde de un solo caracter -- ⬇️ se
+ *    dibuja azul oscuro y 🔻 es roja --, asi que el verde lo pone el circulo
+ *    pegado a la flecha. Es la unica combinacion que se ve verde y se ve flecha
+ *    en todas las plataformas.
+ *  - EL NOMBRE COMPLETO: `componerTitulo` entero, sin recortar, con el SKU al
+ *    lado. Medido sobre el catalogo de hoy (552 notificables): 0 titulos se
+ *    recortan en el mensaje, 6 SKU comparten titulo con otro (y el SKU entre
+ *    parentesis los distingue). Lo que si estaba pobre era el ICONO: 75
+ *    notificables -- los packs, que entran por una pagina familia y por eso
+ *    quedan con categoria "Familia (auto-descubierta)" -- salian con el 🔹
+ *    generico (ver iconoPara).
+ *  - DE QUE PRECIO A QUE PRECIO: `tramoDePrecio`, en castellano llano ("De $X a
+ *    $Y") y con el monto de AHORA en negrita, que es el unico accionable.
+ *
+ * LA BANDERA VA PRIMERA, antes del nombre: la direccion del cambio se lee de un
+ * golpe, antes del nombre del producto, sin tener que llegar a la segunda linea.
+ * Antes la linea empezaba por el producto y habia que leer la de abajo para
+ * saber si habia subido, bajado o agotado.
+ *
+ * ⚠️ CORREGIDO 2026-10-14 (segunda vuelta): la version anterior de este
+ * comentario justificaba la bandera diciendo que "la vista previa de la
+ * notificacion del telefono muestra el comienzo de la primera linea, asi que se
+ * lee sin abrir Discord". **Los tres verificadores lo midieron y es falso para
+ * los dos caminos de envio**: esta es la linea del PRODUCTO, no la primera del
+ * mensaje. En vivo la primera linea es el encabezado de la tanda y la del
+ * producto va tercera (y con "🔥 " delante cuando la baja es >= 15%); en el
+ * cierre la primera linea es "**Monitor de precios Samsung Chile**". La promesa
+ * del telefono se cumple ahora en `encabezadoTanda` (src/despachador-vivo.mjs),
+ * que es la linea que el push si muestra, y donde quedo escrito que en la semana
+ * medida las 11 bajas de 11 salieron por ese camino.
+ */
+const BANDERA = {
+  baja: "🟢⬇️ **BAJÓ DE PRECIO**",
+  // Se conserva aunque hoy ninguna suba llegue a Discord (regla del 2026-10-14,
+  // src/solo-bajas.mjs): esa regla se revierte borrando UNA linea y entonces
+  // esta tiene que estar. Rojo y hacia arriba, el opuesto exacto.
+  sube: "🔴⬆️ **SUBIÓ DE PRECIO**",
+};
+
+/** "De $199.990 a **$139.990**" — los dos montos, el de ahora en negrita. */
+function tramoDePrecio(anterior, nuevo) {
+  if (!Number.isFinite(anterior)) return `Precio: **${fmt(nuevo)}**`;
+  return `De ${fmt(anterior)} a **${fmt(nuevo)}**`;
+}
+
+/** " · ahorras $60.000 (−30,0%)" para una baja; la variacion cruda si sube. */
+function ahorro(change) {
+  const { precioAnterior: antes, precio: ahora } = change;
+  if (!Number.isFinite(antes) || !Number.isFinite(ahora) || antes === 0) return "";
+  if (ahora >= antes) return variacion(antes, ahora);
+  const pct = PCT.format(((antes - ahora) / antes) * 100);
+  return ` · ahorras ${CLP.format(antes - ahora)} (−${pct}%)`;
 }
 
 // Icono por categoria real de src/seed.json (nunca se usa para "Accesorios *"
@@ -50,8 +121,60 @@ const ICONO_CATEGORIA = {
 };
 const ICONO_DEFAULT = "🔹";
 
-function iconoPara(categoria) {
-  return ICONO_CATEGORIA[categoria] || ICONO_DEFAULT;
+/**
+ * RESPALDO POR SECCION DE LA URL (2026-10-14, medido).
+ *
+ * `ICONO_CATEGORIA` se indexa por la categoria del LISTADO, y hay 75
+ * notificables que no tienen una: son los packs (Watch + Buds, S26 Ultra +
+ * adaptador, Tab + teclado) que solo existen en una pagina familia descubierta
+ * por sitemap, asi que su categoria es la generica "Familia (auto-descubierta)"
+ * y salian con el 🔹. Medido sobre las 1.411 bajas de todo el historial: 29
+ * (2,1%) salieron con el icono generico, y los nombres de esos productos son
+ * completos y buenos ("Galaxy Watch9 (Bluetooth, 40 mm) Cream + Galaxy Buds4 Pro
+ * Black") -- lo unico pobre era el icono.
+ *
+ * La seccion de la URL si lo resuelve, y el mapa no es una suposicion: censando
+ * los 552 notificables del catalogo, cada una de las 22 secciones del sitio la
+ * usa UNA sola categoria (`smartphones` -> Smartphones, `watches` -> Relojes,
+ * `tablets` -> Tablets, `computers` -> Computadores...), y las 4 secciones de
+ * las que cuelgan los 75 packs son justo esas. Es la misma propiedad del sitio
+ * en que se apoya `src/prioridad.mjs` desde el 2026-09-12.
+ *
+ * Solo se consulta cuando la categoria no esta en la tabla: una categoria real
+ * nunca pierde su icono por esto.
+ */
+const ICONO_SECCION = {
+  smartphones: "📱",
+  tablets: "📱",
+  watches: "⌚",
+  computers: "💻",
+  "audio-sound": "🎧",
+  "audio-devices": "🔊",
+  tvs: "📺",
+  "lifestyle-tvs": "🖼️",
+  monitors: "🖥️",
+  projectors: "📽️",
+  "smart-signage": "📟",
+  "led-signage": "📟",
+  refrigerators: "🧊",
+  dishwashers: "🍽️",
+  "cooking-appliances": "🍳",
+  "microwave-ovens": "♨️",
+  "washers-and-dryers": "🧺",
+  "air-conditioners": "❄️",
+  "system-air-conditioners": "❄️",
+  "vacuum-cleaners": "🧹",
+  "air-care": "🌬️",
+  smartthings: "🏠",
+};
+
+function iconoPara(categoria, url) {
+  return ICONO_CATEGORIA[categoria] || ICONO_SECCION[seccionDeUrl(url)] || ICONO_DEFAULT;
+}
+
+/** El icono de un cambio: su categoria, y si no la tiene, la seccion de su URL. */
+function iconoDe(change) {
+  return iconoPara(change?.categoria, change?.url || change?.paginaOrigen);
 }
 
 // El titulo va en negrita: un "*" o "_" que venga del sitio rompe el formato del
@@ -89,7 +212,7 @@ function otraFuente(change) {
 }
 
 function lineFor(change) {
-  const icono = iconoPara(change.categoria);
+  const icono = iconoDe(change);
   // el titulo ahora incluye las caracteristicas de la variante (capacidad, RAM,
   // color...) y el SKU sigue visible al final: es el unico identificador estable
   const nombre = escaparMarkdown(componerTitulo(change));
@@ -115,10 +238,12 @@ function lineFor(change) {
       return `${titulo}\n　❌ Ya no aparece en el sitio (confirmado en 2 revisiones seguidas). Último precio: **${fmt(change.precioAnterior)}**${link}`;
     case "recuperado":
       return `${titulo}\n　✅ Volvió a aparecer en el sitio. Precio actual: **${fmt(change.precio)}**${sinComprobar(change)}${link}`;
+    // LAS DOS LINEAS DE PRECIO LLEVAN SU BANDERA ADELANTE (2026-10-14, pedido
+    // del operador; el por que de cada pieza esta en el comentario de BANDERA).
     case "baja":
-      return `${titulo}\n　🟢 Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${variacion(change.precioAnterior, change.precio)}${otraFuente(change)}${link}`;
+      return `${BANDERA.baja} · ${titulo}\n　${tramoDePrecio(change.precioAnterior, change.precio)}${ahorro(change)}${otraFuente(change)}${link}`;
     case "sube":
-      return `${titulo}\n　🔴 Precio antes: ${fmt(change.precioAnterior)} → **ahora: ${fmt(change.precio)}**${variacion(change.precioAnterior, change.precio)}${otraFuente(change)}${link}`;
+      return `${BANDERA.sube} · ${titulo}\n　${tramoDePrecio(change.precioAnterior, change.precio)}${ahorro(change)}${otraFuente(change)}${link}`;
     // El operador puede ver TRES estados, no dos: "no está a la venta" (el
     // producto existe pero Samsung no lo vende) no es lo mismo que "agotado"
     // (se vende, pero no hay unidades). Los eventos viejos de history.jsonl solo
@@ -144,7 +269,7 @@ function lineFor(change) {
  * link la primera vez, cuando era novedad de verdad.
  */
 function lineaRebote(change) {
-  const icono = iconoPara(change.categoria);
+  const icono = iconoDe(change);
   const nombre = escaparMarkdown(componerTitulo(change));
   const sku = change.modelo || "sin SKU";
   const veces = Number.isFinite(change.vecesRebotado) ? ` (${change.vecesRebotado}ª vez en ${ventanaDe(change)} h)` : "";
@@ -185,8 +310,24 @@ function lineaRebote(change) {
     return `${icono} **${nombre}** (${sku}) — 🌀 ${antes} → **${ahora}**${cruces}${precio}${link}`;
   }
 
+  // UNA BAJA DEGRADADA SIGUE SIENDO UNA BAJA, Y AHORA LO DICE (2026-10-14).
+  //
+  // Esta linea decia "🌀 $139.990 ⇄ $199.990 · ahora **$139.990**": el ⇄ es un
+  // simbolo de ida y vuelta, o sea que NO declaraba la direccion, y la palabra
+  // "baja" no aparecia. Daba lo mismo mientras por el canal de productos salieran
+  // los dos sentidos (el titulo de la seccion los agrupaba a proposito, para que
+  // el vaiven no se leyera como "bajo/subio/bajo/subio"). Desde la regla del
+  // operador del 2026-10-14 (src/solo-bajas.mjs) por este canal SOLO salen
+  // bajas, asi que una linea que no dice el sentido miente por omision justo en
+  // el aviso con el que se va a comprar. Medido sobre los 30 dias del
+  // 2026-09-13: de 149 avisos degradados, 71 eran bajas -- no es un caso raro.
+  //
+  // Sigue siendo UNA linea y sigue sin link (el producto ya salio con link la
+  // primera vez, cuando era novedad de verdad): lo unico que cambia es que lleva
+  // la bandera y el tramo de precio, los mismos que la alerta fuerte.
   const entre = (change.valoresRebote ?? []).map((v) => fmt(v)).join(" ⇄ ");
-  return `${icono} **${nombre}** (${sku}) — 🌀 ${entre} · ahora **${fmt(change.precio)}**${veces}`;
+  const bandera = BANDERA[change.tipo] ?? "🌀";
+  return `${bandera} · ${icono} **${nombre}** (${sku}) — ${tramoDePrecio(change.precioAnterior, change.precio)}${ahorro(change)} · 🌀 rebota entre ${entre}${veces}`;
 }
 
 /**
@@ -211,7 +352,7 @@ function lineaRebote(change) {
  * puede comprar -- pero va en su propia seccion y con que actuar.
  */
 function lineaMatiz(change) {
-  const icono = iconoPara(change.categoria);
+  const icono = iconoDe(change);
   const nombre = escaparMarkdown(componerTitulo(change));
   const sku = change.modelo || "sin SKU";
   const antes = textoEstado(change.estadoAnterior ?? (change.disponibleAnterior ? ESTADO.DISPONIBLE : ESTADO.AGOTADO));
@@ -272,8 +413,8 @@ function itemsDeMatices(cambios, tope = TOPE_MATICES) {
 
 const TITULOS = {
   nuevo: "🆕 Productos nuevos",
-  baja: "🟢 Bajas de precio",
-  sube: "🔴 Subas de precio",
+  baja: "🟢⬇️ Bajas de precio",
+  sube: "🔴⬆️ Subas de precio",
   stock: "📦 Cambios de stock",
   recuperado: "✅ De vuelta en el sitio",
   desaparecido: "❌ Ya no aparecen (confirmado)",
@@ -310,7 +451,7 @@ const TIPO_EN_PALABRAS = {
  * @param actual el registro del catalogo definitivo (comparar() es la autoridad)
  */
 export function lineaCorreccion(aviso, actual) {
-  const icono = iconoPara(aviso.categoria ?? actual?.categoria);
+  const icono = iconoPara(aviso.categoria ?? actual?.categoria, aviso.url || actual?.url || actual?.paginaOrigen);
   const nombre = escaparMarkdown(componerTitulo({ ...actual, ...aviso }));
   const sku = aviso.modelo || "sin SKU";
   const url = aviso.url || actual?.url;
@@ -708,11 +849,14 @@ export async function enviarTandaVivo(webhookUrl, cambios, { encabezado = "", li
  *        revision completa NO confirmo (ver lineaCorreccion)
  * @param pendientes cambios que la revision ANTERIOR detecto pero que Discord
  *        nunca acepto (ver data/pendientes.jsonl en run.mjs)
+ * @param detectados cuantos cambios de productos vigilados detecto la revision
+ *        ANTES del filtro de notificacion del operador (src/solo-bajas.mjs).
+ *        Omitirlo deja el encabezado como estaba.
  * @returns {{mensajes, fallidos, noEntregados}} noEntregados son los cambios que
  *        viajaban en los mensajes que Discord rechazo: run.mjs los persiste para
  *        que la corrida siguiente los vuelva a intentar.
  */
-export async function notifyDiscord(webhookUrl, { changes, errores, totalRevisado, avisadosEnVivo = 0, correcciones = [], pendientes = [] }) {
+export async function notifyDiscord(webhookUrl, { changes, errores, totalRevisado, avisadosEnVivo = 0, correcciones = [], pendientes = [], detectados = null }) {
   if (!webhookUrl) {
     console.log("DISCORD_WEBHOOK_URL no configurado, no se envia notificacion.");
     return { mensajes: 0, fallidos: 0, noEntregados: [...(pendientes ?? []), ...(changes ?? [])] };
@@ -750,17 +894,61 @@ export async function notifyDiscord(webhookUrl, { changes, errores, totalRevisad
   // emitio y que se omiten por haber salido ya: cuenta tambien los heredados de
   // una corrida muerta, y no cuenta los avisos en vivo que la revision termino
   // desmintiendo (esos van en su propia seccion de correcciones).
-  const totalCambios = changes.length + avisadosEnVivo;
-  const desglose = avisadosEnVivo > 0 ? ` (${avisadosEnVivo} ya avisados en vivo · ${changes.length} en este resumen)` : "";
-  const resumen = `Revisados ${totalRevisado} productos · ${totalCambios} cambios${desglose}${errores > 0 ? ` · ${errores} paginas con error` : ""}`;
+  //
+  // Y LOS AVISOS ATRASADOS CUENTAN (2026-10-14, segunda vuelta, defecto medido):
+  // un pendiente de data/pendientes.jsonl SE ENTREGA en este mismo mensaje, y no
+  // estaba contado. Antes era un subconteo cosmetico; con la palabra "avisos" y
+  // con la nota de la regla pegada debajo, pasaba a ser una contradiccion
+  // abierta: el encabezado decia "0 avisos" y "por tu regla solo se avisan las
+  // bajas de precio" justo encima de un bloque "BAJÓ DE PRECIO" entregado.
+  const enEsteResumen = changes.length + pendientes.length;
+  const totalCambios = enEsteResumen + avisadosEnVivo;
+  const desglose = avisadosEnVivo > 0 ? ` (${avisadosEnVivo} ya avisados en vivo · ${enEsteResumen} en este resumen)` : "";
+  const resumen = `Revisados ${totalRevisado} productos · ${totalCambios} ${totalCambios === 1 ? "aviso" : "avisos"}${desglose}${errores > 0 ? ` · ${errores} paginas con error` : ""}`;
+  // EL CONTEO NO PUEDE MENTIR POR OMISION (2026-10-14). Este encabezado decia
+  // "N cambios" cuando N es lo que se MANDO, y desde la regla del operador
+  // (src/solo-bajas.mjs) eso ya no es lo que la revision detecto: en la semana
+  // medida fueron 185 cambios detectados y 11 avisos. El operador leeria "11
+  // cambios" y creeria que el sitio solo se movio 11 veces.
+  //
+  // Es exactamente la regla que el proyecto ya se habia fijado con los avisos en
+  // vivo ("el conteo tiene que declarar la corrida COMPLETA, no la lista ya
+  // deduplicada"), aplicada al filtro nuevo. La linea solo aparece cuando hay
+  // algo que declarar: si no se filtro nada, no se dice nada.
+  // `detectados` cuenta los cambios que ESTA revision detecto, asi que lo
+  // silenciado se mide contra lo que ella misma entrego: sumarle los pendientes
+  // (que son de otra corrida) haria parecer que la regla filtro uno menos.
+  const silenciadosPorRegla = Number.isFinite(detectados) ? detectados - (changes.length + avisadosEnVivo) : 0;
+  const nota = silenciadosPorRegla > 0
+    ? `\n_(se detectaron ${detectados} cambios en total; por tu regla solo se avisan las bajas de precio — los demás quedaron registrados en el historial)_`
+    : "";
   // "Todo lo detectado ya se avisó en vivo" solo puede salir cuando eso es
   // literalmente cierto: hubo avisos en vivo, no quedo nada por mandar, ninguno
   // se desmintio y no se arrastra nada de la revision anterior. Con una
   // correccion al lado, ese texto convertiria una alerta falsa en una
   // confirmacion; con un aviso atrasado, diria que se aviso algo que no.
+  //
+  // Y DESDE LA REGLA DEL OPERADOR HAY UN CUARTO CASO (2026-10-14, segunda
+  // vuelta, defecto ALTO medido por los tres verificadores). Esta frase se
+  // quedo igual mientras la linea de arriba empezaba a declarar lo detectado, y
+  // asi el mismo mensaje afirmaba las dos cosas contradictorias, una debajo de
+  // la otra: "_(se detectaron 15 cambios en total…)_" y "Todo lo detectado ya se
+  // avisó en vivo" habiendo avisado 9. No era un caso raro: como las bajas salen
+  // EN VIVO, lo normal es que `changes` quede vacio. Medido sobre
+  // data/history.jsonl agrupado por corrida: **103 de las 437 corridas reales
+  // (23,6%)** caen en esa combinacion, incluida la mas grande de la semana del
+  // operador (la del 2026-10-07T22:28, 15 cambios y 9 bajas).
+  //
+  // No se borra la linea: es la unica senal de que la revision TERMINO. Se dice
+  // lo que es cierto -- que lo avisado en vivo son todas las bajas --, y la nota
+  // de arriba ya dice donde quedo el resto.
   const todoAvisado = avisadosEnVivo > 0 && changes.length === 0 && correcciones.length === 0 && pendientes.length === 0;
-  const cierre = todoAvisado ? "\n✅ Revisión terminada. Todo lo detectado ya se avisó en vivo." : "";
-  const encabezado = `**Monitor de precios Samsung Chile**\n${resumen}${cierre}`;
+  const cierre = !todoAvisado
+    ? ""
+    : silenciadosPorRegla > 0
+      ? "\n✅ Revisión terminada. Todas las bajas de precio ya se avisaron en vivo."
+      : "\n✅ Revisión terminada. Todo lo detectado ya se avisó en vivo.";
+  const encabezado = `**Monitor de precios Samsung Chile**\n${resumen}${nota}${cierre}`;
 
   const secciones = [
     // Las correcciones van PRIMERAS: desmienten un aviso que el operador ya
@@ -883,6 +1071,19 @@ export function mensajeCorreccionesDePrecio(correcciones, tope = 60) {
  * historial real, el monitor LS32DG300ELXZS habria generado 12 de estos avisos
  * en 30 dias, porque el episodio cierra y vuelve a abrir.
  *
+ * ⚠️ Y SU TEXTO HABIA QUEDADO MINTIENDO (2026-10-14, segunda vuelta, defecto
+ * medido por dos verificadores). Este mensaje sale por notifyTecnico, que la
+ * regla del operador no filtra, asi que "no se toco una linea" -- pero prometia
+ * en negrita "**No dejo de avisarte nada**" y "Una reposición nunca entra acá:
+ * 'volvió el stock' sale siempre como alerta fuerte", y desde esa regla las dos
+ * frases son falsas para todo lo que no sea una baja. Medido sobre
+ * data/history.jsonl: de los 121 rebotes de productos vigilados del historial,
+ * **101 (82 de stock + 19 subas) ya no llegan al canal de productos** y solo las
+ * 20 bajas siguen saliendo; en la semana del operador los 16 rebotes son los 16
+ * de stock, o sea que este aviso llegaba anunciando una linea compacta que no
+ * existia. El texto queda acotado a lo que es cierto y nombra la regla. Una
+ * prueba exige que el texto y `esNotificable` no se puedan contradecir.
+ *
  * Mismo presupuesto de largo que los otros avisos tecnicos: notifyTecnico corta
  * con `slice` y un mensaje cortado pierde el pie.
  */
@@ -926,15 +1127,59 @@ export function mensajeRebotando(rebotando, tope = 60) {
     const resto = todas.length > n ? `\n…y ${todas.length - n} más.` : "";
     return (
       `🌀 **Monitor Samsung — productos que están rebotando**\n` +
-      `${lista.length} producto(s) volvieron a algo que ya habían tenido hace poco: un precio ya visto hace menos de ${VENTANA_REBOTE_HORAS} h, o un segundo "se agotó" en menos de ${VENTANA_QUIEBRE_HORAS} h. Eso es un vaivén, no una novedad. Una reposición nunca entra acá: "volvió el stock" sale siempre como alerta fuerte.\n` +
+      `${lista.length} producto(s) volvieron a algo que ya habían tenido hace poco: un precio ya visto hace menos de ${VENTANA_REBOTE_HORAS} h, o un segundo "se agotó" en menos de ${VENTANA_QUIEBRE_HORAS} h. Eso es un vaivén, no una novedad.\n` +
       `${todas.slice(0, n).join("\n")}${resto}\n` +
-      `**No dejo de avisarte nada**: mientras rebotan, sus avisos salen juntos en una línea compacta al final del resumen (sección "Siguen rebotando"), con el valor de ahora. Un valor NUEVO vuelve a salir como alerta normal al instante.\n` +
+      `**De las bajas de precio no dejo de avisarte nada**: mientras rebotan, sus avisos salen juntos en una línea compacta al final del resumen (sección "Siguen rebotando"), con el precio de ahora y diciendo que es una baja. Una baja a un precio NUEVO vuelve a salir como alerta normal al instante.\n` +
+      `De los cambios de STOCK y de las subas de precio no te llega nada desde tu regla del 2026-10-14 (solo se avisan las bajas): se siguen midiendo y quedan en el historial.\n` +
       `Este aviso sale una vez por episodio de rebote; si el vaivén dura más de una semana, puede repetirse.`
     );
   };
   let n = Math.min(todas.length, tope);
   while (n > 1 && armar(n).length > LARGO_MAX_TECNICO) n -= 1;
   return armar(n);
+}
+
+/**
+ * EL PULSO DEL DIA, por el canal TECNICO (2026-10-14, segunda vuelta).
+ *
+ * POR QUE EXISTE: la nota del encabezado ("se detectaron N cambios en total")
+ * solo sale si hay mensaje de cierre, y notifyDiscord corta temprano cuando no
+ * hay nada que mandar -- justo el caso de una corrida con cambios detectados y 0
+ * bajas. Medido sobre data/history.jsonl agrupado por corrida: **283 de las 437
+ * corridas reales (64,8%) no mandarian NI UN mensaje** al canal de productos, y
+ * esas 283 contienen 11.348 cambios detectados; en la semana del operador son
+ * **64 de 67 corridas mudas con 168 cambios dentro**. O sea que la unica red
+ * contra "el detector de precios se rompio y nadie se entera" vivia en
+ * data/ejecuciones.jsonl, que el operador no lee.
+ *
+ * ES UNA LINEA AL DIA y va por el canal tecnico -- el que el operador no pidio
+ * filtrar --, con el freno de una vez al dia por clave que ya existe
+ * (src/avisos-repetidos.mjs). Mandar el resumen de cierre en cada corrida
+ * deshacia el encargo: son 20 revisiones diarias.
+ *
+ * LO QUE TIENE QUE PERMITIR DISTINGUIR, y es la unica razon de que traiga los
+ * DOS numeros: "el sitio no se movio" (detectados ~0) de "el sitio se movio y no
+ * hubo ninguna baja" (detectados alto, avisados 0) de "el detector se rompio"
+ * (detectados ~0 varios dias seguidos).
+ */
+export function mensajePulsoDeLaRegla({ horas = 24, corridas = 0, conDato = 0, detectados = 0, avisados = 0 } = {}) {
+  const n = (x) => new Intl.NumberFormat("es-CL").format(x);
+  const revisiones = corridas === 1 ? "1 revisión" : `${n(corridas)} revisiones`;
+  // Las filas escritas antes del 2026-10-14 no traen los dos contadores. Sumar 0
+  // por ellas haria que el primer dia se leyera como un detector roto, asi que
+  // se dice cuantas filas pudieron contarse.
+  const base = conDato < corridas ? ` (${n(conDato)} de ellas con el dato nuevo; las otras son de antes de la regla)` : "";
+  const avisadosTexto = avisados === 1 ? "**1 aviso de baja de precio**" : `**${n(avisados)} avisos de baja de precio**`;
+  const sospecha =
+    detectados === 0
+      ? `\n⚠️ **Cero cambios detectados en ${horas} h.** Eso casi nunca pasa: si se repite mañana, lo que está roto es el detector y no la regla — mirar los logs de las últimas corridas en GitHub Actions.`
+      : "";
+  return (
+    `📊 **Monitor Samsung — pulso del día**\n` +
+    `Últimas ${horas} h, ${revisiones}${base}: **${n(detectados)} cambios detectados** en el sitio y ${avisadosTexto} enviados.\n` +
+    `El resto (subas de precio, stock, productos nuevos, desaparecidos) se sigue midiendo y queda en el historial: por tu regla del 2026-10-14 solo se avisan las bajas.${sospecha}\n` +
+    `Esta línea existe para que una semana sin bajas se distinga de un monitor roto. Sale una vez al día y no es un aviso de producto.`
+  );
 }
 
 /**

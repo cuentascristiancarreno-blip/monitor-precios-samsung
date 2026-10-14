@@ -41,7 +41,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { comparar, resumenDeRebotes } from "../src/comparar.mjs";
-import { esNotificable } from "../src/despachador-vivo.mjs";
+import { esDeProductoVigilado, esNotificable } from "../src/despachador-vivo.mjs";
 import { HORAS_MIN_REBOTE_ARRIBA, esRebote, reboteArribaReciente } from "../src/estabilidad.mjs";
 import { ESTADO } from "../src/stock.mjs";
 
@@ -153,7 +153,15 @@ test("si la subida fuera REAL, se avisa: es un atraso de una lectura, no un sile
   const subes = corridas[2].cambios.filter((c) => c.tipo === "sube");
   assert.equal(subes.length, 16, "la segunda lectura de la MISMA pagina lo confirma y se avisa");
   for (const c of subes) {
-    assert.equal(esNotificable(c), true);
+    // CAMBIADO EL 2026-10-14: decia `esNotificable(c) === true`. Lo que esta
+    // prueba defiende es que la guarda del rebote hacia arriba sea un ATRASO DE
+    // UNA LECTURA y no un silencio -- o sea que el cambio se EMITA y se ADOPTE en
+    // la corrida siguiente, que es lo que se exige arriba (16 subes y el catalogo
+    // con el precio alto). Que ese aviso se le MANDE o no es otra decision, y
+    // desde el 2026-10-14 el operador pidio no recibir subas
+    // (src/solo-bajas.mjs). Las dos cosas se dicen por separado.
+    assert.equal(esDeProductoVigilado(c), true, "es un producto vigilado: no lo frena el catalogo");
+    assert.equal(esNotificable(c), false, "pero una suba ya no se avisa (regla del operador del 2026-10-14)");
     // sale por la rama de la corroboracion, no por la de "otra pagina del
     // sitio": el numero lo publico la misma ficha dos veces seguidas
     assert.equal(c.desdeOtraFuente, undefined, "misma pagina: sin la etiqueta de otra fuente");

@@ -14,7 +14,7 @@ import { mkdtemp, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { crearDespachadorVivo, firmaCambio } from "../src/despachador-vivo.mjs";
+import { crearDespachadorVivo, esNotificable, firmaCambio } from "../src/despachador-vivo.mjs";
 import { comparar, evaluarObservado } from "../src/comparar.mjs";
 import { notifyDiscord, reiniciarRitmo, enviarMensaje } from "../src/discord.mjs";
 import { esAccesorio } from "../src/catalogo.mjs";
@@ -122,11 +122,23 @@ test("un cambio detectado en una pagina se envia durante la corrida, no al final
 
   assert.equal(envios.length, 1, "pasada la ventana tiene que salir sin esperar el final de la corrida");
   const m = envios[0].content;
-  assert.match(m, /aviso en curso/, "tiene que quedar claro que la revisión sigue");
+  // CAMBIADO EL 2026-10-14 (segunda vuelta): antes se exigia la frase "aviso en
+  // curso" del encabezado. La exigencia de fondo -- "tiene que quedar claro que
+  // la revisión sigue" -- no cambio y se mide sobre la frase que de verdad lo
+  // dice; lo que cambio es que el encabezado de una tanda de puras bajas ahora
+  // DECLARA que son bajas, porque es la unica linea que muestra el push del
+  // telefono (ver encabezadoTanda, src/despachador-vivo.mjs).
+  assert.match(m, /_\(la revisión sigue en marcha\)_/, "tiene que quedar claro que la revisión sigue");
   assert.match(m, /revisando página 640 de 1183/, "el avance del barrido ayuda en Cyber");
+  assert.match(m.split("\n")[0], /🟢⬇️ \*\*BAJÓ DE PRECIO: 1 producto\*\*/, "la PRIMERA linea del mensaje lo declara");
   assert.match(m, /📺 \*\*Smart TV Crystal UHD 55\*\* \(SKU-1\)/, "icono por categoria, titulo y SKU");
-  assert.match(m, /\$100\.000 → \*\*ahora: \$80\.000\*\*/, "precio antes y despues");
-  assert.match(m, /−\$20\.000 · −20\.0%/, "diferencia en pesos y en porcentaje");
+  // CAMBIADO EL 2026-10-14 (pedido del operador, ver src/solo-bajas.mjs): el
+  // aviso en vivo tambien lleva la bandera y el tramo "De $X a $Y". Lo que se
+  // exigia antes ("$100.000 → **ahora: $80.000**") es el formato que no decia en
+  // ninguna parte que fuera una baja.
+  assert.match(m, /🟢⬇️ \*\*BAJÓ DE PRECIO\*\*/, "en vivo tambien se ve que es una baja, con la flecha verde");
+  assert.match(m, /De \$100\.000 a \*\*\$80\.000\*\*/, "precio antes y despues");
+  assert.match(m, /ahorras \$20\.000 \(−20,0%\)/, "diferencia en pesos y en porcentaje");
   assert.match(m, /🔥/, "una baja de 20% se marca como oportunidad");
   assert.ok(m.includes(`${URL_BASE}1/`), "el link tiene que ir");
 });
@@ -148,7 +160,14 @@ test("una tanda llena sale al instante, sin esperar la ventana", async () => {
   for (let i = 0; i < 3; i++) assert.ok(envios[0].content.includes(`SKU-${i}`));
 });
 
-test("los cinco tipos en vivo se detectan apenas se observa la pagina", async () => {
+// CAMBIADA EL 2026-10-14, y la version anterior fijaba el comportamiento que el
+// operador pidio cambiar: exigia que los CINCO tipos salieran en vivo. Lo que
+// esta prueba de verdad defiende es que el camino en vivo EVALUE los cinco en el
+// instante en que se observa la pagina -- si evaluara menos, el dia que la regla
+// del operador se revierta (una linea en src/despachador-vivo.mjs) esos avisos
+// no volverian solos. Esa mitad se exige igual, y la mitad de la ENTREGA se
+// exige ahora al revés: sale la baja y nada mas.
+test("los cinco tipos en vivo se siguen detectando apenas se observa la pagina, y solo la baja se manda", async () => {
   const envios = capturar();
   const previo = {
     NUEVOPRECIO: registroPrevio({ modelo: "NUEVOPRECIO", precio: null }),
@@ -164,13 +183,27 @@ test("los cinco tipos en vivo se detectan apenas se observa la pagina", async ()
     STOCK: observacion({ modelo: "STOCK", precio: 100000, disponible: true }),
     RECU: observacion({ modelo: "RECU", precio: 100000 }),
   };
+
+  // 1. LA DETECCION, intacta: los cinco tipos se evaluan con la vista parcial de
+  //    la pagina, que es lo unico que el camino en vivo puede mirar.
+  const tipos = new Set();
+  for (const modelo of Object.keys(previo)) {
+    const { cambios } = evaluarObservado({ modelo, ant: previo[modelo], obs: observado[modelo], timestamp: TS });
+    for (const c of cambios) tipos.add(c.tipo);
+  }
+  assert.deepEqual([...tipos].sort(), ["baja", "nuevo", "recuperado", "stock", "sube"], "los cinco se siguen detectando");
+
+  // 2. LA ENTREGA: solo la baja (regla del operador, src/solo-bajas.mjs).
   const d = crear({ previo });
-  d.evaluar(observado, Object.keys(observado), { pagina: 2 });
+  assert.equal(d.evaluar(observado, Object.keys(observado), { pagina: 2 }), 1, "solo la baja se encola");
   await d.cerrar();
 
   const texto = textoDe(envios);
-  for (const sku of Object.keys(previo)) assert.ok(texto.includes(sku), `falta el aviso en vivo de ${sku}`);
-  assert.equal(d.stats().avisados, 5);
+  assert.ok(texto.includes("(BAJA)"), "la baja sale en vivo");
+  for (const sku of ["NUEVOPRECIO", "SUBE", "STOCK", "RECU"]) {
+    assert.ok(!texto.includes(`(${sku})`), `${sku} ya no se notifica: solo salen las bajas`);
+  }
+  assert.equal(d.stats().avisados, 1);
 });
 
 // --- 2. accesorios y Book3 NO salen en vivo ----------------------------------
@@ -221,9 +254,14 @@ test("el resumen final no repite lo ya avisado en vivo, y lo declara", async () 
     "SKU-1": registroPrevio({ modelo: "SKU-1", precio: 100000 }),
     "SKU-2": registroPrevio({ modelo: "SKU-2", precio: 100000 }),
   };
+  // CAMBIADO EL 2026-10-14: SKU-2 era una SUBA (120.000), y desde la regla del
+  // operador (src/solo-bajas.mjs) una suba no se notifica, asi que con ella la
+  // prueba habria quedado con UN solo aviso en vivo y habria dejado de probar lo
+  // que viene a probar: la DEDUPLICACION de dos avisos distintos entre el camino
+  // en vivo y el cierre. Pasa a ser otra baja: la exigencia es la misma.
   const observado = {
     "SKU-1": observacion({ modelo: "SKU-1", precio: 90000 }),
-    "SKU-2": observacion({ modelo: "SKU-2", precio: 120000 }),
+    "SKU-2": observacion({ modelo: "SKU-2", precio: 80000 }),
   };
 
   const d = crear({ previo });
@@ -232,15 +270,18 @@ test("el resumen final no repite lo ya avisado en vivo, y lo declara", async () 
   const enviadosEnVivo = envios.length;
   assert.equal(stats.avisados, 2);
 
-  // ...y ahora el cierre, exactamente como lo hace run.mjs
+  // ...y ahora el cierre, exactamente como lo hace run.mjs. El filtro es
+  // `esNotificable`, el porton real: antes estaba copiado a mano aca
+  // (`!esAccesorio && !estaSilenciado`) y un filtro duplicado es justo lo que
+  // deja aplicar una regla en un camino y olvidarla en el otro.
   const { cambios } = comparar({ previo, observado, paginasFallidas: new Set(), corridaConfiable: true, timestamp: TS });
-  const restantes = cambios.filter((c) => !esAccesorio(c.categoria) && !estaSilenciado(c) && !d.yaEnviado(c));
+  const restantes = cambios.filter((c) => esNotificable(c) && !d.yaEnviado(c));
   assert.deepEqual(restantes, [], "no puede quedar nada repetido para el final");
 
   await notifyDiscord(WEBHOOK, { changes: restantes, errores: 0, totalRevisado: 1183, avisadosEnVivo: stats.avisados });
   const cierre = envios.slice(enviadosEnVivo);
   assert.equal(cierre.length, 1, "el cierre igual se manda: es la senal de que la revision termino");
-  assert.match(cierre[0].content, /2 cambios \(2 ya avisados en vivo · 0 en este resumen\)/);
+  assert.match(cierre[0].content, /2 avisos \(2 ya avisados en vivo · 0 en este resumen\)/);
   assert.ok(!cierre[0].content.includes("SKU-1"), "no se repite el producto");
 });
 

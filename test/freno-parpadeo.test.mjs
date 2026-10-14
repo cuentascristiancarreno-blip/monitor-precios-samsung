@@ -30,7 +30,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { comparar, rebotesDe, resumenDeRebotes } from "../src/comparar.mjs";
-import { crearDespachadorVivo, esNotificable, esParaVivo, repartirCierre } from "../src/despachador-vivo.mjs";
+import { crearDespachadorVivo, esDeProductoVigilado, esNotificable, esParaVivo, repartirCierre } from "../src/despachador-vivo.mjs";
 import { evaluarEstabilidad, VALORES_RECORDADOS, VENTANA_REBOTE_HORAS, esMatiz, esRebote } from "../src/estabilidad.mjs";
 import { mensajeRebotando, notifyDiscord, notifyTecnico } from "../src/discord.mjs";
 import { ESTADO } from "../src/stock.mjs";
@@ -113,6 +113,16 @@ function registroInicial(sku) {
 function replay({ desde = INICIO + 1 } = {}) {
   let previo = Object.fromEntries(Object.keys(OBSERVADO_REAL).map((s) => [s, registroInicial(s)]));
   const detectados = [];
+  // DOS LISTAS DISTINTAS DESDE EL 2026-10-14 (src/solo-bajas.mjs).
+  //  - `vigilados`: los cambios de productos que el operador vigila, o sea lo
+  //    que el freno CLASIFICA (fuerte / rebote / matiz). Es la lista contra la
+  //    que se miden las reglas del freno: son las de src/estabilidad.mjs y el
+  //    filtro de notificacion no las toca.
+  //  - `aDiscord`: lo que de verdad se le manda, pasando por el porton completo
+  //    (`esNotificable`), que desde el 2026-10-14 deja pasar solo las bajas.
+  // Antes eran la misma lista. Separarlas es lo que permite seguir exigiendo que
+  // el freno no se coma una reposicion el dia que el operador reactive el resto.
+  const vigilados = [];
   const aDiscord = [];
   const nuevosRebotando = [];
   for (let i = desde; i < CORRIDAS.length; i++) {
@@ -135,11 +145,12 @@ function replay({ desde = INICIO + 1 } = {}) {
     }
     const r = comparar({ previo, observado, paginasFallidas: new Set(), corridaConfiable: true, timestamp: CORRIDAS[i] });
     detectados.push(...r.cambios);
+    vigilados.push(...r.cambios.filter(esDeProductoVigilado));
     aDiscord.push(...r.cambios.filter(esNotificable));
     nuevosRebotando.push(...r.nuevosRebotando);
     previo = r.catalogo;
   }
-  return { detectados, aDiscord, nuevosRebotando, catalogo: previo };
+  return { detectados, vigilados, aDiscord, nuevosRebotando, catalogo: previo };
 }
 
 const cuenta = (lista, sku, tipos) => lista.filter((c) => c.modelo === sku && tipos.includes(c.tipo)).length;
@@ -154,7 +165,7 @@ const fuertes = (lista, sku, tipos) =>
 // ---------------------------------------------------------------------------
 
 test("la secuencia REAL de los tres SKU: a lo mas UNA alerta fuerte por producto y por magnitud", () => {
-  const { detectados, aDiscord } = replay();
+  const { detectados, vigilados, aDiscord } = replay();
 
   // 1. sin el freno, esto es lo que el operador recibio: la seguidilla
   assert.ok(cuenta(detectados, "SM-A366ELVGLTL", ["baja", "sube"]) >= 5, "el vaiven de precio del A36 existe en la secuencia real");
@@ -162,7 +173,16 @@ test("la secuencia REAL de los tres SKU: a lo mas UNA alerta fuerte por producto
   assert.ok(cuenta(detectados, "SM-F761BZKJCHO", ["stock"]) >= 3, "el vaiven de stock del Z Flip7 FE existe en la secuencia real");
 
   // 2. con el freno, el operador recibe UNA sola alerta fuerte de precio
-  assert.equal(fuertes(aDiscord, "SM-A366ELVGLTL", ["baja", "sube"]), 1, "A36 precio");
+  //
+  // DESDE EL 2026-10-14 ESTAS CUENTAS SE MIDEN SOBRE `vigilados` Y NO SOBRE
+  // `aDiscord`, y es un cambio de LISTA, no de exigencia. Lo que cuentan es
+  // cuantas alertas FUERTES produce el freno (src/estabilidad.mjs) sobre la
+  // secuencia real, y eso no depende del filtro de notificacion del operador: si
+  // se midieran sobre lo entregado, apagar el stock dejaria los tres numeros de
+  // stock en 0 por una razon ajena al freno y el defecto que esta prueba
+  // defiende --una reposicion real degradada-- volveria a ser invisible el dia
+  // que el operador reactive el resto. Lo ENTREGADO se exige abajo, aparte.
+  assert.equal(fuertes(vigilados, "SM-A366ELVGLTL", ["baja", "sube"]), 1, "A36 precio");
 
   // 3. EL STOCK SE CUENTA POR CRUCE DE FRONTERA, NO POR ESTADO (2026-10-05).
   //
@@ -178,7 +198,7 @@ test("la secuencia REAL de los tres SKU: a lo mas UNA alerta fuerte por producto
   // real detras y 14 de ellos siendo la PRIMERA vez que ese producto volvia.
   // Ahora son 2 fuertes (el quiebre y la reposicion) y el tercer cruce -- el
   // segundo "se agoto", a 71,9 h del primero -- sigue saliendo compacto.
-  assert.equal(fuertes(aDiscord, "SM-A366ELVGLTL", ["stock"]), 2, "A36 stock: quiebre + reposicion");
+  assert.equal(fuertes(vigilados, "SM-A366ELVGLTL", ["stock"]), 2, "A36 stock: quiebre + reposicion");
 
   // 4. Y DOS FORMAS DE "NO SE PUEDE COMPRAR" NO SON UNA ALERTA FUERTE.
   //
@@ -190,20 +210,47 @@ test("la secuencia REAL de los tres SKU: a lo mas UNA alerta fuerte por producto
   // asi") -- y el Z Flip6 pasa de agotado a no-a-la-venta una vez. En los cinco
   // casos el operador no podia comprar antes y no puede ahora: salen compactos,
   // en su propia seccion, con los dos estados escritos.
-  assert.equal(fuertes(aDiscord, "SM-F761BZKJCHO", ["stock"]), 0, "Z Flip7 FE stock: los 4 son matices");
-  assert.equal(fuertes(aDiscord, "SM-F741BAKKCHO", ["stock"]), 0, "Z Flip6 stock: agotado -> no a la venta");
-  assert.equal(aDiscord.filter((c) => c.matiz === true).length, 5, "los 5 matices se entregan igual");
+  assert.equal(fuertes(vigilados, "SM-F761BZKJCHO", ["stock"]), 0, "Z Flip7 FE stock: los 4 son matices");
+  assert.equal(fuertes(vigilados, "SM-F741BAKKCHO", ["stock"]), 0, "Z Flip6 stock: agotado -> no a la venta");
+  assert.equal(vigilados.filter((c) => c.matiz === true).length, 5, "los 5 matices se clasifican igual");
+
+  // 5. Y LO QUE DE VERDAD SE LE MANDA, con la regla del operador del 2026-10-14:
+  //    solo las bajas de precio. Los 11 cambios de stock del A36, del Z Flip7 FE
+  //    y del Z Flip6 se siguen detectando, se siguen clasificando y se siguen
+  //    escribiendo en el historial (lo exigen los puntos 1 a 4), pero ya no
+  //    producen ningun mensaje.
+  assert.deepEqual([...new Set(aDiscord.map((c) => c.tipo))], ["baja"], "por el canal de productos solo salen bajas");
+  assert.equal(aDiscord.filter((c) => c.tipo === "stock").length, 0, "ni un aviso de stock");
+  assert.ok(vigilados.length > aDiscord.length, "y lo detectado sigue siendo mas que lo avisado: es un filtro de notificacion");
 });
 
-test("y NI UNO de esos cambios se pierde: todos llegan a Discord, los repetidos compactos", () => {
-  const { detectados, aDiscord } = replay();
-  // la diferencia entre "detectado" y "entregado" tiene que ser CERO
-  assert.equal(aDiscord.length, detectados.length, "ningun cambio se calla");
+// CAMBIADA EL 2026-10-14. La exigencia era "la diferencia entre detectado y
+// entregado tiene que ser CERO", que es la regla que el proyecto se fijo el
+// 2026-09-13 cuando descubrio que el freno callaba 61 bajas reales. Esa regla
+// sigue viva donde importa --EL FRENO no calla nada-- pero ya no se puede
+// escribir como "detectado == entregado", porque el operador pidio
+// explicitamente que el resto no se le avise (src/solo-bajas.mjs). Queda
+// partida en sus dos mitades, y las dos se exigen:
+//   a) EL FRENO no se traga nada: todo lo detectado sigue siendo un cambio de un
+//      producto vigilado, con su clasificacion y su contenido completo, y eso es
+//      lo que se escribe en data/history.jsonl.
+//   b) LA REGLA DEL OPERADOR saca del canal todo lo que no sea una baja, y una
+//      baja degradada (rebote) SIGUE SALIENDO: es el defecto grave del
+//      2026-09-13 y esta regla no lo reabre.
+test("el freno no se traga nada, y lo que sale son las bajas (rebotes incluidos)", () => {
+  const { detectados, vigilados, aDiscord } = replay();
+  // (a) el freno no pierde ni un cambio
+  assert.equal(vigilados.length, detectados.length, "ningun cambio se pierde por el camino");
   const rebotes = detectados.filter(esRebote);
   assert.ok(rebotes.length > 0, "hubo rebotes en la secuencia real");
-  // y cada rebote entregado trae lo que el operador necesita para decidir
+  // (b) una baja degradada sigue llegando: callarla es el defecto del 2026-09-13
+  const bajasRebotadas = rebotes.filter((c) => c.tipo === "baja");
+  for (const c of bajasRebotadas) {
+    assert.equal(esNotificable(c), true, "una baja que rebota NO se calla");
+    assert.ok(aDiscord.includes(c), "...y de verdad llega al canal de productos");
+  }
+  // y cada rebote trae lo que el operador necesita para decidir
   for (const c of rebotes) {
-    assert.equal(esNotificable(c), true);
     assert.ok(c.vecesRebotado >= 1, "dice cuantas veces va");
     // UN REBOTE DE PRECIO dice entre que valores va. UNO DE STOCK no lleva
     // `valoresRebote` desde el 2026-10-05: lo que se recuerda del stock es el
@@ -306,8 +353,17 @@ test("el parpadeo LENTO del monitor real: 58 cambios en 30 dias, a lo mas 3 aler
 
 test("...y las 56 restantes igual le llegan, con el precio de HOY en cada una", () => {
   const { todos } = replayMonitor();
+  // CAMBIADO EL 2026-10-14: la asercion era `entregados.length === 58`, o sea los
+  // 58 cambios del vaiven del monitor. De esos 58, la mitad son SUBAS y el
+  // operador pidio no recibirlas (src/solo-bajas.mjs). Lo que esta prueba existe
+  // para defender es que las BAJAS no se callen --el defecto grave del
+  // 2026-09-13, que se tragaba 61 bajas reales en 30 dias-- y eso se exige
+  // entero: las 29 bajas del vaiven llegan las 29, con el precio de hoy.
   const entregados = todos.filter(esNotificable);
-  assert.equal(entregados.length, MONITOR.length, "no se calla ni uno");
+  const bajas = todos.filter((c) => c.tipo === "baja");
+  assert.ok(bajas.length >= 29, `el vaiven real trae ${bajas.length} bajas`);
+  assert.equal(entregados.length, bajas.length, "no se calla ni una baja");
+  assert.deepEqual([...new Set(entregados.map((c) => c.tipo))], ["baja"], "y las subas ya no se avisan");
   const bajasCalladas = todos.filter((c) => esRebote(c) && c.tipo === "baja");
   assert.ok(bajasCalladas.length > 10, "hay muchas bajas repetidas en la secuencia real");
   // cada una de esas bajas sigue trayendo el precio bajo: el operador puede ir a comprar
@@ -366,8 +422,16 @@ test("una promo diaria REAL de 7 dias: el operador se entera las 7 veces", () =>
   assert.equal(bajas.filter((c) => !esRebote(c)).length, 1);
 });
 
-test("una reposicion diaria REAL de 7 dias: el operador se entera las 7 veces", () => {
+// CAMBIADA EL 2026-10-14: las 7 reposiciones ya NO se le avisan (el operador
+// pidio no recibir avisos de stock, y esto es justo lo que se apaga y el informe
+// declara). Lo que esta prueba sigue defendiendo es que EL FRENO no las degrada
+// --el defecto medido del 2026-10-05, 15 de 73 reposiciones degradadas con 1.018
+// h de disponibilidad real detras--, porque el dia que el operador reactive el
+// stock tienen que volver FUERTES solas. Por eso la lista pasa de "entregados"
+// (que hoy seria 0 y no probaria nada) a "clasificados por el freno".
+test("una reposicion diaria REAL de 7 dias: el freno no degrada ni una de las 7", () => {
   let previo = arranque({ precio: 999990, estadoStock: A, disponible: false });
+  const clasificados = [];
   const entregados = [];
   for (let dia = 1; dia <= 7; dia++) {
     const d = String(dia + 1).padStart(2, "0");
@@ -376,13 +440,15 @@ test("una reposicion diaria REAL de 7 dias: el operador se entera las 7 veces", 
       for (const min of ["00", "30"]) {
         const ts = `2026-11-${d}T${hora}:${min}:00.000Z`;
         const r = corrida(previo, { precio: 999990, estadoStock: estado, disponible: estado === D }, ts);
+        clasificados.push(...r.cambios.filter(esDeProductoVigilado));
         entregados.push(...r.cambios.filter(esNotificable));
         previo = r.catalogo;
       }
     }
   }
-  const vuelve = entregados.filter((c) => c.tipo === "stock" && c.estado === D);
-  assert.equal(vuelve.length, 7, "las 7 reposiciones reales le llegan");
+  assert.equal(entregados.length, 0, "hoy no se avisa ningun cambio de stock: regla del operador del 2026-10-14");
+  const vuelve = clasificados.filter((c) => c.tipo === "stock" && c.estado === D);
+  assert.equal(vuelve.length, 7, "las 7 reposiciones reales se detectan y quedan en el historial");
   // ACA DECIA 1 ("solo la primera es alerta fuerte") Y ESA ASERCION FIJABA EL
   // COMPORTAMIENTO EQUIVOCADO (2026-10-05). Una reposicion diaria son siete
   // oportunidades de compra distintas, separadas 24 h: ninguna es un rebote de
@@ -394,23 +460,32 @@ test("una reposicion diaria REAL de 7 dias: el operador se entera las 7 veces", 
   // rapida que existe esta a 20,44 h, y el piso de 12 h que tuvo la primera
   // version de este arreglo no degradaba ni una de las 213 reposiciones), asi
   // que las 7 salen FUERTES, con precio y link.
-  assert.equal(vuelve.filter((c) => !esRebote(c)).length, 7, "las 7 son alerta fuerte: 24 h de separacion no es un rebote");
+  assert.equal(vuelve.filter((c) => !esRebote(c)).length, 7, "las 7 quedan clasificadas como alerta fuerte: 24 h de separacion no es un rebote");
 });
 
 test("bajo un ciclo recurrente el freno NO se convierte en silencio: nada queda sin entregar", () => {
   let previo = arranque({ precio: 999990, estadoStock: D, disponible: true });
   let detectados = 0;
+  let bajas = 0;
   let entregados = 0;
   for (let dia = 1; dia <= 7; dia++) {
     const d = String(dia + 1).padStart(2, "0");
     for (const [hora, precio] of [["09", 699990], ["21", 999990]]) {
       const r = corrida(previo, { precio, estadoStock: D, disponible: true }, `2026-11-${d}T${hora}:00:00.000Z`);
       detectados += r.cambios.length;
+      bajas += r.cambios.filter((c) => c.tipo === "baja").length;
       entregados += r.cambios.filter(esNotificable).length;
       previo = r.catalogo;
     }
   }
-  assert.equal(entregados, detectados);
+  // CAMBIADO EL 2026-10-14: la asercion era `entregados === detectados`. El ciclo
+  // de este caso es una promo diaria que sube y baja, o sea mitad bajas y mitad
+  // subas, y el operador pidio no recibir las subas (src/solo-bajas.mjs). Lo que
+  // esta prueba defiende --que un ciclo recurrente no deje al freno callado para
+  // siempre, el defecto grave nº2 del 2026-09-13-- se exige entero sobre las
+  // bajas: las 7 promos diarias llegan las 7.
+  assert.equal(entregados, bajas, "ni una baja del ciclo queda sin entregar");
+  assert.equal(bajas, 7, "las 7 promos diarias reales");
   assert.ok(detectados >= 14);
   // y el ultimo estado que el operador escucho es el de verdad
   assert.equal(previo[SKU].precio, 999990);
@@ -667,7 +742,17 @@ test("...pero el camino EN VIVO no: un rebote espera al resumen y sale compacto"
   r = corrida(previo, { precio: 999990, estadoStock: D, disponible: true }, "2026-11-01T06:00:00.000Z");
   assert.equal(esRebote(r.cambios[0]), true);
   assert.equal(esParaVivo(r.cambios[0]), false, "en vivo no");
-  assert.equal(esNotificable(r.cambios[0]), true, "al cierre si");
+  // CAMBIADO EL 2026-10-14: el rebote de este caso es una SUBA (699.990 ->
+  // 999.990) y desde la regla del operador una suba no se notifica. Lo que esta
+  // prueba defiende es que el camino EN VIVO no mande rebotes (el mutante que
+  // sobrevivio en la entrega del 2026-09-13), y eso se exige igual arriba. La
+  // mitad "al cierre si" se exige ahora con una BAJA que rebota, que es el caso
+  // que de verdad hay que proteger de volver a callarse.
+  assert.equal(esNotificable(r.cambios[0]), false, "una suba ya no se notifica (regla del operador del 2026-10-14)");
+  const bajaQueRebota = { ...r.cambios[0], tipo: "baja", precio: 699990, precioAnterior: 999990 };
+  assert.equal(esRebote(bajaQueRebota), true);
+  assert.equal(esParaVivo(bajaQueRebota), false, "en vivo tampoco");
+  assert.equal(esNotificable(bajaQueRebota), true, "pero una BAJA que rebota si sale al cierre: callarla es el defecto del 2026-09-13");
 
   // y el despachador real tampoco lo encola: es el camino de produccion
   const despachador = crearDespachadorVivo({
@@ -704,16 +789,29 @@ test("un SKU fuera del alcance no figura rebotando para siempre", () => {
   assert.equal(rebotesDe(catalogo, semanaDespues).length, 0, "el reloj tambien se aplica al leer el catalogo");
 });
 
-test("el aviso tecnico dice que NO se pierde nada, y no promete salir una sola vez", () => {
+test("el aviso tecnico dice que NO se pierde nada DE LAS BAJAS, y no promete salir una sola vez", () => {
   const { catalogo } = replay();
   const lista = rebotesDe(catalogo, CORRIDAS[CORRIDAS.length - 1]);
   const texto = mensajeRebotando(lista);
   assert.match(texto, /rebotando/i);
   assert.match(texto, /SM-A366ELVGLTL/);
-  assert.match(texto, /No dejo de avisarte nada/);
+  // CAMBIADO EL 2026-10-14 (segunda vuelta): antes se exigia la promesa "**No
+  // dejo de avisarte nada**" a secas, y con la regla del operador esa frase pasó
+  // a ser FALSA para todo lo que no sea una baja -- medido, 101 de los 121
+  // rebotes del historial (82 de stock + 19 subas) ya no llegan al canal de
+  // productos. La exigencia de fondo (que el aviso diga que no se pierde lo que
+  // sigue saliendo) no se debilita: se acota a lo que es cierto, y la prueba de
+  // que no se pueda contradecir con `esNotificable` esta en
+  // test/solo-bajas.test.mjs.
+  assert.match(texto, /De las bajas de precio no dejo de avisarte nada/);
   assert.match(texto, /NUEVO/);
   assert.match(texto, new RegExp(String(VENTANA_REBOTE_HORAS)));
   assert.doesNotMatch(texto, /una sola vez por producto/i, "eso era falso: el episodio cierra y vuelve a abrir");
+  assert.doesNotMatch(
+    texto,
+    /sale siempre como alerta fuerte/i,
+    "prometia alertas de reposicion que la regla del operador ya no manda",
+  );
 });
 
 test("si Discord rechaza el aviso tecnico, notifyTecnico lo dice para que se reintente", async () => {
@@ -828,11 +926,22 @@ test("el resumen pone los rebotes en su propia seccion compacta, no entre las ba
   const texto = enviados.join("\n");
   assert.match(texto, /Siguen rebotando/, "el rebote tiene su propia seccion");
   assert.match(texto, /Bajas de precio \(1\)/, "la baja REAL sigue sola en su seccion");
-  // la linea compacta trae lo unico accionable: el precio de hoy y entre que va
-  assert.match(texto, /LS32DG300ELXZS.*\$199\.990.*\$279\.990.*ahora \*\*\$199\.990\*\*/s);
+  // CAMBIADO EL 2026-10-14. La asercion exigia "…ahora **$199.990**" y que la
+  // linea NO dijera entre que precios va en forma de tramo. Era correcta mientras
+  // por este canal salieran los dos sentidos (el titulo de la seccion los agrupa
+  // a proposito para que el vaiven no se lea como "bajo/subio/bajo/subio"), pero
+  // desde la regla del operador (src/solo-bajas.mjs) por este canal SOLO salen
+  // bajas: una linea con "⇄" y sin la palabra, en el unico aviso con el que se va
+  // a comprar, miente por omision. Ahora la linea compacta lleva la misma bandera
+  // y el mismo tramo que la alerta fuerte, y sigue siendo UNA linea sin link.
+  assert.match(texto, /🟢⬇️ \*\*BAJÓ DE PRECIO\*\* · 🖥️ \*\*Monitor Odyssey G3\*\* \(LS32DG300ELXZS\)/, "el rebote tambien dice que es una baja");
+  assert.match(texto, /De \$279\.990 a \*\*\$199\.990\*\*/, "de que precio a que precio, igual que la alerta fuerte");
+  assert.match(texto, /rebota entre \$199\.990 ⇄ \$279\.990/, "y sigue diciendo entre que valores va");
   assert.match(texto, /7ª vez/);
-  // y el rebote NO se dibuja como una alerta de baja
-  assert.doesNotMatch(texto, /Precio antes: \$279\.990/);
+  // sigue siendo UNA sola linea: el bloque con link es de la alerta fuerte
+  const lineaDelRebote = texto.split("\n").find((l) => l.includes("LS32DG300ELXZS"));
+  assert.ok(!lineaDelRebote.includes("🔗"), "la linea compacta no lleva link");
+  assert.doesNotMatch(texto, /https:\/\/x\/2/, "el rebote no repite el link: ya salio con link la primera vez");
 });
 
 test("un rebote de STOCK se dibuja con las palabras de stock, no con precios", async () => {

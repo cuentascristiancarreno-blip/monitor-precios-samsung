@@ -31,6 +31,8 @@ import { appendFile, readFile } from "node:fs/promises";
 import { evaluarObservado } from "./comparar.mjs";
 import { esAccesorio, esFamiliaGenerica } from "./catalogo.mjs";
 import { estaSilenciado } from "./silenciados.mjs";
+import { esBajaDePrecio, pendienteCreible } from "./solo-bajas.mjs";
+import { leerPendientes } from "./pendientes.mjs";
 import { esMatiz, esRebote } from "./estabilidad.mjs";
 import { enviarTandaVivo } from "./discord.mjs";
 import { reloj } from "./reloj.mjs";
@@ -66,18 +68,95 @@ export function firmaCambio(c) {
 }
 
 /**
- * ¿Este cambio se le manda al operador? Son las reglas de PRODUCTO (no de
- * transporte): nada de accesorios y nada de Galaxy Book3.
+ * ¿El cambio es de un producto que el operador vigila? Son las reglas de
+ * CATALOGO: nada de accesorios y nada de Galaxy Book3.
+ *
+ * Se exporta aparte de `esNotificable` porque es la vara del CONTEO honesto: el
+ * encabezado del resumen tiene que declarar cuantos cambios se detectaron de
+ * verdad, no cuantos sobrevivieron al filtro de notificacion (ver
+ * `detectados` en notifyDiscord, src/discord.mjs). Sin eso, una corrida que
+ * detecta 185 cambios y avisa 1 baja diria "1 cambio" y el operador creeria que
+ * el sitio no se movio.
+ */
+export function esDeProductoVigilado(cambio) {
+  return !esAccesorio(cambio?.categoria) && !estaSilenciado(cambio);
+}
+
+/**
+ * ¿Este cambio se le manda al operador? Es el UNICO porton que comparten los
+ * dos caminos de envio -- el de avisos en vivo (`esParaVivo`, abajo) y el del
+ * resumen de cierre (`repartirCierre`, abajo) --, asi que la regla puesta aca
+ * vale para los dos y no se puede aplicar en uno y olvidar en el otro.
+ *
+ * Son las reglas de PRODUCTO (no de transporte), en dos capas:
+ *  1. las de catalogo: nada de accesorios y nada de Galaxy Book3
+ *     (`esDeProductoVigilado`);
+ *  2. la del operador del 2026-10-14: SOLO LAS BAJAS DE PRECIO. El por que, lo
+ *     que cuesta medido y como se revierte estan enteros en src/solo-bajas.mjs.
+ *
+ * SIGUE SIENDO UN FILTRO DE NOTIFICACION, NO DE DETECCION. Todo lo que no pasa
+ * por aca se detecto igual, se guardo igual en data/latest.json y en
+ * data/history.jsonl, y paso igual por la confirmacion en 2 corridas y por el
+ * freno anti-parpadeo. Lo unico que no ocurre es el mensaje.
  *
  * UN REBOTE SI ES NOTIFICABLE, y eso es deliberado (2026-09-13, segunda vuelta).
  * La version anterior del freno lo excluia de aca, o sea lo CALLABA, y medido
  * sobre los 30 dias reales eso se tragaba 61 bajas de precio de verdad -- 49 de
- * ellas del 20% o mas. Ahora un rebote sale igual, en la seccion compacta
+ * ellas del 20% o mas. Una baja que rebota sale igual, en la seccion compacta
  * "🌀 Siguen rebotando" del resumen (ver src/estabilidad.mjs): el operador deja
- * de recibir la alerta repetida pero nunca deja de saber el precio de hoy.
+ * de recibir la alerta repetida pero nunca deja de saber el precio de hoy. La
+ * regla del 2026-10-14 no toca eso: filtra por TIPO, y una baja degradada sigue
+ * siendo una baja.
  */
 export function esNotificable(cambio) {
-  return !esAccesorio(cambio?.categoria) && !estaSilenciado(cambio);
+  return esDeProductoVigilado(cambio) && esBajaDePrecio(cambio);
+}
+
+/**
+ * Aplica `esNotificable` a una lista. Existe para el camino de los avisos
+ * ATRASADOS (data/pendientes.jsonl), que no pasa por `repartirCierre`: esos
+ * cambios los escribio una corrida ANTERIOR, posiblemente con otras reglas de
+ * notificacion, y hay que volver a pasarlos por las reglas de HOY antes de
+ * mandarlos. Sin esto, el primer despliegue de una regla nueva reenviaba como
+ * alertas completas hasta 1.000 avisos que la regla nueva ya no quiere
+ * (MAX_PENDIENTES, src/pendientes.mjs).
+ *
+ * Y ADEMAS DESCONFIA DE LO QUE DIGA EL ARCHIVO (2026-10-14, segunda vuelta):
+ * `pendienteCreible` (src/solo-bajas.mjs) descarta un pendiente que diga "baja"
+ * con los montos al reves o que venga marcado como matiz de stock. Es el unico
+ * material que llega al canal de productos sin pasar por el detector de ESTA
+ * corrida, y se fusiona por union ante un conflicto de git; medido sembrando
+ * pendientes a mano, uno con los montos invertidos salia rotulado "BAJO DE
+ * PRECIO · De $300.000 a $400.000 (+33,3%)". El descarte se dice en el log: un
+ * pendiente que desaparece en silencio es justo la perdida silenciosa que ese
+ * archivo existe para evitar.
+ */
+export function soloNotificables(cambios) {
+  const pasan = [];
+  for (const c of cambios ?? []) {
+    if (!esNotificable(c)) continue;
+    const { ok, motivo } = pendienteCreible(c);
+    if (!ok) {
+      console.error(`WARNING aviso atrasado descartado (${c?.modelo ?? "sin SKU"}): ${motivo}`);
+      continue;
+    }
+    pasan.push(c);
+  }
+  return pasan;
+}
+
+/**
+ * Los avisos atrasados que se van a entregar, leidos del texto crudo de
+ * data/pendientes.jsonl.
+ *
+ * Vive aca y no en run.mjs por la razon de siempre (run.mjs arranca main() al
+ * importarse y ninguna prueba lo alcanza): con la composicion escrita alla se le
+ * podia borrar el `soloNotificables` y la suite seguia entera en verde -- es el
+ * mutante M08 que sobrevivio en la verificacion del 2026-10-14. Aca queda
+ * cubierta, y en run.mjs queda UNA llamada.
+ */
+export function pendientesParaAvisar(texto, opciones = {}) {
+  return soloNotificables(leerPendientes(texto, opciones));
 }
 
 /**
@@ -111,11 +190,22 @@ export function esParaVivo(cambio) {
  * huellas heredadas de una corrida que murio a mitad. Con avisados, un cierre
  * con 3 heredados y 2 nuevos declaraba "2 cambios" cuando hubo 5 -- y si todo
  * era heredado no salia ningun mensaje de cierre.
+ *
+ * Y DEVUELVE TAMBIEN LOS DOS CONTADORES DE LA REGLA DEL OPERADOR (2026-10-14,
+ * segunda vuelta). `detectados` son los cambios de productos VIGILADOS que la
+ * revision encontro -- la vara del conteo honesto del encabezado -- y
+ * `noNotificadosPorRegla`, cuantos de esos no se avisaron por no ser una baja.
+ * La formula vivia suelta en run.mjs, donde ninguna prueba la alcanza: medido,
+ * los mutantes que le borraban `detectados` o los dos contadores del resumen
+ * dejaban la suite entera en verde. Aca se calculan en la misma pasada que ya
+ * recorre los cambios, probados, y en run.mjs queda una sola linea.
  */
 export function repartirCierre(cambios, despachador) {
   const paraDiscord = [];
   let suprimidos = 0;
+  let detectados = 0;
   for (const c of cambios ?? []) {
+    if (esDeProductoVigilado(c)) detectados += 1;
     if (!esNotificable(c)) continue;
     if (despachador?.yaEnviado?.(c)) {
       suprimidos += 1;
@@ -123,7 +213,15 @@ export function repartirCierre(cambios, despachador) {
     }
     paraDiscord.push(c);
   }
-  return { paraDiscord, suprimidos };
+  return {
+    paraDiscord,
+    suprimidos,
+    detectados,
+    // Se mide contra lo que esta revision ENTREGA de lo que ella misma detecto
+    // (los avisos atrasados son de otra corrida y no pueden contarse aca: si no,
+    // un pendiente entregado haria parecer que la regla filtro uno menos).
+    noNotificadosPorRegla: Math.max(0, detectados - (paraDiscord.length + suprimidos)),
+  };
 }
 
 const ICONO_TIPO = { baja: "🟢", sube: "🔴", stock: "📦", nuevo: "🆕", recuperado: "✅" };
@@ -140,13 +238,35 @@ function horaChile() {
  * Encabezado de una tanda en vivo. Tiene que dejar claro de un vistazo que la
  * revision NO termino (si no, el operador lee "3 cambios" y cree que eso fue
  * todo) y cuanto falta por revisar.
+ *
+ * Y CUANDO LA TANDA ES TODA DE BAJAS, LO DICE EN LA PRIMERA LINEA (2026-10-14,
+ * segunda vuelta, defecto medido por los tres verificadores). La entrega
+ * anterior puso la bandera "🟢⬇️ BAJÓ DE PRECIO" al principio de la LINEA DEL
+ * PRODUCTO y lo justifico diciendo que asi se leeria en la vista previa del
+ * telefono "sin abrir Discord". Eso era falso: la primera linea del mensaje en
+ * vivo es este encabezado ("⚡ Monitor Samsung — aviso en curso · 22:28") y la
+ * del producto va tercera, ademas precedida por "🔥 " cuando la baja es >= 15%.
+ * Y ese es el camino de CASI TODAS las bajas: una baja no es rebote ni matiz,
+ * asi que `esParaVivo` la manda en vivo -- en la semana medida, las 11 de 11.
+ *
+ * Asi que en vez de borrar la promesa se cumplio: con la regla del operador por
+ * este canal solo salen bajas, y entonces el encabezado puede decirlo. Si algun
+ * dia se revierte la regla y la tanda trae tipos mezclados, vuelve solo al
+ * resumen por iconos de antes (hay prueba para los dos casos).
  */
 export function encabezadoTanda(cambios, { pagina = 0, totalPaginas = 0 } = {}) {
   const conteo = new Map();
   for (const c of cambios) conteo.set(c.tipo, (conteo.get(c.tipo) ?? 0) + 1);
-  const resumen = [...conteo].map(([tipo, n]) => `${ICONO_TIPO[tipo] ?? "🔹"} ${n}`).join(" · ");
   const avance = totalPaginas > 0 ? ` · revisando página ${pagina} de ${totalPaginas}` : "";
-  return `⚡ **Monitor Samsung — aviso en curso** · ${horaChile()}\n${resumen}${avance} _(la revisión sigue en marcha)_`;
+  const enMarcha = "_(la revisión sigue en marcha)_";
+  const bajas = conteo.get("baja") ?? 0;
+  if (bajas > 0 && bajas === cambios.length) {
+    const cuantos = bajas === 1 ? "1 producto" : `${bajas} productos`;
+    const avanceSolo = totalPaginas > 0 ? `revisando página ${pagina} de ${totalPaginas} ` : "";
+    return `⚡ 🟢⬇️ **BAJÓ DE PRECIO: ${cuantos}** · ${horaChile()}\n　${avanceSolo}${enMarcha}`;
+  }
+  const resumen = [...conteo].map(([tipo, n]) => `${ICONO_TIPO[tipo] ?? "🔹"} ${n}`).join(" · ");
+  return `⚡ **Monitor Samsung — aviso en curso** · ${horaChile()}\n${resumen}${avance} ${enMarcha}`;
 }
 
 /**
