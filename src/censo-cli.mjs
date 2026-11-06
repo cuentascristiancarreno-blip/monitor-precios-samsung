@@ -37,7 +37,8 @@ import {
   ultimaClaveAvisada,
   OK,
 } from "./censo.mjs";
-import { notifyTecnico } from "./discord.mjs";
+import { fijarDestinoNtfy, notifyTecnico } from "./discord.mjs";
+import { avisadorDelEntorno } from "./ntfy.mjs";
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.join(AQUI, "..");
@@ -129,6 +130,11 @@ async function main() {
   // contra la carpeta de produccion dejaria el freno envenenado y la corrida
   // siguiente, la de verdad, se quedaria callada creyendo que ya lo dijo.
   const webhook = process.env.DISCORD_WEBHOOK_URL;
+  // El censo es OTRO proceso (`npm run censo`), asi que necesita su propia linea
+  // para que su aviso tambien llegue al celular: sin esto, el unico aviso
+  // tecnico que no llegaria seria justo el del estado del catalogo. Sin
+  // NTFY_TEMA configurado devuelve null y nada cambia (ver src/ntfy.mjs).
+  fijarDestinoNtfy(avisadorDelEntorno());
   const { entregado } = await notifyTecnico(webhook, texto);
   if (!webhook) {
     console.log("INFO censo_sin_webhook el aviso no se manda y NO se marca como avisado");

@@ -252,6 +252,13 @@ jobs:
       - name: Revisar precios
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # UNA NOTIFICACION POR AVISO EN EL CELULAR (ntfy, pedido 2026-11-06).
+          # El tema es la CLAVE del canal, asi que va como secreto igual que el
+          # webhook y nunca en un archivo. Mientras el secreto no exista, esta
+          # variable llega VACIA y el monitor se comporta exactamente como antes
+          # (src/ntfy.mjs lo trata como "sin configurar" a proposito: la trampa
+          # medida de src/entorno.mjs).
+          NTFY_TEMA: ${{ secrets.NTFY_TEMA }}
           # lo escribio el paso "Decidir el alcance" mas arriba
           MODO: ${{ env.MODO }}
           # variable de repositorio que enciende el modo Cyber (ver README)
@@ -285,6 +292,9 @@ jobs:
         continue-on-error: true
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # El censo es otro proceso: necesita el tema por su cuenta o su aviso
+          # seria el unico aviso tecnico que no llega al celular.
+          NTFY_TEMA: ${{ secrets.NTFY_TEMA }}
         run: npm run censo
 
       # always(): antes este paso se SALTABA ante cualquier falla del paso

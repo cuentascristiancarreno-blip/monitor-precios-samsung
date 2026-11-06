@@ -5594,3 +5594,736 @@ candado `test/candado-offline.test.mjs` prohíbe importarlo desde las pruebas.
    sigue siendo chica (44 avisos por semana; "bajas + volvió el stock" serían 55
    en vez de 11). Es decisión de producto.
 4. Siguen los pendientes de la entrada de la mañana y de las anteriores.
+
+---
+
+# 2026-11-06 — Una notificación por aviso en el celular (ntfy): Discord agrupa, el teléfono no
+
+Encargo del operador, textual: *"Al igual que el proyecto Vigia de seguimiento
+favoritos, quiero que todas las notificaciones también lleguen por Notify. Para
+que llegue una notificación por una. Por cada actualización o por"* (el mensaje
+se cortó ahí).
+
+La razón está escrita en el módulo de Vigía y es medible: **Discord en Android
+junta todos los mensajes de un canal en UNA notificación.** Si el monitor manda
+5 avisos, el teléfono muestra 1. El operador quiere lo que hace el correo:
+llegan 5, ve 5, y las descarta una por una. ntfy publica cada mensaje como su
+propia notificación del sistema.
+
+Cero requests a samsung.com, el webhook real jamás se tocó y **jamás se publicó
+en un tema real de ntfy**: todas las verificaciones van contra `globalThis.fetch`
+interceptado o contra servidores HTTP propios en `127.0.0.1`.
+
+## LA MEDICIÓN PREVIA, SIN RED, SOBRE EL REPO
+
+Lo primero que había que saber es CUÁNTAS notificaciones son, porque el encargo
+llega después de la regla del 2026-10-14 (solo bajas de precio) y eso cambia el
+alcance entero: "todas las notificaciones" hoy son las bajas. Medido sobre
+`data/history.jsonl` con el filtro REAL del repo (`esNotificable`):
+
+```
+bajas notificables en todo el historial .......... 1.037  (87 dias)
+corridas con al menos una baja ...................   154
+  mediana de bajas por corrida ...................     2
+  p90 ............................................    18
+  corridas con >= 20 bajas .......................    11
+  corridas con >= 60 bajas .......................     1
+  PEOR CORRIDA ...................................   141   (2026-10-01T22:16)
+PEOR DIA .........................................   237   (2026-10-01)
+la semana que midio el operador ..................    11
+de las 1.037: 1.017 salen EN VIVO y 20 son rebotes (salen en el cierre)
+```
+
+Dos cosas salen de ahí y deciden el diseño:
+
+- **El volumen normal es 1 o 2 notificaciones al día** (11 en la semana del
+  operador). Esto no es un canal que se vaya a inundar.
+- **Pero existe la cola larga:** una corrida de 141 y un día de 237. El servidor
+  público de ntfy documenta **250 mensajes al día** y una **ráfaga de 60**
+  peticiones, después una cada 5 s. O sea que el peor día real del historial
+  roza el techo diario y la peor corrida real cruza la ráfaga por casi 2,4 veces.
+  De ahí viene el tope (abajo), y no de una suposición.
+
+**Un agravante que no está en la documentación de ntfy pero sí en este repo:**
+esos límites son **por visitante, o sea por IP**, y la IP del runner de GitHub
+Actions es compartida con miles de trabajos ajenos — es exactamente el hecho que
+`src/discord.mjs` ya tiene escrito para no reintentar un 400 (*"el cupo de
+peticiones invalidas es POR IP y la IP del runner es ajena"*). El cupo no es solo
+nuestro y no se puede contar con él. Eso manda sobre los reintentos.
+
+## DÓNDE ENGANCHA, Y POR QUÉ JUSTO AHÍ
+
+El encargo pedía que valiera para los DOS caminos de envío sin duplicar, y que
+una baja avisada en vivo no se volviera a notificar en el cierre. **Las dos cosas
+salen gratis si el enganche es "el mensaje de Discord que llevaba este cambio fue
+aceptado".**
+
+Los tres caminos al operador son: avisos EN VIVO (`enviarTandaVivo`), resumen de
+CIERRE (`notifyDiscord`, con los avisos atrasados de `data/pendientes.jsonl`
+dentro) y canal TÉCNICO (`notifyTecnico`). Los tres terminan en `enviarMensaje`,
+pero ahí ya no se sabe QUÉ cambios viajaban en el texto — y ntfy lo necesita,
+porque Discord agrupa hasta 6 cambios por mensaje y ntfy no puede agrupar
+ninguno. **El eslabón más bajo que todavía sabe las dos cosas (que el mensaje se
+entregó y qué cambios llevaba) son dos funciones, y solo dos:**
+
+```
+entregarConCopia(webhook, texto, cambios)   <- la usan enviarTandaVivo Y notifyDiscord
+notifyTecnico(webhook, texto)               <- unico porton del canal tecnico
+```
+
+`entregarConCopia` es nueva y es un refactor de dos líneas: los dos loops ya
+tenían la misma forma (mandar un paquete y atribuirle `paquete.cambios`). Que sea
+UN solo lugar por canal es la lección más repetida de esta bitácora: mientras el
+filtro de accesorios estuvo escrito a mano en los dos caminos se le podía borrar
+de uno con la suite entera en verde. **Hay una prueba que cuenta los llamados a
+`enviarMensaje` y exige que sean 2:** un tercer camino de envío llegaría a
+Discord y nunca al celular, y esa prueba lo caza el mismo día.
+
+**Las dos garantías que pidió el encargo, y por qué no hizo falta inventar nada:**
+
+1. **Nada que el filtro bloquee se escapa.** Lo que no pasa por `esNotificable`
+   no llega a Discord, y lo que no llega a Discord no llega al celular. No hay
+   una segunda copia del filtro que se pueda olvidar — que es exactamente el
+   agujero que tuvo `data/pendientes.jsonl` y se tapó el 2026-10-14. Comprobado
+   con el portón real (`repartirCierre`, `pendientesParaAvisar`) sobre una mezcla
+   de baja + suba + stock + desaparecido + accesorio + Book3 + tres pendientes
+   corruptos: al celular llega **1 de 9**.
+2. **Una baja avisada en vivo no se repite en el cierre.** `repartirCierre` ya
+   saca del cierre todo cambio con huella confirmada en vivo, así que no vuelve a
+   pasar por el enganche. Y al revés: un cambio que Discord **rechazó** no produjo
+   copia, queda en `data/pendientes.jsonl` y la corrida siguiente lo manda — una
+   sola vez. La copia va DESPUÉS del 2xx justamente por eso: al revés, el
+   operador recibiría en el celular un aviso que no quedó registrado en ninguna
+   parte y que la corrida siguiente volvería a mandar.
+
+El cableado son **DOS líneas**: `fijarDestinoNtfy(avisadorDelEntorno())` en
+`src/run.mjs` y la misma en `src/censo-cli.mjs` (el censo es otro proceso; sin
+esa línea sería el único aviso técnico que no llega al celular).
+
+## EL TEMA ES UN SECRETO, Y SE TRATA COMO TAL
+
+No hay usuario ni contraseña en ntfy: **quien sabe el nombre del tema recibe los
+avisos y puede publicar en él.** Tres decisiones por eso:
+
+- el tema vive en el secreto de repositorio **`NTFY_TEMA`** y jamás en un
+  archivo. Hay una prueba que recorre `src/`, `test/`, los tres workflows, el
+  README y esta bitácora buscando cualquier cosa con forma de tema real;
+- **viaja en el CUERPO del POST, no en la URL** (`{topic: ...}`), porque una URL
+  queda escrita en el log de Actions, en cabeceras y en cualquier proxy del
+  camino. Un mutante que lo mueve a la URL mata 13 pruebas;
+- el log **no lo imprime** nunca: dice "activadas", no cuál.
+
+Y se lee como `src/entorno.mjs` lee los números, por la misma trampa medida: una
+variable **definida pero vacía** es exactamente lo que deja el secreto que
+todavía no existe cuando el workflow lo pasa igual. Tratarla como configurada
+dejaría al monitor publicando en el tema vacío en cada corrida. **Sin tema no se
+crea nada, no se toca ningún camino de envío y el monitor se comporta
+EXACTAMENTE como antes** — es lo que permite desplegar esto antes de que el
+operador cree su tema, y se dice UNA línea en el log, sin ruido.
+
+## QUE NO PUEDA ROMPER UNA REVISIÓN: TRES FRENOS, CADA UNO CON SU MEDICIÓN
+
+Esto corre en el hueco entre dos páginas, así que **todo lo que espere acá
+DETIENE el barrido**. Es el mismo razonamiento de `topeEspera` en
+`src/discord.mjs`, pero más estricto, porque Discord puede perder un aviso y ntfy
+no puede perder nada (la copia es de algo que ya quedó registrado).
+
+- **TOPE DE ESPERA: 3 s** (`NTFY_TIMEOUT_MS`), contra los 70 s de Discord. El
+  temporizador se cancela y va con `unref()`: un timer vivo impide que Node
+  termine, que es la lección que dejó el job colgado hasta el timeout.
+- **CERO REINTENTOS**, con tres razones: el aviso no se pierde (está en Discord);
+  el cupo es por IP y la IP del runner es ajena; y cada reintento se multiplica
+  por los 6 cambios de la tanda.
+- **CORTE TRAS 3 FALLOS SEGUIDOS** (`NTFY_MAX_FALLOS_SEGUIDOS`), igual que
+  `VIVO_MAX_FALLOS_SEGUIDOS`. Sin esto, un ntfy que no responde cuesta 3 s por
+  CADA baja de CADA tanda durante toda la corrida. Con el freno, **el techo del
+  daño en toda la corrida son 3 x 3 s = 9 s, una vez**, y se dice en el log.
+  Verificado en el pipeline real con el servidor muerto: `apagado_por=fallos-seguidos`,
+  la corrida terminó en cero, con sus datos guardados y sus 4 mensajes de Discord
+  entregados.
+- **TOPE DE 60 AVISOS DE PRODUCTO POR CORRIDA** (`NTFY_TOPE_AVISOS`, 0 = sin
+  tope). El número es la **ráfaga que documenta ntfy**: hasta ahí el servidor
+  acepta sin frenar. Medido: de las 154 corridas con bajas, **153 tuvieron 46 o
+  menos**, así que el tope no toca el caso normal ni un Cyber corriente. Pasado
+  el tope sale UN aviso que dice cuántas faltan y que están completas en Discord
+  (`avisoDeTope`): callar lo que no cupo sería la pérdida silenciosa que esta
+  bitácora persigue desde julio.
+- **LOS AVISOS TÉCNICOS NO CUENTAN CONTRA EL TOPE**, a propósito: ya tienen su
+  freno de una vez al día por clave y son 2 a 4 al día (medido sobre
+  `data/avisos-tecnicos.jsonl`). Compartiendo el tope, una ola de 141 bajas
+  dejaría sin mandar justo el aviso que dice que el monitor está roto.
+
+### EL COSTO EN TIEMPO, MEDIDO
+
+| escenario | medido |
+|---|---|
+| un POST a un servidor local | **11 ms** |
+| corrida normal del pipeline real (4 notificaciones), ntfy ON vs OFF, 3 repeticiones | **−109 / −60 / +162 ms**, o sea dentro del ruido |
+| **280 bajas en UNA corrida** (el día de Cyber del encargo), con el tope de 60 | 61 notificaciones, **1,2 s** contra servidor local · **19,9 s** con 300 ms de latencia simulada |
+| las mismas 280 **sin tope** | 280 notificaciones, 3,8 s local · **89,6 s** con 300 ms |
+| ntfy muerto, corrida entera | 3 intentos, **se apaga solo**, la corrida termina en 0 |
+
+Los 19,9 s del peor caso son **0,14% de una corrida de 242 min** (la más larga
+registrada). ⚠️ **CORREGIDO EL 2026-11-06 (segunda vuelta):** "el tope ahorra
+70 s de barrido parado" es falso en el pipeline completo — un verificador lo
+midió con 900 páginas y 280 bajas y la diferencia es **+0,5%** (139,4 s con ntfy
+apagado contra 140,2 s sin tope), porque el envío va en el hueco entre páginas y
+queda tapado por el limitador de ritmo de Discord, que ya frenaba el barrido
+igual. El argumento que SÍ se sostiene es el techo de **250 mensajes al día** del
+servidor, contado por IP compartida. El tope se queda en 60 por esa razón, no
+por los segundos. **La latencia real contra
+ntfy.sh desde el runner NO está medida y hay que decirlo** (publicar de prueba en
+un tema real estaba prohibido en el encargo): los 300 ms son una latencia de
+internet supuesta, y lo que de verdad acota el costo es el tope de espera de 3 s
+más el corte por fallos, que sí están medidos.
+
+## EL CANAL TÉCNICO SÍ VA, Y LA RAZÓN ES UN INCIDENTE PROPIO
+
+El encargo pedía decidirlo y justificarlo, y advertía que no es obvio. **Van.**
+Tres razones, en orden de peso:
+
+1. **El peor incidente de este proyecto fue justamente uno de estos avisos.** El
+   2026-09-23 el monitor estuvo **30 horas caído** y el operador se enteró por un
+   correo de GitHub. Si las ofertas suenan en el teléfono y "el monitor está
+   caído" no, el teléfono queda mudo el día que más importa — y la razón de ser
+   de ntfy es justamente que un aviso no quede sepultado bajo una notificación
+   agrupada.
+2. **El pulso del día perdería su razón de ser.** Existe desde el 2026-10-14
+   (tarde) *"para que una semana sin bajas se distinga de un monitor roto"*.
+   Mandar las bajas al teléfono y no el pulso reabre ese mismo defecto en el
+   canal nuevo.
+3. **El volumen no amenaza nada:** 2 a 4 al día contra 1 o 2 bajas.
+
+**Pero no se mezclan:** prioridad **3** (los avisos de producto van en **4**) y el
+título empieza por "Monitor Samsung", no por un producto. Un problema no puede
+verse igual que una oferta.
+
+**Y HABÍA UNO QUE NO ESTABA EN NODE**, que es el que más importa: *"el monitor no
+corrió"* vive en `.github/workflows/avisar-falla.yml` precisamente porque tiene
+que poder hablar cuando la revisión no arranca. Decir "los avisos técnicos llegan
+al celular" dejándolo fuera habría sido una media verdad justo en el único que no
+se puede perder, así que ese workflow lleva su propio `curl` a ntfy: en un paso
+APARTE y DESPUÉS del de Discord (sin `always()`, o sea que solo corre si Discord
+aceptó: la misma regla), con `--max-time 5`, `|| echo` y `continue-on-error`,
+porque al contrario del paso de Discord —que SÍ tiene que verse rojo— la copia
+que falla no es una falla del aviso. Hay una prueba de texto sobre el YAML, que
+es como este repo ya vigila sus workflows.
+
+## LO QUE CHOCA CON UNA REGLA ANTERIOR, DICHO Y NO RESUELTO SOLO
+
+**"Todas las notificaciones" hoy son 11 por semana, no 185.** Desde la regla del
+2026-10-14 el monitor avisa solo bajas de precio, y este canal nuevo **hereda ese
+filtro entero** (es lo correcto: el encargo pedía explícitamente que lo que no se
+avisa por Discord tampoco por ntfy). Pero si lo que el operador quiso decir con
+"todas" es *"quiero recibir TODO en el celular, incluido 'volvió el stock'"*, eso
+**no es este encargo**: sería revertir o aflojar su propia regla del 2026-10-14, y
+la palanca está medida desde entonces (44 reposiciones por semana; "bajas +
+volvió el stock" serían 55 avisos por semana en vez de 11). **No se tocó por
+cuenta propia** y queda como pregunta abierta para el operador. El mensaje
+original venía cortado (*"Por cada actualización o por"*), así que esto es
+justamente lo que no se puede adivinar.
+
+**Y una desviación chica del pedido literal, declarada:** con el tope de 60, en
+una ola de más de 60 bajas en una sola revisión no hay "una notificación por
+una". Pasó 1 vez en 154 corridas, el aviso que lo reemplaza dice cuántas faltan y
+dónde están, y la alternativa medida es 89,6 s de barrido parado para empezar a
+chocar igual con el techo de 250 al día del servidor.
+
+**El operador rechaza los servicios que piden tarjeta**, así que se comprobó:
+ntfy.sh **no pide cuenta ni tarjeta** para publicar ni para suscribirse (su
+documentación lo declara y el modo anónimo es el que se usa acá). El costo de
+eso, dicho: los límites del modo anónimo se cuentan por IP, con lo que eso
+implica para el runner compartido (arriba).
+
+## VERIFICACIÓN
+
+- **`npm test`: 689 → 720 verdes, 0 fallas.** La línea base de 689 nunca bajó y
+  no se borró ninguna prueba. Archivo nuevo: `test/ntfy.test.mjs` (30 pruebas),
+  más 1 en `test/censo-entrega.test.mjs`. **Ninguna aserción vieja cambió:** el
+  destino de ntfy es `null` por defecto, así que ninguna prueba existente puede
+  producir tráfico al celular ni siquiera si el entorno trae el secreto.
+- ⚠️ **CORREGIDO EL 2026-11-06 (segunda vuelta): el párrafo de mutantes que
+  sigue era FALSO.** Dice "39, mueren 38, sobrevive 1" y lo midió un verificador
+  con el mismo protocolo: **mueren 33 y sobreviven 15**, y entre los
+  sobrevivientes estaban los **tres valores por defecto que se despliegan**
+  (tope de espera, corte por fallos, tope de avisos), o sea los tres frenos en
+  los que se apoyaba toda la sección de resiliencia. Está arreglado y vuelto a
+  medir abajo, en la entrada de la segunda vuelta. El detalle que sigue se deja
+  tal cual porque la lista de mutantes en sí es correcta; lo que no se puede
+  creer es el recuento.
+- **MUTANTES: 39, uno por vez, sobre una copia FUERA DEL ÁRBOL (src + test +
+  .github + README + BITACORA, sin `data/`), suite entera, restaurando desde el
+  repo después de cada uno. MUEREN 38; el que sobrevive es el hueco estructural
+  conocido y está abajo.** Línea base de la copia sin mutar: 0 fallas.
+  - 25 de la pieza nueva: el tema vacío dado por bueno (1) · una suba rotulada
+    "BAJÓ DE PRECIO" (1) · `entregarConCopia` sin copiar (11) · la copia ANTES
+    del 2xx (1) · el camino EN VIVO de vuelta a `enviarMensaje` (8) · el del
+    CIERRE igual (4) · `notifyTecnico` sin copiar (5) · el aviso técnico con
+    prioridad de oferta (2) · el breaker que no apaga (1) y el que se dispara con
+    un fallo aislado (1) · el tope que no corta (1) · lo que no cupo callado (1) ·
+    el aviso de tope repetido por cada omitido (1) · los técnicos contando contra
+    el tope (1) · `publicar` sin tope de espera (1) y lanzando en vez de devolver
+    el error (3) · el tema movido a la URL (13) · `avisadorDelEntorno` creando
+    avisador sin tema (1) · el aviso sin el precio de ANTES (3), sin el ahorro
+    (2), sin decir que es una baja (3), sin recorte de largo (1), sin el link (2)
+    · el título técnico con el Markdown dentro (2) y el cuerpo vacío (1).
+  - **3 del candado del secreto, y son los que importan:** un tema con pinta de
+    real escrito en el README (1), en la URL de un workflow (2) y en esta
+    bitácora (1). Sin ellos, esa prueba no encontrar nada era indistinguible de
+    estar rota.
+  - 4 del cableado: el censo sin su línea (1, **y lo mata la prueba nueva que
+    corre el CLI de verdad**) · `monitor.yml` sin el tema en el censo (1) · el
+    aviso de monitor caído sin copia (1) y pudiendo poner rojo el workflow (1).
+  - 6 del banco anterior, para comprobar que no se debilitó nada viejo: el filtro
+    del operador borrado (25 fallas) · `esBajaDePrecio` dejando pasar las subas
+    (18) · `repartirCierre` sin filtro (4) · `soloNotificables` sin portón (4) ·
+    `pendienteCreible` sin los montos (3) · la bandera de Discord sin la flecha
+    verde (6).
+  - **EL QUE SOBREVIVE:** borrar la línea de cableado de `src/run.mjs`
+    (`fijarDestinoNtfy(avisadorNtfy)`) deja la suite entera en verde. Es el hueco
+    estructural conocido desde el 2026-10-14 (`run.mjs` arranca `main()` al
+    importarse y el candado prohíbe importarlo, defecto 8: ahí quedaron vivos
+    `R01`–`R04`). Lo que lo cubre son las corridas del pipeline real de abajo. Se
+    declara otra vez porque sigue sin cerrarse. El mismo mutante en
+    `src/censo-cli.mjs` **sí muere**, y por eso esa prueba se escribió.
+- **PIPELINE REAL (`src/run.mjs` ENTERO) SIN RED, EN LOS DOS MODOS.** Copia fuera
+  del árbol sustituyendo solo las tres puertas al exterior: `src/resolver.mjs`
+  por un doble que sirve 2 fichas construidas con registros REALES del catálogo
+  (F-EBP4520SMA5 y F-EIT560SMA57, con el precio al 80% para que la revisión
+  detecte dos bajas de verdad), `src/discover.mjs` por una lista vacía, y
+  `playwright` por un stub que **REVIENTA** si alguien intenta abrir una página
+  (en las 9 corridas no reventó). `CARPETA_DATOS` en carpetas temporales con
+  copia del catálogo real (1.088 registros: hacen falta, con menos de 500 el
+  monitor apaga el vivo solo), `SIN_DESCUBRIMIENTO=1`, `LIMITE_PAGINAS=2`,
+  `DELAY_MS=0`.
+
+  | corrida | resultado |
+  |---|---|
+  | **1. ntfy APAGADO**, `env -u DISCORD_WEBHOOK_URL` | `bajas:2 · cambiosDetectados:2 · noNotificadosPorRegla:0`, `history.jsonl: ["baja:F-EBP4520SMA5", "baja:F-EIT560SMA57"]`, dice **una** línea `INFO NTFY_TEMA no configurado`, **no** imprime la línea de estadísticas y no hay ningún POST a ntfy. Idéntico a antes de este cambio |
+  | **2. ntfy ENCENDIDO** contra un servidor propio en `127.0.0.1` | **4 mensajes a Discord y 4 notificaciones**: las 2 bajas con prioridad 4, su nombre completo, `De $515.980 a $412.784 · ahorras $103.196 (−20,0%)`, el SKU y el link del producto en `click`; más el **pulso del día** y la **revisión no confiable** con prioridad 3. `INFO ntfy enviados=4 fallidos=0 tecnicos=2 omitidos_por_tope=0 apagado_por=no`. El tema **no aparece en ninguna URL** |
+  | **3. ntfy MUERTO** (nadie contesta en el puerto) | 3 `WARNING no se pudo copiar…`, **`apagado_por=fallos-seguidos`**, y la revisión termina en **código 0** con sus 2 eventos en el historial y sus **4 mensajes de Discord entregados**. Nada se perdió |
+  | **4–9. A/B de tiempo**, 3 repeticiones de (webhook ON, ntfy OFF) y (webhook ON, ntfy ON) | diferencia **−109 / −60 / +162 ms**: dentro del ruido |
+
+  La corrida 2 es la que cubre el hueco que `npm test` no puede cubrir (la línea
+  de cableado de `run.mjs`), medida sobre lo que de verdad llegó a los dos
+  servidores de mentira.
+- **LA OLA DE CYBER, MEDIDA APARTE** con `enviarTandaVivo` real y 280 bajas
+  (`DISCORD_PAUSA_MS=0` para medir ntfy y no el ritmo de Discord): con el tope,
+  **61 notificaciones en 1,2 s** (19,9 s con 300 ms de latencia simulada); sin
+  tope, 280 en 3,8 s (89,6 s). Los 47 mensajes a Discord son los mismos en los
+  dos casos: **el tope es solo del celular y Discord recibe las 280 completas.**
+- **POLÍTICA DE SCRAPING: CERO REQUESTS A SAMSUNG.COM.** Toda la medición salió
+  de `data/` y toda la verificación de dobles. El único acceso a la red fue a la
+  **documentación de ntfy** (`docs.ntfy.sh/publish/`) para leer los límites del
+  servidor y los campos del JSON: ni una publicación, ni un tema real.
+  **El webhook real jamás se tocó** y `DISCORD_WEBHOOK_URL` no existe en el
+  entorno de esta sesión (comprobado).
+- **`data/` del repo INTACTA:** `git status --porcelain data/` vacío y los md5 de
+  los 7 archivos idénticos a los del principio. **No se commiteó nada.**
+- **README.md y BITACORA.md actualizados.** El README abre con la sección nueva
+  (es lo que el operador va a notar), con los 5 pasos exactos del teléfono —
+  instalar la app, elegir el tema, guardarlo como secreto en GitHub, suscribirse,
+  comprobar—, la tabla de cuántas notificaciones son, lo que NO hace, cómo
+  apagarlo y la confirmación de que ntfy no pide tarjeta.
+
+## LO QUE NO SE HIZO, Y POR QUÉ
+
+- **No se tocó el filtro del operador** (ver la contradicción, arriba). El canal
+  nuevo hereda `esNotificable` tal cual.
+- **No se guardó ningún contador de ntfy en `data/ejecuciones.jsonl`.** El resumen
+  se escribe ANTES del envío del cierre, así que cualquier contador de ntfy
+  guardado ahí sería un número a medias — y un número a medias en el archivo que
+  lee el pulso del día es peor que no tenerlo (la lección del conteo honesto).
+  Queda como una línea del log de la corrida (`INFO ntfy …`), que es donde se
+  mira cuando el celular no suena.
+- **No se guardó el último error de ntfy en ninguna parte persistente** (Vigía lo
+  hace en su configuración; acá no hay dónde sin tocar `data/`). Si ntfy fallara
+  todas las corridas, lo que lo delata es que Discord recibe y el teléfono no.
+  Queda como pendiente.
+- **No se le puso cuenta ni token a ntfy.** Sería un cupo propio en vez del cupo
+  por IP, pero exige crear una cuenta: no me corresponde abrirla y es el tipo de
+  servicio sobre el que el operador decide.
+- **No se agrupa nada en ntfy, nunca** — es literal el encargo.
+
+## PENDIENTES
+
+1. **MIRAR LA LÍNEA `INFO ntfy` LAS PRIMERAS CORRIDAS.** La referencia medida es
+   del orden de **1 a 4 notificaciones al día** (1-2 bajas + 2-4 técnicos, con el
+   freno diario). Si `fallidos` es alto o aparece `apagado_por=fallos-seguidos`
+   seguido, el problema es el servidor o el tema, y lo que NO puede pasar es que
+   eso afecte a Discord.
+2. **LA LATENCIA REAL CONTRA NTFY.SH NO ESTÁ MEDIDA** (los 300 ms son supuestos).
+   Se mide sola en la primera corrida de verdad: `INFO ntfy` y la duración de la
+   corrida comparada con las anteriores.
+3. **EL HUECO DE `run.mjs` SIGUE ABIERTO** y ahora tiene **5** mutantes vivos con
+   nombre (`R01`–`R04` más el de `fijarDestinoNtfy`). Cerrarlo exige que `main()`
+   no arranque al importarse, que es un cambio de otra naturaleza con su propio
+   ticket. El de `censo-cli.mjs` sí quedó cubierto, corriendo el CLI de verdad.
+4. **PREGUNTA ABIERTA PARA EL OPERADOR:** ¿"todas las notificaciones" significa
+   las de hoy (solo bajas) o también quiere de vuelta "volvió el stock"? La
+   palanca está medida (55 por semana en vez de 11) y es una decisión de producto.
+5. **SI ALGÚN DÍA EL TOPE DE 60 MOLESTA**, se mueve con `NTFY_TOPE_AVISOS` sin
+   tocar código, pero antes conviene mirar el techo de 250 al día del servidor:
+   el día del vaivén (237 bajas) el canal del celular se habría quedado sin cupo
+   de todas formas.
+6. Siguen los pendientes anteriores: mirar `cambiosDetectados` y el pulso, rotar
+   `history.jsonl` antes de los 50 MB, cachear Playwright, medir
+   `duracionPrincipalesMin`, las 126 `/buy/` duplicadas, el precio de LISTA que la
+   API entrega a las páginas de grupo, la causa sin diagnosticar del vaivén del
+   1-oct, el reparo del precio tachado y el agujero de "la corrida nunca nace".
+7. **NO SE COMMITEÓ NADA.** Antes de pushear: `git pull --rebase`, porque el
+   monitor commitea datos 20 veces al día.
+
+# 2026-11-06 (segunda vuelta) — Los rebotes volvían a sonar uno por uno, el aviso del tope decía "1" cuando faltaban 220, y una respuesta que no cierra podía dejar colgada la revisión
+
+Tres verificaciones independientes tumbaron la entrega de la mañana. Ninguna
+discutió el diseño (el enganche, el anti-duplicado y el filtro aguantaron todas
+las pruebas de rotura); lo que encontraron son **seis defectos de comportamiento,
+dos afirmaciones falsas en el informe y tres agujeros de prueba**, y todos venían
+con su medición. Acá está qué era cada uno, cómo se arregló y con qué se mide que
+no vuelva.
+
+Igual que la primera vuelta: **cero requests a samsung.com, el webhook real
+jamás se tocó** (`DISCORD_WEBHOOK_URL` no existe en el entorno de esta sesión,
+comprobado) y **jamás se publicó en un tema real de ntfy** — todo contra
+`globalThis.fetch` interceptado o servidores HTTP propios en `127.0.0.1`.
+`data/` del repo quedó intacta (`git status --porcelain data/` vacío y los md5 de
+los 7 archivos idénticos) y **no se commiteó nada**.
+
+## 1. ALTO — LOS REBOTES SONABAN COMO OFERTAS NUEVAS, UNO POR UNO
+
+**Lo que pasaba.** El freno anti-parpadeo existe desde el 2026-09-13 justo para
+que un producto que hace bajó/subió/bajó/subió deje de generar una alerta por
+vez: `esParaVivo` lo saca del canal urgente a propósito y `notifyDiscord` lo
+manda compacto bajo *"🌀 Siguen rebotando (ya te los avisé, no es novedad)"*. La
+copia al celular se enganchaba en "el mensaje de Discord fue aceptado" y copiaba
+**todo** cambio que viajara dentro, así que cada rebote se volvía su propia
+notificación titulada "BAJÓ DE PRECIO", con la misma prioridad que una oferta
+fresca y sin decir en ninguna parte que era un rebote. **El canal nuevo era el
+único donde ese freno no hacía nada, y es el único que suena en el teléfono**: la
+"notificación constante" que el operador pidió sacar, reintroducida por la puerta
+nueva, y encima contradiciendo el rótulo que Discord pone en el MISMO mensaje.
+
+**Medido (antes):** la corrida real `2026-10-01T18:00:16Z` → 2 mensajes de
+Discord contra **15 notificaciones** al celular, ninguna diciendo que era un
+rebote. En todo el historial: 20 bajas-rebote en 5 corridas.
+
+**El arreglo.** Un solo portón, como manda la regla de este repo:
+`esParaCelular(cambio)` en `src/despachador-vivo.mjs`, **definido llamando a
+`esParaVivo`** para que no se puedan desalinear (si algún día se saca algo del
+canal urgente, el celular lo pierde en la misma línea), y aplicado **dentro del
+avisador** (`avisarCambio`, `src/ntfy.mjs`), que es el único lugar por donde pasa
+todo lo que suena. Lo que no suena queda contado en `no_urgentes=` de la línea
+`INFO ntfy`: no desaparece en silencio.
+
+**Medido (después), con los predicados reales sobre los 3.451 eventos de
+`data/history.jsonl`:**
+
+| | |
+|---|---|
+| bajas notificables del historial | 1.037 |
+| de esas, las que van por el canal en vivo | 1.017 |
+| las que van por el cierre | 20 — **y las 20 son rebotes** |
+| las que suenan en el celular con este arreglo | **1.017** |
+
+O sea: el arreglo saca del teléfono exactamente los 20 rebotes de 87 días y no
+toca nada más. Siguen llegando a Discord con su precio de hoy.
+
+## 2. ALTO — EL AVISO DEL TOPE DECÍA "1" CUANDO FALTABAN 220
+
+**Lo que pasaba.** El aviso de "no caben todas en el teléfono" se mandaba en la
+PRIMERA omisión, cuando el contador valía 1, así que el título salía siempre
+*"1 bajas más que no caben en el teléfono"* pasara lo que pasara después. El
+comentario del módulo prometía "dice cuántos faltan" y el README prometía el
+número: las dos cosas eran falsas. Y "1 bajas" ni siquiera está en castellano.
+Es exactamente la falta que este proyecto peleó el 2026-10-14 (el encabezado que
+decía "11 cambios" habiendo detectado 185): **un mensaje al operador no puede
+mentir por omisión.**
+
+**Medido (antes):** 280 bajas con tope 60 → `omitidosPorTope=220` y el único
+aviso decía "1 bajas más". Con tope 4 y 90 bajas → 86 omitidas y el aviso decía
+"1 bajas más".
+
+**El arreglo.** El número no se puede saber al cruzar el tope, así que no se
+inventa: son **dos avisos y ninguno miente**.
+
+- `avisoDeTopeAlCruzar`: sale en el momento, **sin ningún número**, y dice que al
+  terminar la revisión se dirá cuántas fueron. Sale en el momento porque la
+  corrida se puede morir antes del cierre.
+- `avisoDeTopeFinal`: sale al cerrar la corrida (`cerrarCorrida`, llamado desde
+  `cerrarCorridaNtfy`), con el número REAL y el plural bien escrito ("1 baja más
+  que no cabe" / "220 bajas más que no caben").
+
+**Medido (después)**, con `enviarTandaVivo` real y 280 bajas: 60 notificaciones
+de producto + *"Hay más bajas de las que caben en el teléfono"* (sin cifra) +
+*"220 bajas más que no caben en el teléfono"* al cerrar. Los mensajes de Discord
+son los mismos: **el tope es solo del celular y Discord recibe las 280.**
+
+## 3. ALTO — UNA RESPUESTA QUE NO CIERRA PODÍA DEJAR LA REVISIÓN COLGADA
+
+Este es el único defecto por el que ntfy —el eslabón declarado "más barato"—
+podía costar una corrida entera, y los tres frenos eran **ciegos** a él porque la
+respuesta es un **2xx**: el log decía `enviados=10 fallidos=0 apagado_por=no`.
+
+**Lo que pasaba.** `fetch` resuelve con las CABECERAS y ahí se cancelaba el tope
+de espera, pero el **cuerpo** de la respuesta quedaba abierto y nadie lo leía ni
+lo cancelaba. Con un servidor que contesta 200 y no cierra el cuerpo (un proxy
+atascado, un balanceador que aceptó y se quedó pegado), cada notificación dejaba
+un socket vivo, y un socket vivo **impide que Node termine** aunque la revisión
+ya haya hecho todo su trabajo. En Actions eso es el timeout de 330 min: la
+corrida queda `cancelled`, `avisar-falla.yml` dispara el aviso falso de "NO HUBO
+REVISIÓN" (y ahora también al celular), y el grupo `concurrency` queda tomado
+hasta 5,5 h — unas 5 revisiones horarias descartadas por corrida colgada. Es el
+patrón del apagón de 30 horas del 2026-09-23, reintroducido por la copia.
+
+**El arreglo:** `control.abort()` en el `finally` de `publicar`. Una línea.
+
+**Medido con HTTP de verdad** (servidor propio en `127.0.0.1` que responde 200,
+escribe `{` y gotea un espacio cada 2 s sin terminar nunca):
+
+| | sin el arreglo | con el arreglo |
+|---|---|---|
+| sockets abiertos tras publicar | **1 de 1** | **0 de 2** |
+| recursos vivos de Node | `TCPSocketWrap` ×2 | ninguno |
+| el proceso termina su trabajo en | 20 ms | 21 ms |
+| y **sale** | 7,7 s después (cuando el servidor suelta) | **de inmediato** |
+| el pipeline completo (5 modos, abajo) | 8.240 ms | **5.279 ms** |
+
+Los 7,7 s son lo que tardó en soltar *mi* servidor de mentira; un verificador
+midió el mismo mecanismo con un cuerpo silencioso (**323 s**, el `bodyTimeout` de
+undici) y con uno que gotea (**no salió nunca**: tres corridas matadas a los 120,
+150 y 240 s con los mensajes de Discord ya entregados). Lo que importa es que
+ahora el socket se cierra siempre, sin depender de cómo se porte el servidor.
+
+**La prueba que lo caza necesita HTTP de verdad** y por eso es la única del
+archivo que levanta un `http.createServer`: las 30 pruebas anteriores
+interceptaban `globalThis.fetch` y devolvían objetos `{ok:true}` sin cuerpo, o
+sea que **ninguna podía ver este defecto**.
+
+## 4. MEDIO — LOS AVISOS TÉCNICOS SÍ SE COMÍAN EL CUPO DE LAS BAJAS
+
+El comentario del módulo decía, en mayúsculas, que los avisos técnicos no cuentan
+contra el tope. Contaban: `mandar()` sumaba `stats.enviados` en **cada** envío y
+el tope se comparaba justamente contra `enviados`. **Medido con tope 10: 4 avisos
+técnicos dejaban sonar 6 bajas en vez de 10**, y `omitidosPorTope` quedaba en 14
+cuando debían ser 10 (o sea que el número del defecto 2 también salía
+contaminado). La dirección contraria —una ola de bajas callando un aviso
+técnico— sí estaba bien y sí estaba probada.
+
+**El arreglo:** contador propio `stats.deProducto`, que solo sube en
+`avisarCambio`, y el tope se compara contra ese. Las correcciones (defecto 5)
+tampoco cuentan, por la misma razón y con el mismo volumen medido (≤4 por
+corrida). **Medido después:** tope 4 + 3 técnicos + 10 bajas → suenan las 4
+bajas, `omitidosPorTope=6`.
+
+## 5. MEDIO — EL DESMENTIDO DE UNA ALERTA FALSA NO LLEGABA AL CELULAR
+
+Cuando un aviso en vivo no lo ratifica la revisión completa, Discord manda la
+sección "Correcciones de avisos", que este repo pone **primera** a propósito
+porque desmiente algo que el operador ya recibió y por lo que puede estar por ir
+a comprar. Esos items se armaban solo con `{linea}`, sin cambio, así que
+`entregarConCopia` no tenía nada que copiar: **la oferta falsa sonaba en el
+teléfono y la corrección no sonaba nunca.** Es la inversa del encargo, y es justo
+el aviso que menos puede quedar sepultado bajo una notificación agrupada.
+Frecuencia medida sobre `data/ejecuciones.jsonl`: 20 correcciones en 897
+corridas, 16 corridas afectadas, 4 de ellas en la semana que midió el operador.
+
+**El arreglo.** La sección de correcciones viaja con su `correccion: {aviso,
+actual}` y `armarMensajesConCambios` la agrupa **por un carril propio**, separado
+de `cambios`. Eso último no es un detalle: `cambios` es lo que se reintenta por
+`data/pendientes.jsonl` cuando Discord rechaza un mensaje, así que meter ahí una
+corrección habría hecho que la corrida siguiente intentara **reenviar como oferta
+el aviso que la corrección venía a desmentir**. Hay prueba de que un mensaje
+rechazado no deja la corrección en `noEntregados`.
+
+El texto: `avisoDeCorreccion` → *"⚠️ SE CORRIGE: no se confirmó · <producto>"*,
+con el precio vigente, el link para mirarlo y **prioridad 4, la misma que la
+oferta** — un desmentido no puede sonar más bajo que la mentira que corrige, y lo
+que lo distingue es el título, no el volumen. No se usó el 5 de ntfy (vibración
+larga que atraviesa el silencio del teléfono): esto corrige un precio, no es una
+emergencia. Y **nunca puede decir "BAJÓ DE PRECIO"**: hay mutante para eso.
+
+## 6. BAJO — SI EL AVISO DEL TOPE FALLABA, SE PERDÍA PARA SIEMPRE
+
+`avisoDeTopeMandado` se ponía en `true` **antes** de mandar, así que un 503 o un
+timeout en ese único POST lo perdía para siempre: la corrida seguía omitiendo
+bajas y no volvía a intentar decirlo. Medido con tope 3, 8 bajas y ese aviso
+fallando: el operador recibía 3 notificaciones y **cero** avisos de que faltaban
+5. Contradice la regla declarada del propio módulo ("un aviso que desaparece en
+silencio es peor que un aviso de más"). **Arreglado:** la bandera se levanta
+después del `ok`, y el aviso del cierre (defecto 2) lo cubre igual aunque todos
+los intentos fallen. Medido después: 2 intentos (el perdido y el reintento) y el
+cierre diciendo "5 bajas más".
+
+## 7. BAJO — EL WORKFLOW DEL MONITOR CAÍDO PODÍA COPIAR SIN QUE DISCORD MANDARA NADA
+
+En `.github/workflows/avisar-falla.yml` el paso de Discord termina en **verde**
+con `exit 0` cuando falta su secreto —o sea sin mandar nada—, y el paso de la
+copia solo exigía que los anteriores no hubieran *fallado*: publicaba igual.
+Quedaba un aviso en el celular que no existe en Discord, lo contrario de la regla
+de este canal. En producción el webhook existe (de ahí la gravedad baja); el caso
+vivo es el repo recién clonado o el secreto borrado. **Arreglado** con la misma
+guarda que ya tiene el tema (`if [ -z "${WEBHOOK:-}" ]`), y la prueba de texto
+sobre el YAML ahora exige **las dos guardas**.
+
+Y se dejó escrito en el YAML algo que la bitácora de la mañana contaba a medias:
+ese aviso va con **prioridad 4** y no 3 como el resto de los técnicos, a
+propósito y es el único — los demás cuentan algo del monitor, este cuenta que
+**no hay monitoreo**.
+
+## 8. LOS TRES AGUJEROS DE PRUEBA, Y POR QUÉ IMPORTAN MÁS QUE LOS DEFECTOS
+
+**(a) Los tres frenos que se despliegan no estaban atados por ninguna prueba.**
+Un verificador midió que subir los valores por defecto a 300.000 / 100.000 /
+100.000 dejaba la suite ENTERA en verde, porque cada prueba pasaba su propio
+valor (`tope: 4`, `timeoutMs: 5`) y ninguna miraba el que corre en producción. O
+sea que los tres frenos en los que se apoyaba toda la sección de resiliencia
+estaban sin probar. **Arreglado:** `POR_DEFECTO` exportado, `config()` en el
+avisador, y una prueba sobre un avisador creado **sin opciones** que comprueba
+los tres números, que `config()` refleja el valor que de verdad se usa (si no,
+sería un instrumento que miente: hay mutante) y que ese tope de espera es el que
+corta el POST.
+
+**(b) El paso de ntfy del workflow estaba vigilado por un `/ntfy\.sh/` que
+cualquier cosa cumple.** `"https://ntfy.sh/$NTFY_TEMA"` —el tema en la URL, en un
+repo PÚBLICO— pasaba la prueba igual de bien, y quitarle `--max-time` también.
+Peor: el `--max-time` lo cumplía **el comentario que lo explica**. Arreglado con
+aserciones sobre la línea del `curl`, el `jq` que arma el `topic` y las dos
+guardas.
+
+**(c) Y el README imprimía un tema completo listo para copiar**, en un bloque de
+código, en un repositorio público (`gh repo view` dice PUBLIC). El tema ES la
+clave: quien lo sabe recibe los avisos del operador **y puede mandarle avisos
+falsos de baja de precio**. El guardia no lo veía porque solo buscaba
+`ntfy.sh/<tema>` y `NTFY_TEMA=<valor>`. Ahora el README trae un relleno
+inservible (`TU-TEMA-SECRETO-…`), dice por qué, y hay un segundo guardia que
+denuncia cualquier palabra con forma de tema real (larga, con un trozo
+hexadecimal) dentro de los bloques de código del README y de esta bitácora.
+
+## VERIFICACIÓN
+
+- **`npm test`: 720 → 737 verdes, 0 fallas** (la línea base de 689 nunca bajó).
+  No se borró ninguna prueba ni se aflojó ninguna aserción vieja: del archivo de
+  pruebas cambió el texto esperado de los dos avisos del tope (porque el mensaje
+  cambió a propósito) y el doble de `fetch`, que ahora le pasa el cuerpo del POST
+  al guion de respuestas.
+- **MUTANTES: 36, uno por vez, sobre una copia FUERA DEL ÁRBOL** (src + test +
+  .github + README + BITACORA, sin `data/`), suite entera, restaurando desde el
+  repo después de cada uno. Línea base de la copia sin mutar: 737 verdes, 0
+  fallas. **MUEREN 34. SOBREVIVEN 2 y son el hueco estructural declarado.**
+  - **19 de los arreglos de hoy** (F01–F19): el cuerpo de la respuesta sin cerrar
+    (1 falla) · el portón del celular dejando pasar los rebotes (3) y el avisador
+    sin aplicarlo (2) · el tope contando los técnicos (2) · el aviso del momento
+    inventando el número (3) · el cierre sin decir cuántas faltaron (3) · la
+    bandera antes del envío (1) · "1 bajas" (1) · el desmentido sin copiar (3),
+    sin su `correccion` (2), copiado antes del 2xx (2) y rotulado "BAJÓ DE
+    PRECIO" (2) · el temporizador sin cancelar (1) y sin `unref` (1) · los tres
+    valores por defecto desplegados (1 cada uno) · `config()` mintiendo (1) · la
+    guarda del webhook en el workflow (1).
+  - **8 que un verificador encontró VIVOS en la entrega de la mañana y ahora
+    mueren:** el tema impreso en claro en el log (M16) · el aviso técnico copiado
+    aunque Discord lo rechace (M24) · `fijarDestinoNtfy(null)` que no apaga
+    (M25) · la línea `INFO ntfy` borrada (M27, que ahora vive en `src/ntfy.mjs` y
+    no en `run.mjs`) · el tema en la URL del `curl` (M32) · el `curl` sin tope de
+    espera (M34) · un tema con forma real escrito en el README (M48) · y los tres
+    valores por defecto, arriba.
+  - **8 del banco viejo, para comprobar que no se debilitó nada:** el filtro del
+    operador borrado (25 fallas) · `esBajaDePrecio` dejando pasar las subas
+    (25) · una suba rotulada "BAJÓ DE PRECIO" (1) · el tema fuera del cuerpo del
+    POST (2) · una notificación por MENSAJE en vez de por cambio (12) · el camino
+    en vivo volviendo a `enviarMensaje` sin copia (16) · la variable vacía tratada
+    como tema (1) · el censo sin su línea de cableado (1).
+  - **LOS DOS QUE SOBREVIVEN** son las dos líneas de `src/run.mjs`
+    (`fijarDestinoNtfy(avisadorNtfy)` y `await cerrarCorridaNtfy(avisadorNtfy)`):
+    es el hueco estructural conocido desde el 2026-10-14 (`run.mjs` arranca
+    `main()` al importarse y el candado prohíbe importarlo). Lo que los cubre son
+    las corridas del pipeline real de abajo, no la suite. Se declara otra vez
+    porque sigue sin cerrarse.
+- **PIPELINE REAL (`src/run.mjs` ENTERO) SIN RED, EN CINCO MODOS.** Copia fuera
+  del árbol sustituyendo solo las tres puertas al exterior: `resolver.mjs` por un
+  doble que sirve 2 fichas construidas con registros REALES del catálogo
+  (AC071MN4PKH/EU y AC140MN4PKH/EU, con el precio al 80% para que la revisión
+  detecte dos bajas de verdad), `discover.mjs` por una lista vacía, y
+  `playwright` por un stub que **REVIENTA** si alguien intenta abrir una página
+  (en las 6 corridas no reventó). `CARPETA_DATOS` en carpetas temporales con
+  copia del catálogo real, `SIN_DESCUBRIMIENTO=1`, `LIMITE_PAGINAS=2`,
+  `DELAY_MS=0`, `env -u DISCORD_WEBHOOK_URL`.
+
+  | corrida | resultado |
+  |---|---|
+  | **1. ntfy APAGADO** | salida 0 · 5.287 ms · **5 mensajes de Discord** · `history: ["baja:AC071MN4PKH/EU","baja:AC140MN4PKH/EU"]` · **una** línea `INFO NTFY_TEMA no configurado` · **ninguna** línea `INFO ntfy` · **0 POST**. Idéntico a antes de este cambio |
+  | **2. ntfy ENCENDIDO** (servidor propio en `127.0.0.1`) | salida 0 · 5.317 ms · los **mismos 5 mensajes de Discord** y **5 notificaciones**: las 2 bajas con prioridad 4, nombre completo, `De $499.990 a $399.992 · ahorras $99.998 (−20,0%)`, SKU y link; más 3 técnicos con prioridad 3 (categoría principal ausente, pulso del día, revisión no confiable). `INFO ntfy enviados=5 de_producto=2 fallidos=0 tecnicos=3 correcciones=0 no_urgentes=0 omitidos_por_tope=0 apagado_por=no`. **El tema no aparece en ninguna URL** |
+  | **3. ntfy MUERTO** (HTTP 500) | salida 0 · 5.236 ms · 3 `WARNING`, **`apagado_por=fallos-seguidos`**, y los 5 mensajes de Discord y los 2 eventos del historial intactos |
+  | **4. ntfy SIN SERVIDOR** (nadie escucha el puerto) | salida 0 · 5.275 ms · igual: 3 intentos, se apaga solo, nada perdido |
+  | **5. ntfy 200 CON EL CUERPO ABIERTO** (el defecto 3) | salida 0 · **5.279 ms** · los mismos 5 mensajes de Discord y los mismos datos. **Sin el arreglo, la misma corrida: 8.240 ms** — y con un servidor que no suelta nunca, no termina |
+
+  Las corridas 2 y 5 son las que cubren el hueco que `npm test` no puede cubrir
+  (las dos líneas de `run.mjs`), medidas sobre lo que de verdad llegó a los dos
+  servidores de mentira.
+- **LA SEMANA DEL OPERADOR, REPRODUCIDA CORRIDA POR CORRIDA** desde
+  `data/history.jsonl` por los caminos reales (`enviarTandaVivo` para el vivo,
+  `repartirCierre` + `notifyDiscord` para el cierre): del 7 al 14 de octubre, 70
+  corridas con cambios → **7 mensajes de Discord y 11 notificaciones**, una por
+  baja, **0 duplicadas y ninguna que no fuera una baja**. El número del encargo
+  se mantiene intacto después de los seis arreglos.
+- **EL DÍA DE CYBER** con `enviarTandaVivo` real y 280 bajas: con el tope, 60
+  notificaciones de producto + los 2 avisos del tope (uno sin cifra, uno con
+  "220"); sin tope, 280. Los mensajes de Discord son los mismos en los dos casos.
+  Sobre el **costo en minutos** se adopta la medición del verificador, que es
+  mejor que la de la mañana: en el pipeline completo (900 páginas, 280 bajas,
+  250 ms de latencia simulada) ntfy apagado 139,4 s contra 140,2 s sin tope,
+  **+0,5%**, porque el envío va en el hueco entre páginas y queda tapado por el
+  limitador de ritmo de Discord. **El tope no se justifica con segundos: se
+  justifica con el techo de 250 mensajes al día del servidor**, contado por IP
+  compartida del runner.
+
+## LO QUE SIGUE SIN MEDIRSE, DICHO
+
+- **La latencia real contra `ntfy.sh` desde el runner** (publicar de prueba en un
+  tema real estaba prohibido, igual que en la primera vuelta). Se mide sola en la
+  primera corrida de verdad: la línea `INFO ntfy` y la duración comparada con las
+  anteriores.
+- **El hueco de `run.mjs`** sigue abierto, ahora con 6 mutantes vivos con nombre
+  (`R01`–`R04` de octubre más los dos de este canal). Cerrarlo exige que `main()`
+  no arranque al importarse: es un cambio de otra naturaleza y merece su propio
+  ticket.
+
+## PENDIENTES
+
+1. **LA PREGUNTA ABIERTA SIGUE ABIERTA, y es de producto:** ¿"todas las
+   notificaciones" son las de hoy (solo bajas, 11 por semana) o el operador
+   también quiere de vuelta "volvió el stock"? Su mensaje venía cortado en *"Por
+   cada actualización o por"*. La palanca está medida (55 avisos por semana en vez
+   de 11) y **no se tocó por cuenta propia**: sería aflojar su propia regla del
+   2026-10-14.
+2. **Y UNA NUEVA, chica, que ahora se puede hacer con un número honesto:** ¿deja
+   el tope en 60 o lo sube? El costo en tiempo está medido en ~0, así que el único
+   argumento para el 60 es el techo de 250 al día del servidor. Se mueve con
+   `NTFY_TOPE_AVISOS` sin tocar código, pero el día del vaivén (237 bajas) el
+   canal se habría quedado sin cupo igual.
+3. **MIRAR LA LÍNEA `INFO ntfy` LAS PRIMERAS CORRIDAS.** La referencia medida es
+   del orden de 1 a 4 notificaciones al día. Si `fallidos` es alto o aparece
+   `apagado_por=fallos-seguidos` seguido, el problema es el servidor o el tema; lo
+   que NO puede pasar es que eso afecte a Discord. Y `no_urgentes=` dice cuántos
+   rebotes no sonaron.
+4. **Sigue sin haber registro PERSISTENTE del último error de ntfy** (Vigía lo
+   guarda en su configuración; acá no hay dónde sin tocar `data/`). Lo que lo
+   delata es que Discord recibe y el teléfono no.
+5. **No se le puso cuenta ni token a ntfy**: sería cupo propio en vez de cupo por
+   IP, pero exige crear una cuenta y eso lo decide el operador. Confirmado otra
+   vez: **ntfy.sh no pide tarjeta**.
+6. **NO SE COMMITEÓ NADA.** Antes de pushear: `git pull --rebase`, porque el
+   monitor commitea datos 20 veces al día.
+7. **EL MISMO PATRÓN DEL DEFECTO 3 EXISTE EN EL CAMINO DE DISCORD, sin arreglar
+   y a propósito.** `unIntento` (`src/discord.mjs`) tampoco lee ni cancela el
+   cuerpo en la rama de éxito: `respetarCabeceras` solo mira cabeceras.
+   Comprobado leyendo el código; **no se vio daño** porque el webhook de Discord
+   contesta 204 sin cuerpo, y las ramas de error sí consumen el cuerpo
+   (`res.text()`, `cuerpoJson`). No se tocó porque ese camino tiene reintentos,
+   cola y limitador de ritmo, todos medidos: cambiarlo por un riesgo hipotético
+   es peor negocio que declararlo. Si algún día Discord empezara a contestar 200
+   con cuerpo, es el primer lugar donde mirar.
+8. Siguen los pendientes anteriores: rotar `history.jsonl` antes de los 50 MB,
+   cachear Playwright, medir `duracionPrincipalesMin`, las 126 `/buy/`
+   duplicadas, el precio de LISTA de las páginas de grupo, la causa sin
+   diagnosticar del vaivén del 1-oct y el agujero de "la corrida nunca nace".

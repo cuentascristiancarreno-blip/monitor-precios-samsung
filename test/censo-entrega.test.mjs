@@ -167,6 +167,38 @@ test("EL FRENO ES POR CAMBIO: la misma condicion no vuelve a mandar el mismo men
   }
 });
 
+test("el aviso del censo tambien llega al celular por ntfy, con el CLI de verdad", async () => {
+  // POR QUE ESTA PRUEBA VIVE ACA Y NO EN test/ntfy.test.mjs. La copia al celular
+  // se enciende con UNA linea por proceso (`fijarDestinoNtfy(avisadorDelEntorno())`)
+  // y el censo es un proceso aparte (`npm run censo`). Esa linea es cableado:
+  // ninguna prueba que importe modulos la alcanza, porque censo-cli.mjs arranca
+  // main() al importarse -- es la misma limitacion estructural que deja vivos a
+  // los mutantes de cableado de run.mjs (BITACORA, 2026-10-14, defecto 8). Acá
+  // sí se alcanza, porque esta prueba corre el CLI DE VERDAD como proceso.
+  // Medido: borrar esa linea de src/censo-cli.mjs deja la suite en verde sin
+  // esta prueba, y el censo seria el unico aviso tecnico que no llega al
+  // celular.
+  //
+  // NO SE PUBLICA EN NINGUN TEMA REAL: el servidor es un http propio en
+  // 127.0.0.1 (NTFY_SERVIDOR) y el tema es inventado.
+  const dir = await carpetaCon(CATALOGO_QUE_HABLA);
+  const w = await webhookDeMentira();
+  const ntfy = await webhookDeMentira();
+  try {
+    const r = await correrCli(dir, w.url, { NTFY_TEMA: "tema-de-prueba-que-no-existe", NTFY_SERVIDOR: ntfy.url });
+    assert.equal(r.codigo, 0, `el censo se fue en ${r.codigo}\n${r.stderr}`);
+    assert.equal(w.recibidos.length, 1, "Discord sigue siendo el canal");
+    assert.equal(ntfy.recibidos.length, 1, "el aviso del censo no llego al celular");
+    const copia = JSON.parse(ntfy.recibidos[0]);
+    assert.equal(copia.topic, "tema-de-prueba-que-no-existe");
+    assert.match(copia.title, /censo del cat/i, "el titulo del celular es la primera linea del aviso");
+    assert.equal(copia.priority, 3, "un aviso tecnico no puede verse igual que una oferta");
+  } finally {
+    await w.cerrar();
+    await ntfy.cerrar();
+  }
+});
+
 test("...y cuando la condicion CAMBIA, el censo vuelve a hablar en la misma corrida", async () => {
   const dir = await carpetaCon(CATALOGO_QUE_HABLA);
   const w = await webhookDeMentira();

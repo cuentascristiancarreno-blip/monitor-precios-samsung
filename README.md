@@ -1,8 +1,107 @@
 # Monitor de precios Samsung Chile
 
-Revisa el precio, el stock y el catálogo de los productos de samsung.com/cl, y **te avisa por Discord cuando un precio BAJA**. Todo lo demás se sigue midiendo y guardando, pero no te llega como mensaje (ver la sección siguiente). Corre solo, en la nube (GitHub Actions), sin necesidad de tener el computador prendido.
+Revisa el precio, el stock y el catálogo de los productos de samsung.com/cl, y **te avisa por Discord cuando un precio BAJA**. Todo lo demás se sigue midiendo y guardando, pero no te llega como mensaje (ver más abajo). Corre solo, en la nube (GitHub Actions), sin necesidad de tener el computador prendido. Y desde el 2026-11-06 **cada aviso llega además a tu teléfono como una notificación aparte** (la sección que sigue).
 
-## Solo te avisamos las bajas de precio (2026-10-14) — **esto es lo que cambió**
+## Una notificación por aviso en el celular (2026-11-06) — **esto es lo nuevo**
+
+Lo pediste así: *"Al igual que el proyecto Vigía de seguimiento favoritos, quiero que todas las notificaciones también lleguen por Notify. Para que llegue una notificación por una."*
+
+**El problema que esto arregla:** Discord en Android junta todos los mensajes de un canal en **una sola** notificación. Si el monitor te manda 5 avisos, el teléfono te muestra 1 y los otros 4 los descubres cuando abres Discord. Lo que querías es lo que hace el correo: llegan 5, ves 5, y las descartas una por una.
+
+**La solución es la misma que ya usa Vigía: ntfy.** Es una app gratis, **no pide cuenta y no pide tarjeta** (lo confirmé en su documentación: se puede publicar sin registrarse). Tu teléfono se suscribe a un "tema" y cada aviso del monitor llega como su propia notificación, con su título, su precio y un toque para abrir la ficha del producto en Samsung.
+
+**Discord no cambia en nada.** Sigue siendo el registro completo, con los mensajes agrupados y el historial para buscar. ntfy es una **copia** que se manda justo después de que el mensaje llegó a Discord. Si ntfy falla, no se pierde ningún aviso: está en Discord igual.
+
+### Qué va a llegar a tu teléfono, con números
+
+Hoy el monitor avisa **solo bajas de precio** (tu regla del 2026-10-14), así que "todas las notificaciones" son esas. Medido sobre el historial real del monitor:
+
+| | Cuánto es |
+|---|---|
+| Tu última semana medida (7–14 oct) | **11 notificaciones en 7 días** |
+| Una revisión normal (la mitad de las que avisan algo) | 2 |
+| Una revisión movida (1 de cada 10) | 18 |
+| **El peor día de toda la historia del monitor** (1 de octubre) | 237 |
+
+O sea: en un día normal son **una o dos notificaciones al día**, no un bombardeo. Las 237 de ese día fueron el vaivén de precios del 1 de octubre, que es un problema aparte y sigue sin diagnosticarse.
+
+### Lo que vas a ver en la pantalla
+
+```
+🟢⬇️ BAJÓ DE PRECIO · Galaxy Buds4 · Negro
+De $199.990 a $139.990 · ahorras $60.000 (−30,0%)
+SM-R540NZKACHO
+```
+
+Toca la notificación y se abre la ficha del producto en samsung.com. **Una notificación por cada baja**, aunque Discord las haya juntado de 6 en 6 en el mismo mensaje.
+
+### Los avisos de mantención también llegan, y acá está por qué
+
+Los avisos técnicos (que la revisión salió sospechosa, el censo del catálogo, el pulso del día, los productos que no se pueden verificar, y el aviso de que **el monitor dejó de correr**) **también te llegan al teléfono**, pero con otro tono: empiezan por "Monitor Samsung", no por un producto, y van con prioridad más baja, para que un problema no se vea igual que una oferta. **Con una excepción a propósito:** el aviso de que **el monitor dejó de correr** va con la misma prioridad que una oferta, porque perdérselo cuesta lo mismo — es el aviso del incidente de las 30 horas.
+
+Dijiste "todas las notificaciones", y aun así esto no era obvio, porque son avisos de otra naturaleza. Lo dejé así por tres razones, en orden de peso:
+
+1. **El peor incidente que ha tenido este monitor fue justo uno de estos.** El 23 de septiembre estuvo **30 horas apagado** y te enteraste por un correo de GitHub. Ese aviso es técnico. Si las ofertas suenan en el teléfono y "el monitor está caído" no, el teléfono queda en silencio exactamente el día que más importa.
+2. **El "pulso del día" existe para distinguir una semana tranquila de un monitor roto.** Si las bajas van al teléfono y el pulso no, se vuelve a abrir el agujero que se tapó el 14 de octubre por la tarde.
+3. **Son muy pocos.** Medido: del orden de **2 a 4 al día** (ya tienen un freno de "una vez al día por tema"), contra 1 o 2 bajas. No pueden tapar nada.
+
+Y los avisos técnicos **nunca** se quedan sin mandar por culpa de una ola de ofertas: el tope de 60 de más abajo es solo para los avisos de producto.
+
+### Lo que tienes que hacer en el teléfono (3 minutos, una sola vez)
+
+**Paso 1 — instalar la app.**
+1. Abre la **Play Store** en tu teléfono.
+2. Busca **ntfy** (así, cuatro letras y sin la "i"). La correcta la publica **Philipp C. Heckel** — eso aparece debajo del nombre en la Play Store.
+3. Toca **Instalar** y después **Abrir**.
+4. Si te pregunta si permites las notificaciones, toca **Permitir**. (Sin esto no suena nada.)
+
+**Paso 2 — darme el nombre de tu tema.**
+
+El "tema" es el nombre del canal privado por donde van a llegar los avisos. **Funciona como una clave: quien lo sepa puede ver tus avisos, y también puede mandarte avisos falsos**, así que tiene que ser largo y raro.
+
+**Pídeme uno al azar y te lo doy** — es la forma recomendada, porque así no queda escrito en ninguna parte visible. Si lo quieres elegir tú, tiene que tener esta forma: unas letras tuyas y después un puñado largo de letras y números sin sentido, así:
+
+```
+TU-TEMA-SECRETO-pon-aqui-algo-largo-y-raro
+```
+
+Eso de arriba es un **relleno**, no lo uses: este archivo (`README.md`) está publicado en internet, y cualquier tema de verdad que apareciera escrito acá dejaría de ser secreto en el momento. Hay una prueba automática que revisa el repositorio entero para que nunca aparezca un tema con pinta de real.
+
+Escribe el tuyo en un papel o en tus notas: lo vas a necesitar dos veces, en el paso 3 y en el paso 4.
+
+**Paso 3 — guardarlo en GitHub como secreto.**
+1. Entra a tu repositorio en github.com.
+2. Arriba, pestaña **Settings** (Configuración).
+3. En la columna de la izquierda: **Secrets and variables** → **Actions**.
+4. Botón verde **New repository secret**.
+5. En **Name** escribe exactamente: `NTFY_TEMA`
+6. En **Secret** pega tu tema (el del paso 2).
+7. Botón **Add secret**.
+
+Listo: es el mismo lugar donde ya está guardado el webhook de Discord.
+
+**Paso 4 — suscribir el teléfono.**
+1. Abre la app **ntfy**.
+2. Toca el botón **+** (abajo a la derecha).
+3. En "Topic name" escribe tu tema, **exactamente igual** que en el paso 3 (sin espacios, respetando mayúsculas y minúsculas).
+4. Deja "Use another server" apagado (el servidor es el público, ntfy.sh).
+5. Toca **Subscribe**.
+
+**Paso 5 — comprobar que llega.** La próxima revisión que encuentre una baja te va a llegar al teléfono. Si quieres no esperar: ve a la pestaña **Actions** del repo, workflow "Monitor de precios Samsung", **Run workflow**. Cuando termine, si hubo alguna baja te suena el teléfono; y de todas formas te va a llegar el "pulso del día" una vez al día, que sirve justo para confirmar que el canal está vivo.
+
+> **Si el teléfono no suena pero Discord sí recibe los mensajes:** casi siempre es que el tema del paso 3 y el del paso 4 no son idénticos (una letra, un guion). Vuelve a mirar los dos.
+
+**Mientras no hagas el paso 3, el monitor funciona exactamente como hasta ahora.** No hay nada que se rompa ni que haya que apagar: sin el secreto `NTFY_TEMA` el monitor simplemente no manda copias, lo dice una vez en su log y sigue avisando por Discord como siempre. Para **apagarlo** más adelante: borra el secreto `NTFY_TEMA` en GitHub (Settings → Secrets → el tachito de basura). Y para dejar de recibir sin tocar GitHub: en la app ntfy, mantén apretado el tema y **Unsubscribe**.
+
+### Lo que esto NO hace, dicho antes y no después
+
+- **No cambia qué se avisa.** Al teléfono no puede llegar nada que no haya llegado antes a Discord: solo bajas de precio, sin accesorios y sin Book3. Tu regla del 2026-10-14 sigue mandando. Si lo que querías era volver a recibir "volvió el stock" **también**, eso es otra cosa y hay que decidirlo aparte (está explicado abajo, en "Si quieres volver a recibir todo"): no lo cambié por mi cuenta.
+- **Hay UNA cosa que llega a Discord y NO suena en el teléfono: los "siguen rebotando".** Son los productos que están haciendo bajó/subió/bajó/subió con el mismo precio de siempre. Discord te los manda juntos, en una línea compacta, bajo el título *"🌀 Siguen rebotando (ya te los avisé, no es novedad)"* — y es así desde el 13 de septiembre, porque pediste que dejaran de llegarte uno por uno. En el teléfono valía lo mismo: sonaban 15 notificaciones que decían "BAJÓ DE PRECIO" por 15 productos que no habían bajado nada nuevo (medido en la revisión del 1 de octubre a las 18:00). Siguen estando en Discord, con su precio de hoy; lo que no hacen es sonar.
+- **Y hay una que suena aunque no sea una oferta: la corrección.** Cuando un aviso te llega a mitad de revisión y después la revisión completa no lo confirma (otra página del sitio publica otro precio), el teléfono te suena de nuevo con *"⚠️ SE CORRIGE: no se confirmó"* y el precio que sí está vigente. Es el aviso que menos puede faltar: es el que te evita ir a comprar algo que no bajó. Pasa poco (20 veces en 897 revisiones) y antes de este arreglo **no sonaba** — la oferta falsa sonaba y el desmentido quedaba sepultado en Discord.
+- **En una ola de ofertas no son todas una por una.** El servidor gratuito de ntfy acepta 60 notificaciones de corrido y después una cada 5 segundos, con un techo de **250 al día** (ese techo es la razón real del tope). Si una sola revisión encuentra más de **60** bajas (pasó **1 vez en 154** revisiones con bajas: las 141 del 1 de octubre), el teléfono recibe las primeras 60 y después **dos** avisos: uno en el momento que dice *"hay más bajas de las que caben en el teléfono, están todas completas en Discord"* (en el momento todavía no se sabe cuántas van a ser), y otro al terminar la revisión con el número exacto: *"220 bajas más que no caben en el teléfono"*. No se calla nada y no se inventa ningún número.
+- **No reemplaza a Discord.** Es la copia. El mensaje completo, con todas las bajas agrupadas y el conteo de la revisión, sigue estando allá.
+
+## Solo te avisamos las bajas de precio (2026-10-14)
 
 Lo pediste así: *"para notificaciones discord, solo notifica si hay bajas de precio. Si sube el precio o se agotó un producto no lo notifiques."*
 
@@ -294,6 +393,8 @@ Estos son los únicos pasos que requieren tu cuenta — el resto ya está armado
    - Name: `DISCORD_WEBHOOK_URL`
    - Value: pega el contenido de tu archivo `discord_webhook.txt` (el mismo que ya usa el otro monitor).
    - Click **Add secret**.
+
+2b. **Agregar el tema de ntfy como secreto** (opcional, para que cada aviso llegue al celular como una notificación aparte): mismo lugar, **New repository secret**, Name `NTFY_TEMA`, Value el tema que elegiste. Los pasos completos, con lo del teléfono, están arriba en "Una notificación por aviso en el celular". Si no lo pones, el monitor funciona igual y solo avisa por Discord.
 
 3. **Probar que corre bien antes de esperar al horario programado:**
    - Ve a la pestaña **Actions** del repo.

@@ -8,7 +8,8 @@ import { procesarEntrada } from "./resolver.mjs";
 import { comparar, marcarSinPrecioProlongado, marcarSinVerificarProlongado, rebotesDe, resumenDeRebotes, UMBRAL_SIN_VERIFICAR } from "./comparar.mjs";
 import { integrarVariantes } from "./catalogo.mjs";
 import { resumirSilenciados } from "./silenciados.mjs";
-import { mensajeCorreccionesDePrecio, mensajePulsoDeLaRegla, mensajeRebotando, notifyDiscord, notifyTecnico } from "./discord.mjs";
+import { fijarDestinoNtfy, mensajeCorreccionesDePrecio, mensajePulsoDeLaRegla, mensajeRebotando, notifyDiscord, notifyTecnico } from "./discord.mjs";
+import { avisadorDelEntorno, cerrarCorridaNtfy } from "./ntfy.mjs";
 import { crearDespachadorVivo, pendientesParaAvisar, repartirCierre } from "./despachador-vivo.mjs";
 import { serializarPendientes } from "./pendientes.mjs";
 import { pulsoDeLaRegla } from "./solo-bajas.mjs";
@@ -134,6 +135,16 @@ async function main() {
   const redirigidas = [];
 
   const webhook = process.env.DISCORD_WEBHOOK_URL;
+
+  // UNA NOTIFICACION POR AVISO EN EL CELULAR (ntfy, pedido del 2026-11-06).
+  // UNA linea, y cubre los tres caminos: los avisos en vivo, el resumen de
+  // cierre (con los avisos atrasados dentro) y el canal tecnico -- porque los
+  // tres pasan por las dos funciones de src/discord.mjs que copian al celular.
+  // Sin NTFY_TEMA configurado esto devuelve null y el monitor se comporta
+  // exactamente como antes. El por que, los limites y los dos frenos estan en
+  // src/ntfy.mjs.
+  const avisadorNtfy = avisadorDelEntorno();
+  fijarDestinoNtfy(avisadorNtfy);
 
   // FRENO DE LOS AVISOS TECNICOS QUE SE REPITEN SOLOS. Las condiciones de abajo
   // duran hasta que una persona edite el codigo, asi que sin freno salen 7 veces
@@ -725,6 +736,12 @@ async function main() {
   } catch (err) {
     console.error(`WARNING no se pudo escribir el registro de pendientes: ${err.message}`);
   }
+
+  // COMO TERMINO LA COPIA AL CELULAR: cierra el canal (es donde se dice CUANTAS
+  // bajas no cupieron, porque el total solo se sabe aca) y deja una linea en el
+  // log. Todo el contenido vive en src/ntfy.mjs, probado; aca es una linea
+  // porque este archivo no tiene pruebas que lo alcancen.
+  await cerrarCorridaNtfy(avisadorNtfy);
 }
 
 main().catch((err) => {

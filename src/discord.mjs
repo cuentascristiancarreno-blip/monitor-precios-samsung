@@ -698,6 +698,103 @@ export async function enviarMensaje(webhookUrl, content) {
   return enCola(() => enviarConReintentos(webhookUrl, content));
 }
 
+// ---------------------------------------------------------------------------
+// LA COPIA AL CELULAR (ntfy): UNA NOTIFICACION POR AVISO
+// ---------------------------------------------------------------------------
+//
+// Pedido del operador (2026-11-06): "quiero que todas las notificaciones tambien
+// lleguen por Notify. Para que llegue una notificacion por una". El por que, los
+// limites del servidor y los tres frenos estan enteros en src/ntfy.mjs.
+//
+// DONDE ENGANCHA, Y POR QUE JUSTO ACA. Hay DOS caminos de envio al canal de
+// productos (los avisos EN VIVO y el resumen de CIERRE, mas los avisos atrasados
+// de data/pendientes.jsonl que viajan dentro del cierre) y UNO al canal tecnico.
+// Este archivo es el unico lugar donde los tres se tocan, y mas abajo todavia:
+// los tres terminan en `enviarMensaje`. Pero ahi ya no se sabe QUE cambios
+// viajaban en el texto, y ntfy necesita saberlo porque Discord agrupa hasta 6
+// cambios por mensaje y ntfy no puede agrupar ninguno. El eslabon mas bajo que
+// todavia sabe las dos cosas -- que el mensaje se entrego y que cambios llevaba
+// -- son estas dos funciones, y son solo dos:
+//
+//   - `entregarConCopia`, que usan `enviarTandaVivo` (vivo) y `notifyDiscord`
+//     (cierre + pendientes). Los dos loops ya tenian la misma forma: mandar un
+//     paquete y atribuirle `paquete.cambios`.
+//   - `notifyTecnico`, que es el unico porton del canal tecnico (lo usan run.mjs
+//     y src/censo-cli.mjs).
+//
+// Tener UN solo lugar por canal es la leccion mas repetida de este repo: mientras
+// el filtro de accesorios estuvo escrito a mano en los dos caminos se le podia
+// borrar de uno y la suite seguia entera en verde (ver el comentario de
+// `repartirCierre` en src/despachador-vivo.mjs y el mutante que sobrevivio el
+// 2026-09-13). Hay una prueba que exige que no aparezca un tercer llamado a
+// `enviarMensaje` sin copia (test/ntfy.test.mjs).
+//
+// Y POR QUE DESPUES DEL 2xx Y NO ANTES. Es lo que da las dos garantias que pidio
+// el operador, las dos GRATIS y sin inventar ningun mecanismo nuevo:
+//
+//   1. NADA QUE EL FILTRO BLOQUEE SE PUEDE ESCAPAR POR ACA. Lo que no pasa por
+//      `esNotificable` no llega a Discord, y lo que no llega a Discord no llega
+//      al celular. No hay una segunda copia del filtro que se pueda olvidar: es
+//      el agujero que tuvo data/pendientes.jsonl y que se tapo el 2026-10-14.
+//      Lo que SI decide el celular aparte es si un aviso que llego a Discord
+//      merece SONAR: el porton es `esParaCelular` (src/despachador-vivo.mjs,
+//      definido llamando a `esParaVivo` para que no se puedan desalinear) y vive
+//      en un solo lugar, dentro del avisador. Sin el, los rebotes -- que Discord
+//      manda compactos bajo "ya te los avisé, no es novedad" -- sonaban uno por
+//      uno rotulados "BAJÓ DE PRECIO" (defecto medido el 2026-11-06: 15
+//      notificaciones contra 2 mensajes en la corrida real del 1-oct 18:00).
+//   2. UNA BAJA AVISADA EN VIVO NO SE REPITE EN EL CIERRE. `repartirCierre` ya
+//      saca del cierre todo cambio con huella confirmada en vivo, asi que nunca
+//      vuelve a pasar por aca. Y al reves: un cambio que Discord RECHAZO no
+//      produjo copia, queda en data/pendientes.jsonl y la corrida siguiente lo
+//      manda -- una sola vez.
+let destinoNtfy = null;
+
+/**
+ * Enciende (o apaga, con null) la copia al celular para todo este proceso.
+ * La llaman src/run.mjs y src/censo-cli.mjs con UNA linea cada uno; por defecto
+ * es null, o sea que sin tema configurado nada de esto existe.
+ */
+export function fijarDestinoNtfy(avisador) {
+  destinoNtfy = avisador ?? null;
+}
+
+/** Solo para pruebas y diagnostico: a donde se estan copiando los avisos. */
+export function destinoNtfyActual() {
+  return destinoNtfy;
+}
+
+/**
+ * Manda un mensaje al canal de productos y, si Discord lo acepto, copia al
+ * celular UNA notificacion POR CADA aviso que iba dentro.
+ *
+ * Es secuencial a proposito: en paralelo, 6 POST simultaneos a ntfy desde la IP
+ * compartida del runner es justo la rafaga que el servidor corta (ver los
+ * limites en src/ntfy.mjs). Y el avisador se apaga solo tras 3 fallos seguidos,
+ * asi que un ntfy caido no puede frenar el barrido mas de una vez.
+ *
+ * QUE SUENA Y QUE NO lo decide el avisador (`esParaCelular`, src/ntfy.mjs): aca
+ * se le pasa todo lo que viajaba en el mensaje y el porton esta en un solo
+ * lugar. Un rebote, por ejemplo, llega a Discord en su seccion compacta y NO
+ * suena.
+ *
+ * LAS CORRECCIONES VIAJAN APARTE de los cambios y no es un detalle: un item de
+ * correccion no es un cambio detectado, asi que meterlo en `cambios` lo
+ * mandaria a data/pendientes.jsonl cuando Discord rechaza el mensaje, o sea que
+ * la corrida siguiente intentaria reenviar como aviso el cambio que esta
+ * correccion viene a DESMENTIR.
+ */
+async function entregarConCopia(webhookUrl, texto, cambios, correcciones) {
+  const r = await enviarMensaje(webhookUrl, texto);
+  if (r.ok && destinoNtfy) {
+    // Las correcciones primero, igual que en el mensaje de Discord: desmienten
+    // algo que el operador ya recibio y por lo que puede estar por ir a comprar.
+    for (const { aviso, actual } of correcciones ?? []) await destinoNtfy.avisarCorreccion(aviso, actual);
+    for (const cambio of cambios ?? []) await destinoNtfy.avisarCambio(cambio);
+  }
+  return r;
+}
+
 /** Solo para pruebas: vuelve a dejar el cubo de fichas y la pausa global en cero. */
 export function reiniciarRitmo() {
   fichas = null;
@@ -724,15 +821,24 @@ export function armarMensajesConCambios(encabezado, secciones) {
   // cola de una seccion recortada ("…y 49 más: 20 televisores…") viaja con TODOS
   // los cambios que resume, para que un mensaje rechazado por Discord los
   // devuelva enteros a pendientes.jsonl en vez de perderlos.
-  const agregarLinea = (linea, cambios) => {
+  // Y UN ITEM PUEDE LLEVAR UNA CORRECCION en vez de un cambio (2026-11-06):
+  // `{linea, correccion: {aviso, actual}}`. Viaja por un carril propio y no
+  // dentro de `cambios` porque `cambios` es lo que se reintenta por
+  // data/pendientes.jsonl cuando Discord rechaza un mensaje, y una correccion
+  // reintentada seria el aviso falso de vuelta. Es lo que permite que el
+  // desmentido tambien suene en el celular (ver entregarConCopia).
+  let grupoCorrecciones = [];
+  const agregarLinea = (linea, cambios, correccion) => {
     if ((actual + "\n\n" + linea).length > LIMITE) {
-      mensajes.push({ texto: actual, cambios: grupo });
+      mensajes.push({ texto: actual, cambios: grupo, correcciones: grupoCorrecciones });
       actual = linea;
       grupo = [];
+      grupoCorrecciones = [];
     } else {
       actual += "\n\n" + linea;
     }
     if (cambios) grupo.push(...cambios);
+    if (correccion) grupoCorrecciones.push(correccion);
   };
 
   for (const [tipo, items] of secciones) {
@@ -741,10 +847,10 @@ export function armarMensajesConCambios(encabezado, secciones) {
     // seccion recortada tiene menos lineas que cambios
     const total = items.reduce((n, i) => n + (i.cambios?.length ?? (i.cambio ? 1 : 0)), 0) || items.length;
     agregarLinea(`**${TITULOS[tipo]} (${total})**`);
-    for (const item of items) agregarLinea(item.linea, item.cambios ?? (item.cambio ? [item.cambio] : null));
+    for (const item of items) agregarLinea(item.linea, item.cambios ?? (item.cambio ? [item.cambio] : null), item.correccion ?? null);
   }
 
-  mensajes.push({ texto: actual, cambios: grupo });
+  mensajes.push({ texto: actual, cambios: grupo, correcciones: grupoCorrecciones });
   return mensajes;
 }
 
@@ -833,7 +939,7 @@ export async function enviarTandaVivo(webhookUrl, cambios, { encabezado = "", li
   let permanente = false;
 
   for (const paquete of paquetes) {
-    const r = await enviarMensaje(webhookUrl, paquete.texto);
+    const r = await entregarConCopia(webhookUrl, paquete.texto, paquete.cambios);
     if (r.ok) {
       confirmados.push(...paquete.cambios);
     } else {
@@ -952,8 +1058,12 @@ export async function notifyDiscord(webhookUrl, { changes, errores, totalRevisad
 
   const secciones = [
     // Las correcciones van PRIMERAS: desmienten un aviso que el operador ya
-    // recibio y puede estar por ir a comprar.
-    ["correccion", correcciones.map(({ aviso, actual }) => ({ linea: lineaCorreccion(aviso, actual) }))],
+    // recibio y puede estar por ir a comprar. Y desde el 2026-11-06 viajan con
+    // su `correccion` para que el desmentido tambien SUENE en el celular: el
+    // aviso falso salio en vivo y sono, y tener la mentira sonando y el
+    // desmentido sepultado en la notificacion agrupada de Discord era justo lo
+    // contrario de lo que este canal vino a arreglar.
+    ["correccion", correcciones.map(({ aviso, actual }) => ({ linea: lineaCorreccion(aviso, actual), correccion: { aviso, actual } }))],
     ["pendiente", pendientes.map((c) => ({ linea: lineaPendiente(c), cambio: c }))],
     ["baja", porTipo.baja],
     ["sube", porTipo.sube],
@@ -977,7 +1087,7 @@ export async function notifyDiscord(webhookUrl, { changes, errores, totalRevisad
   let fallidos = 0;
   const noEntregados = [];
   for (const mensaje of mensajes) {
-    const r = await enviarMensaje(webhookUrl, mensaje.texto);
+    const r = await entregarConCopia(webhookUrl, mensaje.texto, mensaje.cambios, mensaje.correcciones);
     if (!r.ok) {
       fallidos += 1;
       noEntregados.push(...mensaje.cambios);
@@ -1196,5 +1306,12 @@ export async function notifyTecnico(webhookUrl, texto) {
     return { entregado: true };
   }
   const r = await enviarMensaje(webhookUrl, texto.slice(0, 1900));
+  // LOS AVISOS TECNICOS TAMBIEN VAN AL CELULAR, y la razon de peso es el
+  // incidente del 2026-09-23: el monitor estuvo 30 HORAS caido y el operador se
+  // entero por un correo de GitHub. Ese aviso es tecnico, y es precisamente el
+  // que no puede quedar sepultado bajo una notificacion agrupada de Discord.
+  // Van con prioridad 3 (la baja de precio va con 4) para que un problema no se
+  // vea igual que una oferta -- ver avisoTecnico en src/ntfy.mjs.
+  if (r?.ok === true && destinoNtfy) await destinoNtfy.avisarTecnico(texto);
   return { entregado: r?.ok === true };
 }

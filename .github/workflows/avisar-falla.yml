@@ -304,3 +304,70 @@ jobs:
           # aviso que no llego tiene que notarse en Actions. Sacarlo deja pasar
           # en silencio justo lo que este workflow existe para que se note.
           curl -sS --fail-with-body -X POST -H "Content-Type: application/json" -d @payload.json "$WEBHOOK"
+
+      # UNA NOTIFICACION EN EL CELULAR, ADEMAS DE DISCORD (ntfy, pedido del
+      # operador 2026-11-06: "que llegue una notificacion por una").
+      #
+      # POR QUE ESTE AVISO TAMBIEN, Y POR QUE HAY QUE ESCRIBIRLO ACA. El resto de
+      # los avisos los copia src/ntfy.mjs desde Node, pero ESTE no pasa por Node:
+      # vive en este workflow justamente porque tiene que poder hablar cuando la
+      # revision no arranca. Y es EL aviso del incidente del 2026-09-23 -- el
+      # monitor estuvo 30 horas caido y el operador se entero por un correo de
+      # GitHub. Dejarlo fuera habria convertido "los avisos tecnicos llegan al
+      # celular" en una media verdad justo en el unico que no se puede perder.
+      #
+      # VA EN UN PASO APARTE Y DESPUES del de Discord, sin `always()`: asi solo
+      # corre si Discord ACEPTO el aviso, que es la misma regla que sigue
+      # src/ntfy.mjs (la copia es de algo que ya quedo registrado).
+      #
+      # Y NO PUEDE PONER ROJO ESTE WORKFLOW: `continue-on-error` mas `|| echo`.
+      # Al contrario que el paso de Discord -- que SI tiene que verse rojo
+      # porque es el canal --, el celular es la copia: que falle la copia no es
+      # una falla del aviso.
+      - name: Copia al celular por ntfy (nunca bloquea)
+        if: ${{ steps.decidir.outputs.hablar == 'si' }}
+        continue-on-error: true
+        env:
+          # El tema es la CLAVE del canal: va como secreto, igual que el webhook,
+          # y jamas en un archivo del repo. Mientras el secreto no exista llega
+          # vacio y este paso no hace nada.
+          NTFY_TEMA: ${{ secrets.NTFY_TEMA }}
+          # EL WEBHOOK TAMBIEN, Y NO ES REDUNDANTE (defecto medido el
+          # 2026-11-06). El paso de Discord termina en VERDE con `exit 0` cuando
+          # falta su secreto -- o sea sin mandar nada --, y este paso solo exige
+          # que los anteriores no hayan FALLADO: sin esta guarda publicaba igual
+          # y quedaba un aviso en el celular que no existe en Discord, justo al
+          # reves de la regla de este canal (la copia es de algo que ya quedo
+          # registrado). En produccion el webhook existe; el caso vivo es el repo
+          # recien clonado o el secreto borrado.
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TITULO: ${{ steps.decidir.outputs.titulo }}
+          RESUMEN: ${{ steps.decidir.outputs.resumen }}
+          PASO: ${{ steps.decidir.outputs.paso }}
+          URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -u
+          if [ -z "${NTFY_TEMA:-}" ]; then
+            echo "NTFY_TEMA no configurado: no se copia al celular (el aviso ya salio por Discord)"
+            exit 0
+          fi
+          # Sin webhook el paso anterior no mando nada, asi que no hay nada que
+          # copiar: una copia sin original seria un aviso en el celular que no
+          # esta registrado en ninguna parte.
+          if [ -z "${WEBHOOK:-}" ]; then
+            echo "DISCORD_WEBHOOK_URL no configurado: el aviso no salio por Discord, asi que no hay copia que mandar"
+            exit 0
+          fi
+          # El tema va en el CUERPO y no en la URL: una URL queda escrita en el
+          # log de Actions, y el tema es la clave de acceso al canal.
+          # --max-time 5: esto es la copia del aviso, no el aviso.
+          # PRIORIDAD 4 Y NO 3 COMO EL RESTO DE LOS AVISOS TECNICOS, a
+          # proposito y es el unico: los demas cuentan algo del monitor, este
+          # cuenta que NO HAY MONITOREO -- es el aviso del incidente de las 30
+          # horas. Suena como una oferta porque cuesta lo mismo perderselo.
+          jq -n --arg tema "$NTFY_TEMA" --arg t "$TITULO" --arg r "$RESUMEN" --arg p "$PASO" --arg l "$URL" \
+            '{topic: $tema, title: "⚠️ Monitor Samsung no corrio", priority: 4,
+              message: ($t + "\nFallas seguidas: " + $r + "\nPaso que fallo: " + $p), click: $l}' \
+            > ntfy.json
+          curl -sS --max-time 5 -X POST -H "Content-Type: application/json" -d @ntfy.json "https://ntfy.sh" \
+            || echo "la copia al celular no salio (el aviso ya esta en Discord)"

@@ -178,6 +178,37 @@ export function esParaVivo(cambio) {
 }
 
 /**
+ * ¿Y suena como SU PROPIA notificacion en el celular (ntfy)?
+ *
+ * EL MISMO CONJUNTO QUE EL CANAL EN VIVO, y se define llamandolo para que no se
+ * puedan desalinear: si algun dia se saca algo del vivo -- como se saco el
+ * rebote el 2026-09-13 y el matiz el 2026-10-05 -- el celular lo pierde en la
+ * misma linea.
+ *
+ * POR QUE HACE FALTA (defecto ALTO medido el 2026-11-06 por un verificador). La
+ * copia al celular se enganchaba a "el mensaje de Discord fue aceptado" y
+ * copiaba TODO cambio que viajara dentro, asi que los REBOTES se volvian una
+ * notificacion por cada uno, titulada "BAJÓ DE PRECIO" y con la misma prioridad
+ * que una oferta fresca. El freno anti-parpadeo existe justo para lo contrario:
+ * un rebote es, por definicion, un valor que el operador YA escucho, `esParaVivo`
+ * lo saca del canal urgente a proposito y `notifyDiscord` lo manda compacto bajo
+ * "🌀 Siguen rebotando (ya te los avisé, no es novedad)". El canal nuevo era el
+ * UNICO donde ese freno no hacia nada, y es el unico que suena en el telefono:
+ * era la "notificacion constante" que el operador pidio sacar (BITACORA
+ * 2026-09-13) reintroducida por la puerta nueva, y encima contradiciendo el
+ * rotulo que Discord pone en el mismo mensaje. Medido sobre data/history.jsonl:
+ * 20 bajas-rebote en 5 corridas, y en la corrida real 2026-10-01T18:00:16Z son 2
+ * mensajes de Discord contra 15 notificaciones al celular.
+ *
+ * LO QUE NO CAMBIA: el rebote sigue llegando a Discord, con su precio de hoy, en
+ * su seccion compacta. No se pierde nada -- deja de SONAR, que es justo lo que
+ * el freno decidio en 2026-09-13.
+ */
+export function esParaCelular(cambio) {
+  return esParaVivo(cambio);
+}
+
+/**
  * Reparto del cierre: de todo lo que comparar() detecto, que va al resumen final
  * y cuanto se omite por haber salido ya en vivo.
  *
