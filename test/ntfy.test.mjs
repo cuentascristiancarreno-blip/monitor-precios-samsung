@@ -889,7 +889,12 @@ test("un 200 cuyo CUERPO no cierra no deja ningun socket vivo", async () => {
     assert.equal(r.ok, true, "el servidor contesto 200: el aviso se dio por copiado");
     // el socket se cierra al salir de publicar, sin esperar a que el servidor cierre nada
     const cerrados = async () => {
-      for (let i = 0; i < 100; i++) {
+      // 400 x 20 ms = 8 s. Eran 100 (2 s) y GitHub lo desmintio el 2026-11-07:
+      // el runner es compartido y el cierre del socket llegaba despues. Lo que
+      // la prueba vigila es que el socket SE CIERRE sin esperar al servidor, no
+      // en cuantos milisegundos: darle margen no la debilita, y si de verdad
+      // quedara vivo, 8 s tampoco alcanzan.
+      for (let i = 0; i < 400; i++) {
         if (sockets.length > 0 && sockets.every((s) => s.destroyed)) return true;
         await new Promise((r) => setTimeout(r, 20));
       }
