@@ -324,9 +324,15 @@ function recortar(texto, max) {
  *   - cada reintento multiplica el rato que el barrido queda parado, y en una
  *     tanda de 6 bajas eso se multiplica por 6.
  *
- * El temporizador se cancela y va con unref(): un timer vivo impide que Node
- * termine, y la leccion de este repo es que eso deja el job colgado hasta el
- * timeout.
+ * EL TEMPORIZADOR NO LLEVA unref() Y ES DELIBERADO (2026-11-07): el clearTimeout
+ * del finally ya garantiza que no sobreviva a la llamada, mientras que unref()
+ * rompia la unica garantia de esta funcion: si el POST se cuelga y ese
+ * temporizador es lo unico pendiente, Node da el bucle por terminado ANTES de
+ * que dispare, el abort no ocurre y la promesa no se resuelve nunca. Medido: con
+ * unref puesto, 5 pruebas pasaban en local y fallaban en GitHub con "Promise
+ * resolution is still pending but the event loop has already resolved", y el
+ * candado de pruebas del monitor habria dejado de correr -- el apagon de 30
+ * horas del 2026-09-22.
  *
  * Y SE ABORTA SIEMPRE AL SALIR, aunque la respuesta haya sido un 200. Es el
  * defecto ALTO que midio un verificador el 2026-11-06 y es la unica forma en que
@@ -350,7 +356,6 @@ export async function publicar(tema, aviso, { fetchFn = fetch, servidor = SERVID
   if (!tema) return { ok: false, error: "ntfy: sin tema configurado" };
   const control = new AbortController();
   const reloj = setTimeout(() => control.abort(), Math.max(1, timeoutMs));
-  reloj.unref?.();
   try {
     const res = await fetchFn(servidor, {
       method: "POST",

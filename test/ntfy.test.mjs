@@ -903,17 +903,20 @@ test("un 200 cuyo CUERPO no cierra no deja ningun socket vivo", async () => {
   }
 });
 
-test("el tope de espera no deja temporizadores vivos: se cancela Y va con unref", async () => {
-  // Un timer vivo impide que Node termine, que es la otra forma de dejar el job
-  // colgado hasta el timeout de 330 min. Hay DOS defensas y las dos hacen falta:
-  //   - clearTimeout, para no dejar un temporizador de 10 min colgando del
-  //     cierre de la revision;
-  //   - unref(), para que ni siquiera mientras existe pueda mantener vivo el
-  //     proceso (es el que salva el caso en que el fetch no vuelve nunca).
-  // Cada una por separado tapa el sintoma de la otra, asi que contar recursos
-  // activos no distingue: se miran los llamados. (Medido el 2026-11-06: con
-  // unref puesto, un temporizador sin cancelar NO aparece en
-  // getActiveResourcesInfo, asi que el mutante sobrevivia.)
+test("el tope de espera se cancela al salir y NO va con unref", async () => {
+  // ESTA PRUEBA FIJABA LO CONTRARIO HASTA EL 2026-11-07 Y GITHUB LA DESMINTIO.
+  // Exigia unref() con el argumento de que un timer vivo deja el job colgado.
+  // Pero el clearTimeout del finally ya garantiza eso -- el temporizador no
+  // puede sobrevivir a la llamada --, mientras que unref() rompia la UNICA
+  // garantia de publicar(): si el POST se cuelga y ese temporizador es lo unico
+  // pendiente, Node da el bucle por terminado ANTES de que dispare, el abort no
+  // ocurre nunca y la promesa no se resuelve.
+  // Medido: con unref puesto, 5 pruebas de ntfy pasaban en local y fallaban en
+  // GitHub con "Promise resolution is still pending but the event loop has
+  // already resolved". El candado de pruebas del monitor habria dejado de
+  // correr, que es exactamente el apagon de 30 horas del 2026-09-22.
+  // Se siguen mirando los LLAMADOS y no getActiveResourcesInfo, por la razon
+  // medida el 2026-11-06: un temporizador sin cancelar no aparece ahi.
   const originalSet = globalThis.setTimeout;
   const originalClear = globalThis.clearTimeout;
   let creados = 0;
@@ -942,7 +945,7 @@ test("el tope de espera no deja temporizadores vivos: se cancela Y va con unref"
     globalThis.clearTimeout = originalClear;
   }
   assert.equal(creados, 1, "publicar arma UN temporizador de tope de espera");
-  assert.equal(desreferenciados, 1, "ese temporizador tiene que ir con unref(): si no, mantiene vivo el proceso");
+  assert.equal(desreferenciados, 0, "ese temporizador NO puede ir con unref(): si va, el proceso puede terminar antes de que corte el POST y la promesa no se resuelve nunca");
   assert.equal(cancelados, 1, "y tiene que cancelarse al salir: si no, quedan 10 minutos de temporizador colgando");
 });
 
